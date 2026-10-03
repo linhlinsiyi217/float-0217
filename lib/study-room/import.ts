@@ -28,11 +28,12 @@ type ParsedLike = {
   totalPages?: number;
 };
 
-/** 从任意 Blob/File 导入一本书到书架，返回落库后的书。 */
+/** 从任意 Blob/File 导入一本书到书架，返回落库后的书。cover 为在线来源提供的真实封面。 */
 export async function importBookFromBlob(
   blob: Blob,
   fileName: string,
   onProgress?: (stage: string) => void,
+  cover?: string,
 ): Promise<Book> {
   const ext = fileName.split(".").pop()?.toLowerCase();
   let parsed: ParsedLike;
@@ -69,6 +70,7 @@ export async function importBookFromBlob(
     format,
     totalChapters: parsed.chapters.length,
     createdAt: new Date().toISOString(),
+    cover: cover || undefined,
   };
 
   const chapters: BookChapter[] = parsed.chapters.map((chapter, index) => {

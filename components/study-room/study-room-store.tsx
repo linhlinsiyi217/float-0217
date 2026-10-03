@@ -63,7 +63,7 @@ export function StudyRoomStore() {
       const res = await fetch(`/api/study-room/fetch?url=${encodeURIComponent(item.importFile.url)}`);
       if (!res.ok) throw new Error("fetch failed");
       const blob = await res.blob();
-      await importBookFromBlob(blob, `${item.title}.${item.importFile.format}`);
+      await importBookFromBlob(blob, `${item.title}.${item.importFile.format}`, undefined, item.cover);
       setImportedIds((prev) => new Set(prev).add(item.id));
       setNotice(`《${item.title}》已导入书架，可在「书架」中阅读。`);
     } catch {

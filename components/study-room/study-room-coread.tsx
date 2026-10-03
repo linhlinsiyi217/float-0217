@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, Loader2, Send } from "lucide-react";
 
 import { loadCharacters } from "@/lib/character-storage";
@@ -70,6 +70,20 @@ export function StudyRoomCoread({
 
   const character = characters.find((c) => c.id === characterId) ?? null;
   const visibleMessages = messages.filter((m) => m.content && m.role !== "system");
+
+  // 同一人连续消息按组处理：只有组末气泡显示尾巴
+  const bubbleRows = useMemo(() => {
+    return visibleMessages.map((msg, index) => {
+      const prev = visibleMessages[index - 1];
+      const next = visibleMessages[index + 1];
+      return {
+        msg,
+        mine: msg.role === "user",
+        groupStart: !prev || prev.role !== msg.role,
+        groupEnd: !next || next.role !== msg.role,
+      };
+    });
+  }, [visibleMessages]);
 
   const handleSend = async () => {
     const text = input.trim();
@@ -166,8 +180,15 @@ export function StudyRoomCoread({
               共读只会看到你已经读到的部分，不会剧透后面的内容。
             </div>
           ) : (
-            visibleMessages.map((msg) => (
-              <div key={msg.id} className="sr-coread-msg" data-role={msg.role}>
+            bubbleRows.map(({ msg, mine, groupStart, groupEnd }) => (
+              <div
+                key={msg.id}
+                className="sr-coread-msg"
+                data-role={msg.role}
+                data-mine={mine ? "true" : "false"}
+                data-group-start={groupStart ? "true" : undefined}
+                data-group-end={groupEnd ? "true" : undefined}
+              >
                 {msg.content}
               </div>
             ))

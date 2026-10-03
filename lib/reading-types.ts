@@ -7,6 +7,8 @@ export type Book = {
     format: "txt" | "epub" | "pdf";
     totalChapters: number;
     createdAt: string;
+    /** 真实封面图地址（在线来源提供时才有）；没有则书架用备用样式 */
+    cover?: string;
 };
 
 export type BookChapter = {
