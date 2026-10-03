@@ -105,6 +105,10 @@ export type ReadingNote = {
     authorName?: string;
     /** 标记时这本书的版本标识（格式/章数/导入时间），换版本后可提示定位可能变化 */
     bookVersion?: string;
+    /** 自己打的标签，用于分类整理 */
+    tags?: string[];
+    /** 收藏（重点标记） */
+    starred?: boolean;
     createdAt: string;
     updatedAt: string;
 };

@@ -12,6 +12,8 @@ import {
   Layers,
   Image as ImageIcon,
   MessagesSquare,
+  Star,
+  Tag,
 } from "lucide-react";
 
 import {
@@ -29,7 +31,7 @@ type StudyRoomNotesProps = {
   onOpenSource: (book: Book, chapterIndex: number, paragraphIndex: number) => void;
 };
 
-type EditingState = { note: ReadingNote; draft: string };
+type EditingState = { note: ReadingNote; draft: string; tags: string };
 
 /** 笔记很多时一次只渲染这么多，避免一次进几千张卡片 */
 const NOTE_PAGE = 60;
@@ -47,6 +49,9 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
   const [annotations, setAnnotations] = useState<ReadingAnnotation[] | null>(null);
   const [showAnnotations, setShowAnnotations] = useState(true);
   const [listLimit, setListLimit] = useState(NOTE_PAGE);
+  const [starredOnly, setStarredOnly] = useState(false);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [editingTags, setEditingTags] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -82,17 +87,20 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
   const filtered = useMemo(() => {
     if (!notes) return [];
     const q = query.trim().toLowerCase();
-    const matched = q
-      ? notes.filter((note) => {
-          const bookTitle = books[note.bookId]?.title ?? "";
-          return (
-            note.quote.toLowerCase().includes(q) ||
-            (note.content ?? "").toLowerCase().includes(q) ||
-            bookTitle.toLowerCase().includes(q) ||
-            chapterLabel(note).toLowerCase().includes(q)
-          );
-        })
-      : notes;
+    const matched = notes
+      .filter((note) => (starredOnly ? note.starred === true : true))
+      .filter((note) => (tagFilter ? (note.tags ?? []).includes(tagFilter) : true))
+      .filter((note) => {
+        if (!q) return true;
+        const bookTitle = books[note.bookId]?.title ?? "";
+        return (
+          note.quote.toLowerCase().includes(q) ||
+          (note.content ?? "").toLowerCase().includes(q) ||
+          bookTitle.toLowerCase().includes(q) ||
+          chapterLabel(note).toLowerCase().includes(q) ||
+          (note.tags ?? []).some((tag) => tag.toLowerCase().includes(q))
+        );
+      });
     const sorted = [...matched].sort((a, b) => {
       const ta = new Date(a.updatedAt).getTime();
       const tb = new Date(b.updatedAt).getTime();
@@ -100,9 +108,17 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
     });
     return sorted;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notes, query, sortDesc, books, chapterTitles]);
+  }, [notes, query, sortDesc, books, chapterTitles, starredOnly, tagFilter]);
 
   const visibleNotes = useMemo(() => filtered.slice(0, listLimit), [filtered, listLimit]);
+
+  const allTags = useMemo(() => {
+    const counter = new Map<string, number>();
+    for (const note of notes ?? []) {
+      for (const tag of note.tags ?? []) counter.set(tag, (counter.get(tag) ?? 0) + 1);
+    }
+    return Array.from(counter.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([tag]) => tag);
+  }, [notes]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, ReadingNote[]>();
@@ -125,8 +141,9 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
     const content = editing.draft.trim();
     const next: ReadingNote = {
       ...editing.note,
-      kind: content ? "note" : "excerpt",
+      kind: content || (editing.note.emoji ?? "") ? "note" : "excerpt",
       content: content || undefined,
+      tags: editing.tags.split(/[、,，s]+/).filter(Boolean).slice(0, 6),
       updatedAt: new Date().toISOString(),
     };
     await saveNote(next);
@@ -193,6 +210,13 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
     return (
       <div key={note.id} className="sr-note-card">
         <p className="sr-note-quote">{note.quote}</p>
+        {note.tags && note.tags.length > 0 && (
+          <div className="sr-chip-row" style={{ marginTop: 6, gap: 4 }}>
+            {note.tags.map((tag) => (
+              <span key={tag} className="sr-note-tag">{tag}</span>
+            ))}
+          </div>
+        )}
         {(note.emoji || note.content) && (
           <p className="sr-note-thought">
             {note.emoji && <span className="sr-mark-emoji">{note.emoji} </span>}
@@ -217,8 +241,24 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
             <button
               type="button"
               className="sr-note-tool"
-              title="编辑想法"
-              onClick={() => setEditing({ note, draft: note.content ?? "" })}
+              title={note.starred ? "取消收藏" : "收藏这条"}
+              data-active={note.starred ? "true" : undefined}
+              onClick={async () => {
+                const next = { ...note, starred: !note.starred, updatedAt: new Date().toISOString() };
+                await saveNote(next);
+                setNotes((prev) => (prev ? prev.map((n) => (n.id === next.id ? next : n)) : prev));
+              }}
+            >
+              <Star size={15} strokeWidth={1.7} fill={note.starred ? "currentColor" : "none"} />
+            </button>
+            <button
+              type="button"
+              className="sr-note-tool"
+              title="编辑想法与标签"
+              onClick={() => {
+                setEditing({ note, draft: note.content ?? "", tags: (note.tags ?? []).join("、") });
+                setEditingTags((note.tags ?? []).join("、"));
+              }}
             >
               <PenLine size={15} strokeWidth={1.7} />
             </button>
@@ -293,7 +333,36 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
               <MessagesSquare size={13} strokeWidth={1.8} style={{ marginRight: 5 }} />
               角色批注
             </button>
+            <button
+              type="button"
+              className="sr-chip"
+              data-active={starredOnly ? "true" : undefined}
+              onClick={() => setStarredOnly((v) => !v)}
+            >
+              <Star size={13} strokeWidth={1.8} style={{ marginRight: 5 }} />
+              收藏
+            </button>
           </div>
+
+          {allTags.length > 0 && (
+            <div className="sr-chip-row" style={{ marginTop: -4 }}>
+              <span className="sr-note-meta" style={{ alignSelf: "center" }}>
+                <Tag size={12} strokeWidth={1.8} style={{ verticalAlign: -1, marginRight: 4 }} />
+                标签
+              </span>
+              {allTags.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  className="sr-chip"
+                  data-active={tagFilter === tag ? "true" : undefined}
+                  onClick={() => setTagFilter(tagFilter === tag ? null : tag)}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          )}
 
           {showAnnotations && filteredAnnotations.length > 0 && (
             <div className="sr-note-group">
@@ -368,6 +437,14 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
               rows={3}
               autoFocus
               onChange={(e) => setEditing((prev) => (prev ? { ...prev, draft: e.target.value } : prev))}
+            />
+            <input
+              className="sr-appear-input"
+              style={{ width: "100%", marginTop: 8 }}
+              value={editing.tags}
+              onChange={(e) => setEditing((prev) => (prev ? { ...prev, tags: e.target.value } : prev))}
+              placeholder="标签，用顿号分隔（如「人物」「伏笔」）"
+              aria-label="标签"
             />
             <div className="sr-sheet-actions">
               <button type="button" className="sr-btn" onClick={() => setEditing(null)}>

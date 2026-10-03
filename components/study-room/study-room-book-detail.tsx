@@ -9,6 +9,7 @@ import { loadCoreadRefs, type CoreadRef } from "@/lib/study-room-coread";
 import { loadCharacters } from "@/lib/character-storage";
 import { StudyRoomStageSummary } from "./study-room-stage-summary";
 import { GiftSheet } from "./gift-sheet";
+import { StudyRoomReview } from "./study-room-review";
 import { exportBookAsEpub, safeFileName } from "@/lib/study-room/export-epub";
 
 type StudyRoomBookDetailProps = {
@@ -45,6 +46,7 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
   const [exporting, setExporting] = useState(false);
   const [exportNote, setExportNote] = useState<string | null>(null);
   const [gifting, setGifting] = useState(false);
+  const [review, setReview] = useState<"quick" | "fine" | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -306,6 +308,12 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
                 <ExternalLink size={16} strokeWidth={1.8} /> 来源页
               </a>
             )}
+            <button type="button" className="sr-btn" onClick={() => setReview("quick")}>
+              快速回顾
+            </button>
+            <button type="button" className="sr-btn" onClick={() => setReview("fine")}>
+              精细回顾
+            </button>
             <button type="button" className="sr-btn" onClick={() => setGifting(true)}>
               <Gift size={16} strokeWidth={1.7} />
               赠书 / 送礼
@@ -319,6 +327,10 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
             </button>
           </div>
         </div>
+
+        {review && (
+          <StudyRoomReview book={book} onRead={onRead} onClose={() => setReview(null)} />
+        )}
 
         {gifting && (
           <GiftSheet

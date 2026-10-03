@@ -2286,3 +2286,95 @@
   .sr-gift-result { animation: none; }
   .sr-gift-item { transition: none; }
 }
+
+/* 笔记卡片上的标签 */
+.sr-note-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--c-text);
+  background: color-mix(in srgb, var(--c-icon-active) 10%, var(--c-input));
+  border: 0.5px solid var(--c-card-border);
+}
+
+/* 新角色批注提醒条 */
+.sr-annotation-hint {
+  display: block;
+  width: 100%;
+  margin: 4px 0 14px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 0.5px dashed color-mix(in srgb, var(--sr-chat-send, #0a84ff) 45%, transparent);
+  background: color-mix(in srgb, var(--sr-chat-send, #0a84ff) 8%, transparent);
+  color: var(--c-text-title);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* ── 回顾（快速 / 精细） ── */
+.sr-sheet--tall { max-height: 82vh; display: flex; flex-direction: column; gap: 6px; }
+.sr-review-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--c-input);
+  font-size: 12px;
+  color: var(--c-text);
+  margin-bottom: 8px;
+}
+.sr-review-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
+.sr-review-list li { border-bottom: 0.5px solid var(--c-card-border); }
+.sr-review-list button {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--c-text-title);
+  text-align: left;
+  cursor: pointer;
+}
+.sr-review-timeline { overflow-y: auto; }
+.sr-review-chapter { margin-bottom: 12px; }
+.sr-review-chapter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--c-text-title);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.sr-review-chapter ul { list-style: none; margin: 0; padding: 0 0 0 6px; }
+.sr-review-chapter li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 0;
+  border-top: 0.5px solid var(--c-card-border);
+  color: var(--c-text);
+}
+.sr-review-chapter li[data-kind="annotate"] { color: color-mix(in srgb, var(--sr-chat-send, #0a84ff) 75%, var(--c-text)); }
+.sr-review-chapter li button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sr-review-text { font-size: 13px; line-height: 1.6; color: var(--c-text-title); overflow-wrap: anywhere; }

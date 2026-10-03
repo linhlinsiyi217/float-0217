@@ -29,7 +29,14 @@ import {
 } from "@/lib/reading-storage";
 import type { Book, BookChapter, ReadingAnnotation, ReadingBookmark, ReadingNote } from "@/lib/reading-types";
 import { loadAppearance } from "@/lib/study-room/appearance";
-import { NOTE_EMOJIS, buildNote, marksByParagraph, shortText } from "@/lib/study-room/annotations";
+import {
+  NOTE_EMOJIS,
+  buildNote,
+  markAnnotationsSeen,
+  marksByParagraph,
+  shortText,
+  unseenAnnotations,
+} from "@/lib/study-room/annotations";
 import { generateAnnotationBatch } from "@/lib/reading-engine";
 import {
   MAX_STAGE_CHAPTERS,
@@ -85,6 +92,8 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   const [chapterIndex, setChapterIndex] = useState(0);
   const [chapterNotes, setChapterNotes] = useState<ReadingNote[]>([]);
   const [chapterAnnotations, setChapterAnnotations] = useState<ReadingAnnotation[]>([]);
+  // 本章还没看过的角色批注（提醒用）
+  const [newAnnotationIds, setNewAnnotationIds] = useState<string[]>([]);
   // 角色批注：选中角色后按需请求，不整章发往 API
   const [characters] = useState(() => loadCharacters().map((c) => ({ id: c.id, name: c.name })));
   const [characterId, setCharacterId] = useState<string>(() => loadCharacters()[0]?.id ?? "");
@@ -133,6 +142,7 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
     ]);
     setChapterNotes(notes);
     setChapterAnnotations(annotations);
+    setNewAnnotationIds(unseenAnnotations(book.id, annotations).map((item) => item.id));
   }, [book.id, chapterIndex]);
 
   // 载入章节 + 恢复进度
@@ -627,6 +637,23 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
         ) : (
           <>
             {chapter && <h2 className="sr-chapter-title">{chapter.title}</h2>}
+            {newAnnotationIds.length > 0 && (
+              <button
+                type="button"
+                className="sr-annotation-hint"
+                onClick={() => {
+                  const first = chapterAnnotations.find((item) => item.id === newAnnotationIds[0]);
+                  if (first) {
+                    setMarkSheet(first.paragraphIndex);
+                    setEditDraft(null);
+                  }
+                  markAnnotationsSeen(book.id, newAnnotationIds);
+                  setNewAnnotationIds([]);
+                }}
+              >
+                角色在这一章写了 {newAnnotationIds.length} 条新批注 · 点这里看
+              </button>
+            )}
             {paragraphs.slice(range.start, range.end).map((para, offset) => {
               const index = range.start + offset;
               const paraMarks = marks.get(index);
@@ -646,6 +673,13 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
                           onClick={() => {
                             setMarkSheet(index);
                             setEditDraft(null);
+                            const ids = (marks.get(index) ?? [])
+                              .map((mark) => mark.annotation?.id)
+                              .filter((id): id is string => Boolean(id));
+                            markAnnotationsSeen(book.id, ids);
+                            if (ids.length > 0) {
+                              setNewAnnotationIds((prev) => prev.filter((id) => !ids.includes(id)));
+                            }
                           }}
                           aria-label={`查看这一段上的 ${paraMarks.length} 条批注`}
                         >

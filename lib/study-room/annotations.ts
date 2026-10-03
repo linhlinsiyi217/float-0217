@@ -5,7 +5,11 @@
 //  - ReadingAnnotation：AI 角色写的批注，只读，但可以跳回原文。
 // 定位始终是「章 + 段 + 原文片段」，不用页码；字号、行距、分页变化都不会丢位置。
 
+import { kvGet, kvSet, registerKvMigration } from "@/lib/kv-db";
 import type { Book, ReadingAnnotation, ReadingNote } from "@/lib/reading-types";
+
+const SEEN_ANNOTATIONS_KEY = "ai_phone_studyroom_seen_annotations_v1";
+registerKvMigration(SEEN_ANNOTATIONS_KEY);
 
 /**
  * 表情批注可选的表情。界面按钮仍用 SVG 图标，这里只是批注内容本身允许的表情。
@@ -96,6 +100,30 @@ export function marksByParagraph(
     });
   }
   return map;
+}
+
+/** 已经看过的角色批注 id（按书分组），用于「本章有 N 条新批注」的提醒。 */
+function loadSeenAnnotations(): Record<string, string[]> {
+  try {
+    const raw = kvGet(SEEN_ANNOTATIONS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, string[]>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function unseenAnnotations(bookId: string, annotations: ReadingAnnotation[]): ReadingAnnotation[] {
+  const seen = new Set(loadSeenAnnotations()[bookId] ?? []);
+  return annotations.filter((item) => !seen.has(item.id));
+}
+
+export function markAnnotationsSeen(bookId: string, annotationIds: string[]): void {
+  if (annotationIds.length === 0) return;
+  const all = loadSeenAnnotations();
+  const merged = Array.from(new Set([...(all[bookId] ?? []), ...annotationIds]));
+  kvSet(SEEN_ANNOTATIONS_KEY, JSON.stringify({ ...all, [bookId]: merged }));
 }
 
 /** 标记条上的短文字：太长就截断，完整内容点开看。 */
