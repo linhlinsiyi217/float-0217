@@ -1,34 +1,59 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ChevronLeft, ChevronRight, RotateCcw, Copy, Download, Upload, Undo2, Info } from "lucide-react";
+import { ChevronLeft, ChevronRight, RotateCcw, Copy, Download, Upload, Undo2, Info, ImagePlus, X } from "lucide-react";
 
 import {
   APPEARANCE_MODULES,
+  FIT_LABEL,
+  FONT_CHOICES,
+  POSITION_LABEL,
   VAR_DEFS,
   applyAppearance,
   buildAppearanceCss,
   defaultState,
   loadAppearance,
+  loadPresets,
   moduleVarKeys,
   resetModule,
+  sanitizeState,
   saveAppearance,
+  savePresets,
+  upsertPreset,
   varDef,
+  type AppearancePreset,
+  type AppearanceBackground,
   type AppearanceModule,
   type AppearanceState,
+  type BackgroundFit,
+  type BackgroundPosition,
 } from "@/lib/study-room/appearance";
+import {
+  BACKGROUND_ACCEPT,
+  UnsupportedBackgroundError,
+  canLoadImageUrl,
+  fileToBackgroundImage,
+  looksLikeImageUrl,
+} from "@/lib/study-room/background-image";
 import { ColorSheet } from "./color-sheet";
 
 type StudyRoomAppearanceProps = { onBack: () => void };
+
+/** 调色面板当前在改哪个颜色：某个变量，或背景遮罩色。 */
+type ColorTarget = { kind: "var"; key: string } | { kind: "bgMask" };
 
 export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
   const [module, setModule] = useState<AppearanceModule | "hub">("hub");
   const [saved, setSaved] = useState<AppearanceState>(() => loadAppearance());
   const [draft, setDraft] = useState<AppearanceState>(() => loadAppearance());
-  const [colorKey, setColorKey] = useState<string | null>(null);
+  const [colorTarget, setColorTarget] = useState<ColorTarget | null>(null);
   const [cssDraft, setCssDraft] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
+  const [bgUrl, setBgUrl] = useState("");
+  const [presets, setPresets] = useState<AppearancePreset[]>(() => loadPresets());
+  const [presetName, setPresetName] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const bgFileRef = useRef<HTMLInputElement>(null);
 
   // 草稿实时预览：把草稿直接注入，用户在真实界面上看到的就是结果
   useEffect(() => {
@@ -47,6 +72,43 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
 
   const setVar = (key: string, value: string) => {
     setDraft((prev) => ({ ...prev, vars: { ...prev.vars, [key]: value } }));
+  };
+  const setBackground = (patch: Partial<AppearanceBackground>) => {
+    setDraft((prev) => ({ ...prev, background: { ...prev.background, ...patch } }));
+  };
+  const flashNotice = (message: string, ms = 1800) => {
+    setNotice(message);
+    window.setTimeout(() => setNotice((n) => (n === message ? null : n)), ms);
+  };
+
+  /** 本地图片：读成 data URL（过大的图会先等比缩小）。 */
+  const handleBackgroundFile = async (file: File) => {
+    try {
+      const picked = await fileToBackgroundImage(file);
+      setBackground({ url: picked.dataUrl });
+      flashNotice(picked.note ? `背景已设置（${picked.note}）` : "背景已设置", 2200);
+    } catch (err) {
+      flashNotice(
+        err instanceof UnsupportedBackgroundError ? err.message : "这张图片读不出来，请换一张再试",
+        2600,
+      );
+    }
+  };
+
+  /** 链接背景：先试着加载出来，坏链就不写进设置（保持原有底色）。 */
+  const handleBackgroundUrl = async () => {
+    const url = bgUrl.trim();
+    if (!looksLikeImageUrl(url)) {
+      flashNotice("请填写 http(s) 图片链接或 data:image 数据", 2600);
+      return;
+    }
+    const usable = await canLoadImageUrl(url);
+    if (!usable) {
+      flashNotice("这个链接加载不出图片（可能失效或禁止外链），已保持原来的背景", 3000);
+      return;
+    }
+    setBackground({ url });
+    flashNotice("已使用该链接作为背景");
   };
   const setCss = (mod: AppearanceModule, value: string) => {
     setCssDraft((prev) => ({ ...prev, [mod]: value }));
@@ -102,8 +164,39 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
     window.setTimeout(() => setNotice(null), 1600);
   };
 
+  /** 存一套命名预设；同名会覆盖，不会越存越乱。 */
+  const handleSavePreset = () => {
+    const name = presetName.trim();
+    if (!name) {
+      flashNotice("先给预设起个名字，例如「深色阅读」", 2200);
+      return;
+    }
+    const next = upsertPreset(presets, name, draft);
+    setPresets(next);
+    savePresets(next);
+    setPresetName("");
+    flashNotice(`已保存预设「${name}」`);
+  };
+
+  /** 应用预设：直接进草稿，仍是「保存后才生效」，可取消。 */
+  const handleApplyPreset = (preset: AppearancePreset) => {
+    const next = sanitizeState(preset.state);
+    setDraft(next);
+    setCssDraft({});
+    applyAppearance(next);
+    flashNotice(`已套用「${preset.name}」，保存后长期生效`, 2400);
+  };
+
+  const handleDeletePreset = (preset: AppearancePreset) => {
+    const next = presets.filter((item) => item.id !== preset.id);
+    setPresets(next);
+    savePresets(next);
+    flashNotice(`已删除预设「${preset.name}」`);
+  };
+
   const handleExport = () => {
-    const payload = JSON.stringify(draft, null, 2);
+    // 导出里带上一份预设，换设备导入后可以直接切回
+    const payload = JSON.stringify({ app: "float-0217-studyroom-appearance", version: 1, state: draft, presets }, null, 2);
     const blob = new Blob([payload], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -118,16 +211,30 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
   const handleImportFile = async (file: File) => {
     try {
       const text = await file.text();
-      const parsed = JSON.parse(text) as Partial<AppearanceState>;
-      const base = defaultState();
-      const next: AppearanceState = {
-        vars: { ...base.vars, ...(parsed.vars ?? {}) },
-        css: { ...(parsed.css ?? {}) },
-      };
+      const parsed = JSON.parse(text) as { state?: unknown; presets?: unknown };
+      // 兼容两种文件：带 state/presets 的导出包，或直接就是一份外观 JSON
+      const rawState = parsed && typeof parsed === "object" && "state" in parsed ? parsed.state : parsed;
+      const next = sanitizeState(rawState);
       setDraft(next);
       setCssDraft({});
       applyAppearance(next);
-      setNotice("已导入，未保存前可取消");
+
+      const incoming = Array.isArray(parsed?.presets)
+        ? (parsed.presets as AppearancePreset[]).map((preset) => ({
+            id: String(preset.id ?? `preset_${Math.random().toString(36).slice(2, 8)}`),
+            name: String(preset.name ?? "未命名预设"),
+            createdAt: String(preset.createdAt ?? new Date().toISOString()),
+            state: sanitizeState(preset.state),
+          }))
+        : [];
+      if (incoming.length > 0) {
+        const merged = incoming.reduce((list, preset) => upsertPreset(list, preset.name, preset.state), presets);
+        setPresets(merged);
+        savePresets(merged);
+        setNotice(`已导入外观与 ${incoming.length} 个预设，未保存前可取消`);
+      } else {
+        setNotice("已导入，未保存前可取消");
+      }
     } catch {
       setNotice("导入失败：文件格式不正确");
     }
@@ -135,7 +242,7 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
   };
 
   return (
-    <section className="sr-app">
+    <section className="sr-app sr-appear-app">
       <header className="sr-header">
         <div className="sr-header-safe" />
         <div className="sr-header-row">
@@ -166,6 +273,49 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
                   <ChevronRight size={18} strokeWidth={1.6} color="var(--c-icon)" />
                 </button>
               ))}
+              <div className="sr-section-label" style={{ marginTop: 18 }}>预设</div>
+              {presets.length === 0 ? (
+                <p className="sr-note-meta" style={{ margin: "2px 2px 10px", lineHeight: 1.7 }}>
+                  还没有预设。调好外观后在这里命名保存，之后可以一键切换（例如「白天」「夜间阅读」）。
+                </p>
+              ) : (
+                <ul className="sr-preset-list">
+                  {presets.map((preset) => (
+                    <li key={preset.id} className="sr-preset-item">
+                      <div className="sr-preset-main">
+                        <span className="sr-preset-name">{preset.name}</span>
+                        <span className="sr-note-meta">
+                          {new Date(preset.createdAt).toLocaleDateString()} 保存
+                        </span>
+                      </div>
+                      <button type="button" className="sr-chip" onClick={() => handleApplyPreset(preset)}>
+                        套用
+                      </button>
+                      <button
+                        type="button"
+                        className="sr-chip"
+                        onClick={() => handleDeletePreset(preset)}
+                        aria-label={`删除预设 ${preset.name}`}
+                      >
+                        删除
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="sr-appear-row">
+                <input
+                  className="sr-appear-input"
+                  value={presetName}
+                  onChange={(e) => setPresetName(e.target.value)}
+                  placeholder="给当前外观起个名字"
+                  aria-label="预设名称"
+                />
+                <button type="button" className="sr-chip" onClick={handleSavePreset} disabled={!presetName.trim()}>
+                  保存预设
+                </button>
+              </div>
+
               <div className="sr-actions" style={{ marginTop: 14 }}>
                 <button type="button" className="sr-btn" onClick={handleExport}><Download size={16} strokeWidth={1.7} />导出外观</button>
                 <button type="button" className="sr-btn" onClick={() => fileRef.current?.click()}><Upload size={16} strokeWidth={1.7} />导入外观</button>
@@ -177,6 +327,130 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
             </>
           ) : (
             <>
+              {module === "global" && (
+                <>
+                  <div className="sr-section-label">书房背景</div>
+                  <div className="sr-appear-row">
+                    <span className="sr-appear-label">背景图</span>
+                    <span className="sr-appear-value">{draft.background.url ? "已设置" : "未设置"}</span>
+                  </div>
+                  <div className="sr-actions" style={{ marginBottom: 8 }}>
+                    <button type="button" className="sr-btn" onClick={() => bgFileRef.current?.click()}>
+                      <ImagePlus size={16} strokeWidth={1.7} />选择本地图片
+                    </button>
+                    {draft.background.url && (
+                      <button type="button" className="sr-btn" onClick={() => setBackground({ url: "" })}>
+                        <X size={16} strokeWidth={1.7} />清除背景
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    ref={bgFileRef}
+                    type="file"
+                    accept={BACKGROUND_ACCEPT}
+                    hidden
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (f) void handleBackgroundFile(f);
+                    }}
+                  />
+                  <div className="sr-appear-row">
+                    <input
+                      className="sr-appear-input"
+                      value={bgUrl}
+                      onChange={(e) => setBgUrl(e.target.value)}
+                      placeholder="或粘贴图片链接 https://…"
+                      aria-label="背景图片链接"
+                    />
+                    <button type="button" className="sr-chip" onClick={() => void handleBackgroundUrl()} disabled={!bgUrl.trim()}>
+                      使用
+                    </button>
+                  </div>
+                  <div className="sr-appear-row">
+                    <span className="sr-appear-label">显示方式</span>
+                    {(["cover", "contain", "repeat"] as BackgroundFit[]).map((fit) => (
+                      <button
+                        key={fit}
+                        type="button"
+                        className="sr-chip"
+                        data-active={draft.background.fit === fit ? "true" : undefined}
+                        onClick={() => setBackground({ fit })}
+                      >
+                        {FIT_LABEL[fit]}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="sr-appear-row">
+                    <span className="sr-appear-label">位置</span>
+                    {(["center", "top", "bottom", "left", "right"] as BackgroundPosition[]).map((pos) => (
+                      <button
+                        key={pos}
+                        type="button"
+                        className="sr-chip"
+                        data-active={draft.background.position === pos ? "true" : undefined}
+                        onClick={() => setBackground({ position: pos })}
+                      >
+                        {POSITION_LABEL[pos]}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="sr-appear-row sr-appear-row--slider">
+                    <span className="sr-appear-label">图片不透明度</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={draft.background.opacity}
+                      onChange={(e) => setBackground({ opacity: Number(e.target.value) })}
+                      className="sr-slider"
+                      aria-label="背景图片不透明度"
+                    />
+                    <span className="sr-appear-value">{draft.background.opacity}%</span>
+                  </div>
+                  <div className="sr-appear-row sr-appear-row--slider">
+                    <span className="sr-appear-label">遮罩强度</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={draft.background.mask}
+                      onChange={(e) => setBackground({ mask: Number(e.target.value) })}
+                      className="sr-slider"
+                      aria-label="背景遮罩强度"
+                    />
+                    <span className="sr-appear-value">{draft.background.mask}%</span>
+                  </div>
+                  <div className="sr-appear-row">
+                    <span className="sr-appear-label">遮罩颜色</span>
+                    <button
+                      type="button"
+                      className="sr-swatch"
+                      style={{ background: draft.background.maskColor || draft.vars["--sr-page-bg"] }}
+                      onClick={() => setColorTarget({ kind: "bgMask" })}
+                      aria-label="选择遮罩颜色"
+                    />
+                  </div>
+                  <div className="sr-appear-row">
+                    <span className="sr-appear-label">阅读页也显示背景</span>
+                    <button
+                      type="button"
+                      className="sr-chip"
+                      data-active={draft.background.inReader ? "true" : undefined}
+                      onClick={() => setBackground({ inReader: !draft.background.inReader })}
+                    >
+                      {draft.background.inReader ? "开" : "关"}
+                    </button>
+                  </div>
+                  <p className="sr-note-meta" style={{ margin: "6px 2px 12px", lineHeight: 1.7 }}>
+                    支持 JPG / PNG / WebP / GIF（GIF 保留动画）；其它格式会提示改用这几种。
+                    背景覆盖书房各子页面，阅读页默认保持干净底色，需要时可单独打开。
+                  </p>
+                </>
+              )}
+
               {/* 基础控件 */}
               <div className="sr-section-label">基础样式</div>
               {moduleVars.map((def) => {
@@ -185,7 +459,41 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
                   return (
                     <div key={def.key} className="sr-appear-row">
                       <span className="sr-appear-label">{def.label}</span>
-                      <button type="button" className="sr-swatch" style={{ background: value }} onClick={() => setColorKey(def.key)} aria-label={`${def.label}，当前 ${value}`} />
+                      <button type="button" className="sr-swatch" style={{ background: value }} onClick={() => setColorTarget({ kind: "var", key: def.key })} aria-label={`${def.label}，当前 ${value}`} />
+                    </div>
+                  );
+                }
+                if (def.type === "font") {
+                  const known = FONT_CHOICES.some((choice) => choice.value === value);
+                  return (
+                    <div key={def.key} className="sr-appear-row">
+                      <span className="sr-appear-label">{def.label}</span>
+                      <select
+                        className="sr-appear-select"
+                        value={value}
+                        onChange={(e) => setVar(def.key, e.target.value)}
+                        aria-label={def.label}
+                      >
+                        {!known && <option value={value}>当前自定义字体</option>}
+                        {FONT_CHOICES.map((choice) => (
+                          <option key={choice.label} value={choice.value}>
+                            {choice.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                }
+                if (def.type === "text") {
+                  return (
+                    <div key={def.key} className="sr-appear-row">
+                      <span className="sr-appear-label">{def.label}</span>
+                      <input
+                        className="sr-appear-input"
+                        value={value}
+                        onChange={(e) => setVar(def.key, e.target.value)}
+                        aria-label={def.label}
+                      />
                     </div>
                   );
                 }
@@ -263,12 +571,22 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
         </footer>
       )}
 
-      {colorKey && (
+      {colorTarget && (
         <ColorSheet
-          title={varDef(colorKey)?.label ?? "颜色"}
-          value={draft.vars[colorKey] ?? "#0a84ff"}
-          onChange={(v) => setVar(colorKey, v)}
-          onClose={() => setColorKey(null)}
+          title={
+            colorTarget.kind === "bgMask"
+              ? "背景遮罩颜色"
+              : varDef(colorTarget.key)?.label ?? "颜色"
+          }
+          value={
+            colorTarget.kind === "bgMask"
+              ? draft.background.maskColor || draft.vars["--sr-page-bg"] || "#f1f2f6"
+              : draft.vars[colorTarget.key] ?? "#0a84ff"
+          }
+          onChange={(v) =>
+            colorTarget.kind === "bgMask" ? setBackground({ maskColor: v }) : setVar(colorTarget.key, v)
+          }
+          onClose={() => setColorTarget(null)}
         />
       )}
     </section>

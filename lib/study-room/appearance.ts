@@ -13,9 +13,53 @@ registerKvMigration(STORAGE_KEY);
 
 export type AppearanceModule = "global" | "shelf" | "reader" | "chat" | "coread" | "notes";
 
+/** 全局书房背景：本地图片或链接，含贴图方式、位置、透明度与遮罩。 */
+export type BackgroundFit = "cover" | "contain" | "repeat";
+export type BackgroundPosition = "center" | "top" | "bottom" | "left" | "right";
+
+export type AppearanceBackground = {
+  /** data:image/... 或 http(s) 链接；空表示不使用背景图 */
+  url: string;
+  fit: BackgroundFit;
+  position: BackgroundPosition;
+  /** 图片本身的不透明度 0-100 */
+  opacity: number;
+  /** 遮罩强度 0-100：越大越接近页面底色，用来保证文字可读 */
+  mask: number;
+  /** 遮罩颜色；留空表示跟随页面底色 */
+  maskColor: string;
+  /** 阅读页是否也显示背景（默认关闭，正文保持干净底色） */
+  inReader: boolean;
+};
+
+export const DEFAULT_BACKGROUND: AppearanceBackground = {
+  url: "",
+  fit: "cover",
+  position: "center",
+  opacity: 100,
+  mask: 30,
+  maskColor: "",
+  inReader: false,
+};
+
+export const FIT_LABEL: Record<BackgroundFit, string> = {
+  cover: "铺满",
+  contain: "完整显示",
+  repeat: "平铺",
+};
+
+export const POSITION_LABEL: Record<BackgroundPosition, string> = {
+  center: "居中",
+  top: "靠上",
+  bottom: "靠下",
+  left: "靠左",
+  right: "靠右",
+};
+
 export type AppearanceState = {
   vars: Record<string, string>;
   css: Record<string, string>;
+  background: AppearanceBackground;
 };
 
 export const APPEARANCE_MODULES: Array<{ key: AppearanceModule; label: string; desc: string }> = [
@@ -28,11 +72,20 @@ export const APPEARANCE_MODULES: Array<{ key: AppearanceModule; label: string; d
 ];
 
 /** 基础变量：每个控件对应一个 CSS 变量，画布上的真实样式直接读它。 */
+/** 字体候选：留空表示跟随宿主手机的字体设置。 */
+export const FONT_CHOICES: Array<{ value: string; label: string }> = [
+  { value: "", label: "跟随系统" },
+  { value: '"PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", sans-serif', label: "黑体（默认）" },
+  { value: '"Songti SC", "Noto Serif SC", "SimSun", serif', label: "宋体 / 衬线" },
+  { value: '"Kaiti SC", "KaiTi", "STKaiti", serif', label: "楷体" },
+  { value: '"ui-monospace", "SFMono-Regular", Menlo, Consolas, monospace', label: "等宽" },
+];
+
 export const VAR_DEFS: Array<{
   key: string;
   module: AppearanceModule;
   label: string;
-  type: "color" | "range" | "toggle" | "text";
+  type: "color" | "range" | "toggle" | "text" | "font";
   fallback: string;
   min?: number;
   max?: number;
@@ -41,6 +94,10 @@ export const VAR_DEFS: Array<{
 }> = [
   // 整体
   { key: "--sr-accent", module: "global", label: "界面强调色", type: "color", fallback: "#4a4a4a" },
+  { key: "--sr-font-family", module: "global", label: "字体", type: "font", fallback: "" },
+  { key: "--sr-text-ink", module: "global", label: "文字颜色", type: "color", fallback: "#1c1f24" },
+  { key: "--sr-glass-blur", module: "global", label: "毛玻璃模糊", type: "range", fallback: "18", min: 0, max: 32, step: 1, unit: "px" },
+  { key: "--sr-shadow-alpha", module: "global", label: "阴影强度", type: "range", fallback: "10", min: 0, max: 40, step: 1, unit: "%" },
   { key: "--sr-radius", module: "global", label: "圆角", type: "range", fallback: "20", min: 0, max: 28, step: 1, unit: "px" },
   { key: "--sr-page-bg", module: "global", label: "页面底色", type: "color", fallback: "#f1f2f6" },
 
@@ -101,31 +158,39 @@ export function defaultVars(): Record<string, string> {
 }
 
 export function defaultState(): AppearanceState {
-  return { vars: defaultVars(), css: {} };
+  return { vars: defaultVars(), css: {}, background: { ...DEFAULT_BACKGROUND } };
+}
+
+const FITS: BackgroundFit[] = ["cover", "contain", "repeat"];
+const POSITIONS: BackgroundPosition[] = ["center", "top", "bottom", "left", "right"];
+
+/** 只接受认识的字段，避免坏数据让背景层失效。 */
+function sanitizeBackground(raw: unknown): AppearanceBackground {
+  const out = { ...DEFAULT_BACKGROUND };
+  if (!raw || typeof raw !== "object") return out;
+  const value = raw as Partial<AppearanceBackground>;
+  if (typeof value.url === "string" && value.url.trim()) out.url = value.url.trim();
+  if (value.fit && FITS.includes(value.fit)) out.fit = value.fit;
+  if (value.position && POSITIONS.includes(value.position)) out.position = value.position;
+  if (typeof value.opacity === "number" && Number.isFinite(value.opacity)) {
+    out.opacity = Math.min(Math.max(Math.round(value.opacity), 0), 100);
+  }
+  if (typeof value.mask === "number" && Number.isFinite(value.mask)) {
+    out.mask = Math.min(Math.max(Math.round(value.mask), 0), 100);
+  }
+  if (typeof value.maskColor === "string") out.maskColor = value.maskColor.trim();
+  if (typeof value.inReader === "boolean") out.inReader = value.inReader;
+  return out;
 }
 
 /** 读取已保存的外观（兼容缺字段的旧数据）。 */
 export function loadAppearance(): AppearanceState {
-  const base = defaultState();
   try {
     const raw = kvGet(STORAGE_KEY);
-    if (!raw) return base;
-    const parsed = JSON.parse(raw) as Partial<AppearanceState>;
-    const vars = { ...base.vars };
-    if (parsed.vars && typeof parsed.vars === "object") {
-      for (const [key, value] of Object.entries(parsed.vars)) {
-        if (typeof value === "string" && key in vars) vars[key] = value;
-      }
-    }
-    const css: Record<string, string> = {};
-    if (parsed.css && typeof parsed.css === "object") {
-      for (const [key, value] of Object.entries(parsed.css)) {
-        if (typeof value === "string" && value.trim()) css[key] = value;
-      }
-    }
-    return { vars, css };
+    if (!raw) return defaultState();
+    return sanitizeState(JSON.parse(raw) as unknown);
   } catch {
-    return base;
+    return defaultState();
   }
 }
 
@@ -133,14 +198,91 @@ export function saveAppearance(state: AppearanceState): void {
   kvSet(STORAGE_KEY, JSON.stringify(state));
 }
 
+// ── 命名预设：把一整套外观存下来随时切换 ──
+
+const PRESETS_KEY = "ai_phone_studyroom_appearance_presets_v1";
+registerKvMigration(PRESETS_KEY);
+
+export type AppearancePreset = {
+  id: string;
+  name: string;
+  createdAt: string;
+  state: AppearanceState;
+};
+
+/** 把外部数据（存档/预设/导入文件）收成一份可用的外观状态。 */
+export function sanitizeState(raw: unknown): AppearanceState {
+  const base = defaultState();
+  if (!raw || typeof raw !== "object") return base;
+  const parsed = raw as Partial<AppearanceState>;
+  const vars = { ...base.vars };
+  if (parsed.vars && typeof parsed.vars === "object") {
+    for (const [key, value] of Object.entries(parsed.vars)) {
+      if (typeof value === "string" && key in vars) vars[key] = value;
+    }
+  }
+  const css: Record<string, string> = {};
+  if (parsed.css && typeof parsed.css === "object") {
+    for (const [key, value] of Object.entries(parsed.css)) {
+      if (typeof value === "string" && value.trim()) css[key] = value;
+    }
+  }
+  return { vars, css, background: sanitizeBackground(parsed.background) };
+}
+
+export function loadPresets(): AppearancePreset[] {
+  try {
+    const raw = kvGet(PRESETS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is AppearancePreset => Boolean(item) && typeof item === "object" && typeof (item as AppearancePreset).id === "string")
+      .map((item) => ({
+        id: item.id,
+        name: typeof item.name === "string" && item.name.trim() ? item.name.trim() : "未命名预设",
+        createdAt: typeof item.createdAt === "string" ? item.createdAt : new Date().toISOString(),
+        state: sanitizeState(item.state),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+export function savePresets(list: AppearancePreset[]): void {
+  kvSet(PRESETS_KEY, JSON.stringify(list));
+}
+
+/** 新建预设（同名的覆盖，避免越存越多重复项）。 */
+export function upsertPreset(list: AppearancePreset[], name: string, state: AppearanceState): AppearancePreset[] {
+  const trimmed = name.trim() || "未命名预设";
+  const existing = list.find((preset) => preset.name === trimmed);
+  if (existing) {
+    return list.map((preset) =>
+      preset.id === existing.id ? { ...preset, state, createdAt: new Date().toISOString() } : preset,
+    );
+  }
+  const preset: AppearancePreset = {
+    id: `preset_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    name: trimmed,
+    createdAt: new Date().toISOString(),
+    state,
+  };
+  return [...list, preset];
+}
+
 export function resetModule(state: AppearanceState, module: AppearanceModule): AppearanceState {
   const vars = { ...state.vars };
   for (const key of MODULE_VAR_KEYS[module]) vars[key] = varDef(key)?.fallback ?? "";
   const css = { ...state.css };
   delete css[module];
-  // 整体模块同时清掉公共变量
-  if (module === "global") for (const key of GLOBAL_VAR_KEYS) vars[key] = varDef(key)?.fallback ?? "";
-  return { vars, css };
+  const background = { ...state.background };
+  // 整体模块同时清掉公共变量与全局背景
+  if (module === "global") {
+    for (const key of GLOBAL_VAR_KEYS) vars[key] = varDef(key)?.fallback ?? "";
+    Object.assign(background, DEFAULT_BACKGROUND);
+  }
+  return { vars, css, background };
 }
 
 /** 生成注入用的 CSS 文本：先是变量，再是各模块的用户覆盖（作用域限定到 .sr-app）。 */
@@ -152,16 +294,112 @@ export function buildAppearanceCss(state: AppearanceState): string {
     varLines.push(`  ${def.key}: ${normalizeValue(def, value)};`);
   }
 
-  const scope = ".sr-app";
   const blocks: string[] = [];
   for (const entry of APPEARANCE_MODULES) {
     const raw = state.css[entry.key];
     if (!raw || !raw.trim()) continue;
     // 用 CSS 嵌套把用户规则限制在书房作用域内；即使写了裸元素选择器也只影响书房
-    blocks.push(`/* ${entry.label} */\n${scope} {\n${indent(raw)}\n}`);
+    blocks.push(`/* ${entry.label} */\n${SCOPE} {\n${indent(raw)}\n}`);
   }
 
-  return [`${scope} {\n${varLines.join("\n")}\n}`, ...blocks].join("\n\n");
+  return [`${SCOPE} {\n${varLines.join("\n")}\n}`, buildBackgroundCss(state.background), ...blocks, SAFETY_CSS]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/**
+ * 兜底：外观页自己的返回与保存/取消入口不受自定义 CSS 影响。
+ * 用户写坏 CSS 时，仍然进得来、退得出去、还能一键恢复默认。
+ */
+const SAFETY_CSS = `/* 兜底：外观页的退出与恢复入口不被自定义 CSS 藏掉 */
+.sr-appear-app .sr-header,
+.sr-appear-app .sr-header .sr-icon-btn,
+.sr-appear-app .sr-appear-footer {
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: none !important;
+  clip-path: none !important;
+  filter: none !important;
+  mix-blend-mode: normal !important;
+  max-height: none !important;
+  overflow: visible !important;
+  z-index: 60 !important;
+}`;
+
+/**
+ * 背景层：.sr-app 的 ::before 放图、::after 放遮罩，两个伪元素都是负 z-index，
+ * 配合 isolation 只压在本页内容之下、页面底色之上，不影响布局与点击。
+ * 图片链接失效时只是这张图不显示，页面底色仍在（自带回退）。
+ */
+export function buildBackgroundCss(bg: AppearanceBackground): string {
+  if (!bg.url) return "";
+  const url = cssUrl(bg.url);
+  const size = bg.fit === "cover" ? "cover" : bg.fit === "contain" ? "contain" : "auto";
+  const repeat = bg.fit === "repeat" ? "repeat" : "no-repeat";
+  const position = `${positionX(bg.position)} ${positionY(bg.position)}`;
+  const opacity = Math.min(Math.max(bg.opacity, 0), 100) / 100;
+  const maskColor = bg.maskColor || "var(--sr-page-bg)";
+  const maskAlpha = Math.min(Math.max(bg.mask, 0), 100);
+
+  const imageLayer = (selector: string) => `${selector}::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: url("${url}");
+  background-size: ${size};
+  background-position: ${position};
+  background-repeat: ${repeat};
+  opacity: ${opacity};
+}`;
+
+  const maskLayer = (selector: string, alpha: number) => `${selector}::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: color-mix(in srgb, ${maskColor} ${alpha}%, transparent);
+}`;
+
+  const rules = [
+    "/* 背景层：只影响书房内部，不会漏到其他应用 */",
+    // isolation 让负 z-index 的伪元素只待在本页之内（不改成 relative，别动现有全屏定位）
+    `${SCOPE} { isolation: isolate; }`,
+    imageLayer(SCOPE),
+    maskLayer(SCOPE, maskAlpha),
+  ];
+
+  if (bg.inReader) {
+    // 阅读页：正文底色让位给背景图，遮罩至少 45% 保证字迹清楚
+    rules.push(
+      ".sr-reader { isolation: isolate; }",
+      imageLayer(".sr-reader"),
+      maskLayer(".sr-reader", Math.max(maskAlpha, 45)),
+      ".sr-reader-body { background: transparent; }",
+    );
+  }
+
+  return rules.join("\n\n");
+}
+
+function positionX(position: BackgroundPosition): string {
+  if (position === "left") return "left";
+  if (position === "right") return "right";
+  return "center";
+}
+
+function positionY(position: BackgroundPosition): string {
+  if (position === "top") return "top";
+  if (position === "bottom") return "bottom";
+  return "center";
+}
+
+/** 把链接安全地放进 url("")：引号、括号、反斜杠会把 CSS 截断。 */
+function cssUrl(raw: string): string {
+  return raw.replace(/["'()\\\s]/g, (ch) => encodeURIComponent(ch));
 }
 
 function normalizeValue(def: { type: string; unit?: string; key: string }, value: string): string {
@@ -174,6 +412,8 @@ function normalizeValue(def: { type: string; unit?: string; key: string }, value
     if (Number.isFinite(num)) return String(num);
   }
   if (def.key === "--sr-chat-tail") return value === "0" ? "0" : "1";
+  // 字体串里若混入 ; 或 } 会把后面的规则吃掉，先去掉
+  if (def.type === "font") return value.replace(/[;{}]/g, "");
   return value;
 }
 
@@ -189,6 +429,7 @@ export function moduleVarKeys(module: AppearanceModule): string[] {
   return MODULE_VAR_KEYS[module];
 }
 
+const SCOPE = ".sr-app";
 const STYLE_ID = "sr-appearance-layer";
 
 /**
