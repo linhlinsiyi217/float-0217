@@ -119,6 +119,19 @@ export async function hydrateReadingStorage(): Promise<void> {
     _booksCache.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
+/** 卸载书房前断开 Dexie 连接，否则 indexedDB.deleteDatabase 会被阻塞。 */
+export function closeReadingStorage(): void {
+    try {
+        db.close();
+    } catch {
+        // 已经关掉或从未打开都无所谓
+    }
+    _booksCache = [];
+    _chaptersCache = new Map();
+    _progressCache = new Map();
+    _annotationsCache = new Map();
+}
+
 // ── Books ──
 
 export function loadBooks(): Book[] {

@@ -44,6 +44,8 @@ import { AppMarketApp } from "@/components/app-market/app-market-app";
 import { CustomAppRunner } from "@/components/app-market/custom-app-runner";
 import { CustomAppForegroundBoundary } from "@/components/app-market/custom-app-failure";
 import { hydrateKvDb, kvGet, kvSet, kvRemove, kvKeysWithPrefix } from "@/lib/kv-db";
+import { uninstallApp, restoreApp, loadUninstalledApps, isAppUninstalled, hasDataRule } from "@/lib/app-uninstall";
+import { ConfirmDialog, BottomSheet } from "@/components/ui/modal";
 import { deleteDatabase } from "@/lib/data-management/idb";
 import { hydrateStoryStorage } from "@/lib/story-storage";
 import { hydrateMomentsStorage } from "@/lib/moments-storage";
@@ -435,6 +437,7 @@ function normalizePageV2(raw: unknown, pageWidgets: WidgetInstance[], folderIds:
       ? (folderIds.has(id) ? id : null)
       : migrateLegacyDesktopIconId(id, customIconIds);
     if (!iconId || (!isFolderIconId(iconId) && !allKnown.has(iconId) && !customIconIds.has(iconId))) continue;
+    if (!isFolderIconId(iconId) && isAppUninstalled(iconId)) continue;
     if (seenIds.has(iconId)) continue;
     if (row < 1 || row > GRID_ROWS || col < 1 || col > GRID_COLS) continue;
     const cellKey = `${row},${col}`;
@@ -517,7 +520,7 @@ function normalizeLayout(raw: unknown, widgets: WidgetInstance[], dockIds: Set<D
   const allDefaults = [...PAGE_1_DEFAULT, ...PAGE_2_DEFAULT, ...PAGE_3_DEFAULT, ...DOCK_DEFAULT];
 
   for (const id of allDefaults) {
-    if (allPlaced.has(id) || dockIds.has(id)) continue;
+    if (allPlaced.has(id) || dockIds.has(id) || isAppUninstalled(id)) continue;
     const primaryPage = PAGE_1_DEFAULT.includes(id) ? 1 : PAGE_2_DEFAULT.includes(id) ? 2 : PAGE_3_DEFAULT.includes(id) ? 3 : 1;
     // placeIconOnAvailablePage 页满会顺延到下一页乃至新开一页——
     // 曾经这里只在现有页里找空格，页面被图标和组件占满时就静默放弃，
@@ -1166,6 +1169,11 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   // ── Edit mode (long-press drag) ──
   const [editMode, setEditMode] = useState(false);
   const [showWidgetPicker, setShowWidgetPicker] = useState(false);
+  // ── 应用卸载 ──
+  const [uninstallTarget, setUninstallTarget] = useState<{ id: DesktopIconId; label: string; isCustom: boolean } | null>(null);
+  const [uninstalling, setUninstalling] = useState(false);
+  const [showUninstalledSheet, setShowUninstalledSheet] = useState(false);
+  const [uninstalledVersion, setUninstalledVersion] = useState(0);
   const [diyTemplates, setDiyTemplates] = useState<DIYWidgetTemplate[]>([]);
 
   useEffect(() => {
@@ -2600,6 +2608,64 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     kvSet(DOCK_LAYOUT_STORAGE_KEY, JSON.stringify(dockRef.current));
     writeDesktopFolders(foldersRef.current);
     saveWidgets(widgetsRef.current);
+  }
+
+  // ── 应用卸载：从页面 / Dock / 文件夹彻底移除一个图标并持久化 ──
+  function removeIconEverywhere(iconId: DesktopIconId) {
+    const widgets = widgetsRef.current;
+    const nextLayout = cloneDesktopLayout(layoutRef.current, widgets);
+    for (const pageKey of getDesktopPageKeysForState(nextLayout, widgets)) {
+      nextLayout[pageKey] = (nextLayout[pageKey] ?? []).filter((ic) => ic.id !== iconId);
+    }
+    const nextDock = dockRef.current.filter((id) => id !== iconId);
+    const nextFolders: DesktopFolderMap = {};
+    for (const [folderId, folder] of Object.entries(foldersRef.current)) {
+      nextFolders[folderId] = { ...folder, icons: folder.icons.filter((id) => id !== iconId) };
+    }
+    const sane = sanitizeDesktopFolders(nextFolders, nextLayout, nextDock, widgets);
+    const trimmed = trimEmptyTrailingPages(sane.layout, widgets);
+    setLayout(trimmed);
+    setDock(nextDock);
+    setFolders(sane.folders);
+    kvSet(ICON_LAYOUT_STORAGE_KEY, JSON.stringify(trimmed));
+    kvSet(DOCK_LAYOUT_STORAGE_KEY, JSON.stringify(nextDock));
+    writeDesktopFolders(sane.folders);
+  }
+
+  /** 恢复被卸载的内置应用：清除卸载记录并把图标放回桌面。 */
+  function handleRestoreApp(iconId: DesktopIconId) {
+    restoreApp(iconId);
+    const widgets = widgetsRef.current;
+    const next = cloneDesktopLayout(layoutRef.current, widgets);
+    placeIconOnAvailablePage(next, widgets, { id: iconId, row: 1, col: 1 }, 1);
+    const trimmed = trimEmptyTrailingPages(next, widgets);
+    setLayout(trimmed);
+    kvSet(ICON_LAYOUT_STORAGE_KEY, JSON.stringify(trimmed));
+    setUninstalledVersion((v) => v + 1);
+    setNotice("已恢复应用");
+  }
+
+  async function handleConfirmUninstall() {
+    const target = uninstallTarget;
+    if (!target || uninstalling) return;
+    setUninstalling(true);
+    try {
+      // 先执行卸载与数据清理；失败则保留桌面原始状态，不伪装成功。
+      const result = await uninstallApp(target.id);
+      removeIconEverywhere(target.id);
+      setUninstalledVersion((v) => v + 1);
+      setNotice(
+        result.dataRemoved
+          ? `已卸载并删除：${result.detail}`
+          : `已移除「${target.label}」的图标与入口；${result.detail}`,
+      );
+    } catch (err) {
+      console.error("[uninstall] failed:", err);
+      setNotice("卸载失败，已保留原状态");
+    } finally {
+      setUninstalling(false);
+      setUninstallTarget(null);
+    }
   }
 
   /** 文件夹只剩 ≤1 个成员就地解散：剩下的图标顶回 tile 的格子 */
@@ -4481,7 +4547,31 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                     <button type="button" className="edit-mode-done" onClick={exitEditMode}>
                       完成
                     </button>
+                    {loadUninstalledApps().size > 0 && (
+                      <button
+                        type="button"
+                        className="edit-mode-edit"
+                        style={{ left: "50%", transform: "translateX(-50%)", top: 108 }}
+                        onPointerDown={e => e.stopPropagation()}
+                        onClick={() => setShowUninstalledSheet(true)}
+                      >
+                        已卸载 {loadUninstalledApps().size}
+                      </button>
+                    )}
                   </>
+                )}
+
+                {/* 桌面被清空时仍要能恢复应用（否则没有图标可长按进入编辑模式） */}
+                {!activeApp && !editMode && getDesktopIconLayoutItems(layout).length + dock.length === 0 && (
+                  <button
+                    type="button"
+                    className="edit-mode-edit"
+                    style={{ left: "50%", transform: "translateX(-50%)", top: "40%" }}
+                    onPointerDown={e => e.stopPropagation()}
+                    onClick={() => setShowUninstalledSheet(true)}
+                  >
+                    {loadUninstalledApps().size > 0 ? "已卸载应用 · 恢复" : "桌面已清空"}
+                  </button>
                 )}
 
 
@@ -4669,6 +4759,20 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                                     ) : null}
                                   </span>
                                   <span className="icon-label">{icon.label}</span>
+                                  {editMode && (
+                                    <span
+                                      className="icon-uninstall-btn"
+                                      role="button"
+                                      aria-label={`卸载 ${icon.label}`}
+                                      onPointerDown={(e) => e.stopPropagation()}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setUninstallTarget({ id: iconId, label: icon.label, isCustom: Boolean(customApp) });
+                                      }}
+                                    >
+                                      ×
+                                    </span>
+                                  )}
                                 </button>
                               );
                             })}
@@ -4804,6 +4908,20 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                           )}
                         </span>
                         <span className="icon-label">{icon.label}</span>
+                        {editMode && (
+                          <span
+                            className="icon-uninstall-btn"
+                            role="button"
+                            aria-label={`卸载 ${icon.label}`}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setUninstallTarget({ id: iconId, label: icon.label, isCustom: Boolean(customApp) });
+                            }}
+                          >
+                            ×
+                          </span>
+                        )}
                       </button>
                     );
                   })}
@@ -5028,6 +5146,53 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                   clone keeps theme variables + glass effect selectors
                   (.phone-shell[data-icon-effect] etc.); follows pointer via ref */}
               <div ref={ghostRef} className="drag-ghost" />
+
+              {/* 应用卸载：确认框与已卸载恢复面板 */}
+              {uninstallTarget && (
+                <ConfirmDialog
+                  title={`卸载「${uninstallTarget.label}」`}
+                  message={
+                    uninstallTarget.isCustom || hasDataRule(uninstallTarget.id)
+                      ? "卸载将同时删除该应用的数据（缓存、配置与记录）。此操作不可撤销。"
+                      : "该应用的数据清理规则尚未登记：此次只会移除图标与入口，不会删除其它共享数据。"
+                  }
+                  confirmLabel={uninstalling ? "正在卸载…" : "卸载"}
+                  cancelLabel="取消"
+                  variant="danger"
+                  onConfirm={handleConfirmUninstall}
+                  onCancel={() => { if (!uninstalling) setUninstallTarget(null); }}
+                />
+              )}
+
+              {showUninstalledSheet && (
+                <BottomSheet
+                  key={uninstalledVersion}
+                  title="已卸载的应用"
+                  onClose={() => setShowUninstalledSheet(false)}
+                >
+                  {Array.from(loadUninstalledApps()).length === 0 ? (
+                    <p style={{ textAlign: "center", color: "var(--c-text)", fontSize: 14, padding: "20px 0" }}>
+                      没有已卸载的应用。
+                    </p>
+                  ) : (
+                    Array.from(loadUninstalledApps()).map((id) => {
+                      const meta = ICONS[id as IconId];
+                      if (!meta) return null;
+                      return (
+                        <div
+                          key={id}
+                          style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 4px" }}
+                        >
+                          <span style={{ fontSize: 15, color: "var(--c-text-title)" }}>{meta.label}</span>
+                          <button type="button" className="ui-btn ui-btn-primary" onClick={() => handleRestoreApp(id as DesktopIconId)}>
+                            恢复
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </BottomSheet>
+              )}
             </div>
           </div>
         </div>
