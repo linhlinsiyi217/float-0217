@@ -7,6 +7,7 @@ import { loadAllAnnotations, loadBookmarks, loadChapters, loadNotes, loadProgres
 import type { Book, ReadingAnnotation, ReadingBookmark, ReadingNote, ReadingProgress } from "@/lib/reading-types";
 import { loadCoreadRefs, type CoreadRef } from "@/lib/study-room-coread";
 import { loadCharacters } from "@/lib/character-storage";
+import { StudyRoomStageSummary } from "./study-room-stage-summary";
 import { exportBookAsEpub, safeFileName } from "@/lib/study-room/export-epub";
 
 type StudyRoomBookDetailProps = {
@@ -268,6 +269,8 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
               </ul>
             </>
           )}
+
+          <StudyRoomStageSummary book={book} onOpenChapter={(chapterIndex) => onRead(book, chapterIndex, 0)} />
 
           <h3 className="sr-detail-h">共读记录</h3>
           {data === null ? null : data.coread.length === 0 ? (

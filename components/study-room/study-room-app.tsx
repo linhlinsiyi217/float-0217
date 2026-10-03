@@ -15,6 +15,7 @@ import { StudyRoomReader } from "./study-room-reader";
 import { StudyRoomMessages } from "./study-room-messages";
 import { StudyRoomAppearance } from "./study-room-appearance";
 import { StudyRoomBackup } from "./study-room-backup";
+import { StudyRoomReadingMemory } from "./study-room-reading-memory";
 
 type StudyRoomAppProps = {
   onClose: () => void;
@@ -28,7 +29,8 @@ type StudyRoomView =
   | { kind: "notes" }
   | { kind: "messages" }
   | { kind: "appearance" }
-  | { kind: "backup" };
+  | { kind: "backup" }
+  | { kind: "readingMemory" };
 
 const TAB_META: Record<StudyRoomTab, { label: string; icon: typeof Library; subtitle: string }> = {
   shelf: { label: "书架", icon: Library, subtitle: "已收藏的书" },
@@ -106,6 +108,15 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
     return <StudyRoomBackup onBack={() => setView({ kind: "tabs" })} />;
   }
 
+  if (view.kind === "readingMemory") {
+    return (
+      <StudyRoomReadingMemory
+        onBack={() => setView({ kind: "tabs" })}
+        onOpenBook={(book, chapterIndex) => setView({ kind: "reader", book, chapterIndex })}
+      />
+    );
+  }
+
   const active = TAB_META[tab];
 
   return (
@@ -149,6 +160,7 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
               onOpenMessages={() => setView({ kind: "messages" })}
               onOpenAppearance={() => setView({ kind: "appearance" })}
               onOpenBackup={() => setView({ kind: "backup" })}
+              onOpenReadingMemory={() => setView({ kind: "readingMemory" })}
             />
           )}
         </div>

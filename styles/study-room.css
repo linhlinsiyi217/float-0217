@@ -2074,3 +2074,16 @@
   background: color-mix(in srgb, var(--sr-chat-send, #0a84ff) 6%, var(--sr-card-bg, #fff));
   border-color: color-mix(in srgb, var(--sr-chat-send, #0a84ff) 22%, var(--c-card-border));
 }
+
+/* ── 阅读记忆：选项按钮的选中态与阶段记录头部 ── */
+.sr-btn[data-active="true"] {
+  border-color: color-mix(in srgb, var(--sr-accent) 45%, var(--c-card-border));
+  background: color-mix(in srgb, var(--sr-accent) 8%, var(--c-card-bg, #fff));
+}
+.sr-stage-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}

@@ -37,6 +37,16 @@ import {
   type ParagraphMark,
 } from "@/lib/study-room/annotations";
 import { generateAnnotationBatch } from "@/lib/reading-engine";
+import {
+  MAX_STAGE_CHAPTERS,
+  generateStageSummary,
+  lastSummarizedChapter,
+  loadStageConfig,
+  loadStageSummaries,
+  saveStageSummary,
+  shouldSummarize,
+  stageCharacters,
+} from "@/lib/study-room/reading-memory";
 import { loadCharacters } from "@/lib/character-storage";
 import { StudyRoomCoread } from "./study-room-coread";
 
@@ -238,6 +248,65 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
       if (timer !== null) window.clearTimeout(timer);
       persist();
     };
+  }, [book.id, chapterIndex, chapters]);
+
+  // 阶段阅读记忆：按配置在后台更新，不阻塞阅读，失败也不打断
+  useEffect(() => {
+    if (!chapters || chapters.length === 0) return;
+    const config = loadStageConfig();
+    if (config.mode === "manual") return;
+    const targets = stageCharacters(config).filter((character) =>
+      shouldSummarize({
+        config,
+        bookId: book.id,
+        characterId: character.id,
+        currentChapter: chapterIndex,
+        totalChapters: chapters.length,
+        summaries: loadStageSummaries(),
+      }),
+    );
+    if (targets.length === 0) return;
+
+    let cancelled = false;
+    void (async () => {
+      for (const character of targets) {
+        if (cancelled) return;
+        const last = lastSummarizedChapter(loadStageSummaries(), book.id, character.id);
+        const fromChapter = Math.max(last + 1, chapterIndex - MAX_STAGE_CHAPTERS + 1, 0);
+        try {
+          const result = await generateStageSummary({
+            book,
+            chapters,
+            fromChapter,
+            toChapter: chapterIndex,
+            // 之前的章节视为已读完，当前章只到已读段落
+            readParagraphOf: (index) =>
+              index === chapterIndex
+                ? (readAnchor().paragraphIndex ?? (chapters[index]?.paragraphs.length ?? 1) - 1)
+                : (chapters[index]?.paragraphs.length ?? 1) - 1,
+            characterId: character.id,
+          });
+          if (cancelled) return;
+          await saveStageSummary({
+            book,
+            characterId: character.id,
+            characterName: character.name,
+            fromChapter,
+            toChapter: chapterIndex,
+            summary: result.summary,
+            detail: result.detail,
+          });
+          showFlash(character.name + " 的阅读记录已更新");
+        } catch {
+          // 总结失败（未配置辅助 API、网络问题等）不打扰阅读
+          return;
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book.id, chapterIndex, chapters]);
 
   // 长章节：滚到两端时继续展开上下相邻的段落
