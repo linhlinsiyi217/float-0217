@@ -61,6 +61,10 @@ export type ReadingAnnotation = {
     characterId: string;
     characterName: string;
     content: string;
+    /** 角色也可以只回一个表情 */
+    emoji?: string;
+    /** 批注针对的原文片段（没有则为整段） */
+    quote?: string;
     createdAt: string;
 };
 
@@ -93,6 +97,14 @@ export type ReadingNote = {
     quote: string;
     /** 用户写下的想法；kind="excerpt" 时为空 */
     content?: string;
+    /** 表情批注：可以只加表情，也可以表情＋文字 */
+    emoji?: string;
+    /** 批注作者：用户本人或某个 AI 角色 */
+    authorKind?: "user" | "character";
+    authorId?: string;
+    authorName?: string;
+    /** 标记时这本书的版本标识（格式/章数/导入时间），换版本后可提示定位可能变化 */
+    bookVersion?: string;
     createdAt: string;
     updatedAt: string;
 };

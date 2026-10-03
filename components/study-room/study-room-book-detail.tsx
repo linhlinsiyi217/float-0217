@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, MessagesSquare, Quote, PenLine, Bookmark, Trash2, X } from "lucide-react";
 
-import { loadBookmarks, loadChapters, loadNotes, loadProgress } from "@/lib/reading-storage";
-import type { Book, ReadingBookmark, ReadingNote, ReadingProgress } from "@/lib/reading-types";
+import { loadAllAnnotations, loadBookmarks, loadChapters, loadNotes, loadProgress } from "@/lib/reading-storage";
+import type { Book, ReadingAnnotation, ReadingBookmark, ReadingNote, ReadingProgress } from "@/lib/reading-types";
 import { loadCoreadRefs, type CoreadRef } from "@/lib/study-room-coread";
 import { loadCharacters } from "@/lib/character-storage";
 
@@ -26,6 +26,8 @@ type DetailData = {
   progress: ReadingProgress | null;
   notes: ReadingNote[];
   bookmarks: ReadingBookmark[];
+  /** 角色写的批注（只读，可跳回原文） */
+  annotations: ReadingAnnotation[];
   coread: Array<CoreadRef & { name: string }>;
 };
 
@@ -42,11 +44,12 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
     setShowAllToc(false);
     setCoverFailed(false);
     void (async () => {
-      const [chapters, progress, notes, bookmarks] = await Promise.all([
+      const [chapters, progress, notes, bookmarks, allAnnotations] = await Promise.all([
         loadChapters(book.id).catch(() => []),
         loadProgress(book.id).catch(() => null),
         loadNotes(book.id).catch(() => []),
         loadBookmarks(book.id).catch(() => []),
+        loadAllAnnotations().catch(() => []),
       ]);
       if (cancelled) return;
       const characters = loadCharacters();
@@ -58,6 +61,9 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
         progress,
         notes: [...notes].sort((a, b) => (a.chapterIndex - b.chapterIndex) || (a.paragraphIndex - b.paragraphIndex)),
         bookmarks,
+        annotations: allAnnotations
+          .filter((item) => item.bookId === book.id)
+          .sort((a, b) => (a.chapterIndex - b.chapterIndex) || (a.paragraphIndex - b.paragraphIndex)),
         coread,
       });
     })();
@@ -192,6 +198,7 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
                   <button type="button" onClick={() => onRead(book, note.chapterIndex, note.paragraphIndex)}>
                     {note.kind === "note" ? <PenLine size={14} strokeWidth={1.8} /> : <Quote size={14} strokeWidth={1.8} />}
                     <span className="sr-detail-note-text">
+                      {note.emoji ? `${note.emoji} ` : null}
                       「{note.quote.length > 40 ? `${note.quote.slice(0, 40)}…` : note.quote}」
                       {note.content ? <em> {note.content}</em> : null}
                     </span>
@@ -199,6 +206,25 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
                 </li>
               ))}
             </ul>
+          )}
+
+          {data !== null && data.annotations.length > 0 && (
+            <>
+              <h3 className="sr-detail-h">角色批注</h3>
+              <ul className="sr-detail-notes">
+                {data.annotations.map((item) => (
+                  <li key={item.id}>
+                    <button type="button" onClick={() => onRead(book, item.chapterIndex, item.paragraphIndex)}>
+                      <MessagesSquare size={14} strokeWidth={1.8} />
+                      <span className="sr-detail-note-text">
+                        {item.emoji ? `${item.emoji} ` : null}
+                        <strong>{item.characterName}</strong>：{item.content.length > 46 ? `${item.content.slice(0, 46)}…` : item.content}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
 
           <h3 className="sr-detail-h">共读记录</h3>

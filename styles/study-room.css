@@ -1968,3 +1968,109 @@
   color: var(--c-text-title);
   font-size: 13px;
 }
+
+/* ── 正文里的批注标记与批注面板（含表情批注） ── */
+.sr-para-block { position: relative; }
+.sr-para-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -6px 0 14px;
+}
+.sr-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 0.5px solid var(--c-card-border);
+  background: color-mix(in srgb, var(--sr-card-bg, #fff) 86%, transparent);
+  color: var(--c-text);
+  font-size: 11.5px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.sr-mark[data-source="character"] {
+  border-color: color-mix(in srgb, var(--sr-chat-send, #0a84ff) 28%, var(--c-card-border));
+  background: color-mix(in srgb, var(--sr-chat-send, #0a84ff) 8%, var(--sr-card-bg, #fff));
+}
+.sr-mark-emoji { font-size: 14px; line-height: 1; }
+.sr-mark-author { font-weight: 600; color: var(--c-text-title); }
+.sr-mark-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 190px;
+}
+
+.sr-sheet-label {
+  font-size: 12px;
+  color: var(--c-text);
+  margin-bottom: 8px;
+}
+.sr-emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.sr-emoji {
+  height: 34px;
+  border-radius: 10px;
+  border: 0.5px solid transparent;
+  background: var(--c-input);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.sr-emoji[data-active="true"] {
+  border-color: color-mix(in srgb, var(--sr-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--sr-accent) 12%, var(--c-input));
+}
+
+.sr-mark-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+.sr-mark-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 11px;
+  border-radius: var(--sr-card-radius, 16px);
+  background: var(--c-input);
+}
+.sr-mark-item[data-source="character"] {
+  background: color-mix(in srgb, var(--sr-chat-send, #0a84ff) 7%, var(--c-input));
+}
+.sr-mark-body { flex: 1; min-width: 0; }
+.sr-mark-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.sr-mark-text-full {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--c-text-title);
+  overflow-wrap: anywhere;
+}
+.sr-mark-tools { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+.sr-mark-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+  border-top: 0.5px solid var(--c-card-border);
+}
+
+/* 角色批注卡片与用户笔记区分开 */
+.sr-note-card[data-source="character"] {
+  background: color-mix(in srgb, var(--sr-chat-send, #0a84ff) 6%, var(--sr-card-bg, #fff));
+  border-color: color-mix(in srgb, var(--sr-chat-send, #0a84ff) 22%, var(--c-card-border));
+}

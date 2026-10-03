@@ -10,6 +10,8 @@ import {
   Quote,
   PenLine,
   MessagesSquare,
+  Loader2,
+  Trash2,
 } from "lucide-react";
 
 import {
@@ -18,12 +20,24 @@ import {
   saveProgress,
   loadChapterNotes,
   saveNote,
+  deleteNote,
+  loadAnnotations,
+  saveAnnotation,
   loadBookmarks,
   saveBookmark,
   deleteBookmark,
 } from "@/lib/reading-storage";
-import type { Book, BookChapter, ReadingBookmark, ReadingNote } from "@/lib/reading-types";
+import type { Book, BookChapter, ReadingAnnotation, ReadingBookmark, ReadingNote } from "@/lib/reading-types";
 import { loadAppearance } from "@/lib/study-room/appearance";
+import {
+  NOTE_EMOJIS,
+  buildNote,
+  marksByParagraph,
+  shortText,
+  type ParagraphMark,
+} from "@/lib/study-room/annotations";
+import { generateAnnotationBatch } from "@/lib/reading-engine";
+import { loadCharacters } from "@/lib/character-storage";
 import { StudyRoomCoread } from "./study-room-coread";
 
 type StudyRoomReaderProps = {
@@ -46,6 +60,8 @@ type AnnotateState = {
   quote: string;
   paragraphIndex: number;
   draft: string;
+  /** 表情批注：可与文字并存，也可以只有表情 */
+  emoji?: string;
 };
 
 type RestoreTarget = { paragraphIndex?: number; paragraphOffset?: number; fraction: number };
@@ -58,6 +74,13 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   const [chapters, setChapters] = useState<BookChapter[] | null>(null);
   const [chapterIndex, setChapterIndex] = useState(0);
   const [chapterNotes, setChapterNotes] = useState<ReadingNote[]>([]);
+  const [chapterAnnotations, setChapterAnnotations] = useState<ReadingAnnotation[]>([]);
+  // 角色批注：选中角色后按需请求，不整章发往 API
+  const [characters] = useState(() => loadCharacters().map((c) => ({ id: c.id, name: c.name })));
+  const [characterId, setCharacterId] = useState<string>(() => loadCharacters()[0]?.id ?? "");
+  const [annotating, setAnnotating] = useState(false);
+  const [markSheet, setMarkSheet] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState<{ id: string; text: string } | null>(null);
   const [bookmarks, setBookmarks] = useState<ReadingBookmark[]>([]);
   const [selection, setSelection] = useState<SelectionState | null>(null);
   const [annotate, setAnnotate] = useState<AnnotateState | null>(null);
@@ -77,15 +100,8 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   const paragraphs = useMemo(() => (chapter && !isPdf ? chapter.paragraphs : []), [chapter, isPdf]);
   const total = chapters?.length ?? 0;
 
-  const notesByParagraph = useMemo(() => {
-    const map = new Map<number, ReadingNote[]>();
-    for (const note of chapterNotes) {
-      const list = map.get(note.paragraphIndex) ?? [];
-      list.push(note);
-      map.set(note.paragraphIndex, list);
-    }
-    return map;
-  }, [chapterNotes]);
+  /** 用户批注与角色批注按段归拢，正文行下方显示标记 */
+  const marks = useMemo(() => marksByParagraph(chapterNotes, chapterAnnotations), [chapterNotes, chapterAnnotations]);
 
   const currentBookmark = bookmarks.find((b) => b.chapterIndex === chapterIndex) ?? null;
 
@@ -95,8 +111,12 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   }, []);
 
   const refreshChapterNotes = useCallback(async () => {
-    const notes = await loadChapterNotes(book.id, chapterIndex);
+    const [notes, annotations] = await Promise.all([
+      loadChapterNotes(book.id, chapterIndex),
+      loadAnnotations(book.id, chapterIndex).catch(() => []),
+    ]);
     setChapterNotes(notes);
+    setChapterAnnotations(annotations);
   }, [book.id, chapterIndex]);
 
   // 载入章节 + 恢复进度
@@ -258,17 +278,14 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
 
   const handleExcerpt = async () => {
     if (!selection) return;
-    const now = new Date().toISOString();
-    await saveNote({
-      id: makeId("note"),
-      bookId: book.id,
-      chapterIndex,
-      paragraphIndex: selection.paragraphIndex,
-      kind: "excerpt",
-      quote: selection.text,
-      createdAt: now,
-      updatedAt: now,
-    });
+    await saveNote(
+      buildNote({
+        book,
+        chapterIndex,
+        paragraphIndex: selection.paragraphIndex,
+        quote: selection.text,
+      }),
+    );
     await refreshChapterNotes();
     showFlash("已收藏书摘");
     clearSelection();
@@ -277,22 +294,74 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   const handleSaveAnnotate = async () => {
     if (!annotate) return;
     const content = annotate.draft.trim();
-    if (!content) return;
-    const now = new Date().toISOString();
-    await saveNote({
-      id: makeId("note"),
-      bookId: book.id,
-      chapterIndex,
-      paragraphIndex: annotate.paragraphIndex,
-      kind: "note",
-      quote: annotate.quote,
-      content,
-      createdAt: now,
-      updatedAt: now,
-    });
+    const emoji = annotate.emoji;
+    // 表情与文字至少有一个才算一条批注
+    if (!content && !emoji) return;
+    await saveNote(
+      buildNote({
+        book,
+        chapterIndex,
+        paragraphIndex: annotate.paragraphIndex,
+        quote: annotate.quote,
+        content,
+        emoji,
+      }),
+    );
     await refreshChapterNotes();
     setAnnotate(null);
-    showFlash("已保存批注");
+    clearSelection();
+    showFlash(content ? "已保存批注" : "已保存表情批注");
+  };
+
+  /** 让选中角色为这一段写一条批注：只把这一段发给 API，不整章发。 */
+  const handleCharacterAnnotate = async (paragraphIndex: number, text: string) => {
+    const character = characters.find((c) => c.id === characterId);
+    const chapter = chapters?.[chapterIndex];
+    if (!character) {
+      showFlash("先在「我的 → 角色」里创建一个角色");
+      return;
+    }
+    if (!chapter) return;
+    setAnnotating(true);
+    try {
+      const created = await generateAnnotationBatch(
+        book,
+        chapter.title,
+        [{ chapterIndex, paragraphIndex, text }],
+        chapterAnnotations,
+        character.id,
+      );
+      if (created.length === 0) {
+        showFlash(character.name + " 这次没有写下批注");
+        return;
+      }
+      for (const item of created) {
+        await saveAnnotation({ ...item, quote: text.slice(0, 200) });
+      }
+      await refreshChapterNotes();
+      showFlash(character.name + " 已批注这一段");
+    } catch (err) {
+      showFlash(err instanceof Error ? err.message : "批注失败，请检查 API 配置");
+    } finally {
+      setAnnotating(false);
+    }
+  };
+
+  const handleDeleteNote = async (note: ReadingNote) => {
+    await deleteNote(note.id);
+    await refreshChapterNotes();
+    showFlash("已删除这条批注");
+  };
+
+  const handleUpdateNote = async (note: ReadingNote, content: string) => {
+    const next: ReadingNote = {
+      ...note,
+      content: content.trim() || undefined,
+      kind: content.trim() ? "note" : "excerpt",
+      updatedAt: new Date().toISOString(),
+    };
+    await saveNote(next);
+    await refreshChapterNotes();
   };
 
   const handleToggleBookmark = async () => {
@@ -426,15 +495,38 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
         ) : (
           <>
             {chapter && <h2 className="sr-chapter-title">{chapter.title}</h2>}
-            {paragraphs.map((para, index) => (
-              <p
-                key={index}
-                className={notesByParagraph.has(index) ? "sr-para sr-para--marked" : "sr-para"}
-                data-pi={index}
-              >
-                {para}
-              </p>
-            ))}
+            {paragraphs.map((para, index) => {
+              const paraMarks = marks.get(index);
+              return (
+                <div key={index} className="sr-para-block">
+                  <p className={paraMarks ? "sr-para sr-para--marked" : "sr-para"} data-pi={index}>
+                    {para}
+                  </p>
+                  {paraMarks && (
+                    <div className="sr-para-marks">
+                      {paraMarks.map((mark) => (
+                        <button
+                          key={mark.id}
+                          type="button"
+                          className="sr-mark"
+                          data-source={mark.source}
+                          onClick={() => {
+                            setMarkSheet(index);
+                            setEditDraft(null);
+                          }}
+                          aria-label={`查看这一段上的 ${paraMarks.length} 条批注`}
+                        >
+                          {mark.emoji && <span className="sr-mark-emoji">{mark.emoji}</span>}
+                          {mark.source === "character" && <span className="sr-mark-author">{mark.author}</span>}
+                          {shortText(mark.text) && <span className="sr-mark-text">{shortText(mark.text)}</span>}
+                          {!mark.emoji && !mark.text && <span className="sr-mark-text">批注</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </>
         )}
       </div>
@@ -468,9 +560,27 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
         <div className="sr-sheet-mask" onClick={() => setAnnotate(null)}>
           <div className="sr-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="sr-sheet-quote">{annotate.quote}</div>
+            <div className="sr-sheet-label">表情批注（可以只选表情，也可以表情＋文字）</div>
+            <div className="sr-emoji-grid">
+              {NOTE_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  className="sr-emoji"
+                  data-active={annotate.emoji === emoji ? "true" : undefined}
+                  aria-pressed={annotate.emoji === emoji}
+                  aria-label={`选择表情 ${emoji}`}
+                  onClick={() =>
+                    setAnnotate((prev) => (prev ? { ...prev, emoji: prev.emoji === emoji ? undefined : emoji } : prev))
+                  }
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
             <textarea
               className="sr-sheet-input"
-              placeholder="写下你的想法…"
+              placeholder="写下你的想法（可留空，只留表情）…"
               value={annotate.draft}
               rows={3}
               autoFocus
@@ -484,11 +594,130 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
                 type="button"
                 className="sr-btn sr-btn-primary"
                 onClick={handleSaveAnnotate}
-                disabled={!annotate.draft.trim()}
+                disabled={!annotate.draft.trim() && !annotate.emoji}
               >
                 保存
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {markSheet !== null && (
+        <div
+          className="sr-sheet-mask"
+          onClick={() => {
+            setMarkSheet(null);
+            setEditDraft(null);
+          }}
+        >
+          <div className="sr-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="sr-sheet-quote">{paragraphs[markSheet]}</div>
+            <ul className="sr-mark-list">
+              {(marks.get(markSheet) ?? []).map((mark) => {
+                const editing = editDraft !== null && mark.note !== undefined && editDraft.id === mark.note.id;
+                return (
+                  <li key={mark.id} className="sr-mark-item" data-source={mark.source}>
+                    {mark.emoji && <span className="sr-mark-emoji">{mark.emoji}</span>}
+                    <div className="sr-mark-body">
+                      <div className="sr-mark-head">
+                        <span className="sr-mark-author">
+                          {mark.source === "character" ? `${mark.author} 的批注` : "我的批注"}
+                        </span>
+                        <span className="sr-note-meta">
+                          {new Date(mark.annotation?.createdAt ?? mark.note?.updatedAt ?? Date.now()).toLocaleString("zh-CN")}
+                        </span>
+                      </div>
+                      {mark.note ? (
+                        editing ? (
+                          <textarea
+                            className="sr-sheet-input"
+                            rows={2}
+                            value={editDraft?.text ?? ""}
+                            onChange={(e) => setEditDraft({ id: mark.note!.id, text: e.target.value })}
+                          />
+                        ) : (
+                          <p className="sr-mark-text-full">{mark.note.content || "（只加了表情）"}</p>
+                        )
+                      ) : (
+                        <p className="sr-mark-text-full">{mark.text}</p>
+                      )}
+                    </div>
+                    {mark.note && (
+                      <span className="sr-mark-tools">
+                        {editing ? (
+                          <button
+                            type="button"
+                            className="sr-note-tool"
+                            title="保存修改"
+                            onClick={async () => {
+                              await handleUpdateNote(mark.note!, editDraft?.text ?? "");
+                              setEditDraft(null);
+                            }}
+                          >
+                            保存
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="sr-note-tool"
+                            title="修改我的批注"
+                            onClick={() => setEditDraft({ id: mark.note!.id, text: mark.note!.content ?? "" })}
+                          >
+                            <PenLine size={15} strokeWidth={1.7} />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="sr-note-tool"
+                          title="删除这条批注"
+                          onClick={async () => {
+                            await handleDeleteNote(mark.note!);
+                            setEditDraft(null);
+                          }}
+                        >
+                          <Trash2 size={15} strokeWidth={1.7} />
+                        </button>
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="sr-mark-foot">
+              {characters.length > 0 ? (
+                <>
+                  <select
+                    className="sr-appear-select"
+                    value={characterId}
+                    onChange={(e) => setCharacterId(e.target.value)}
+                    aria-label="选择要批注的角色"
+                  >
+                    {characters.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="sr-btn"
+                    disabled={annotating}
+                    onClick={() => void handleCharacterAnnotate(markSheet, paragraphs[markSheet] ?? "")}
+                  >
+                    {annotating ? (
+                      <Loader2 size={15} className="sr-spin" />
+                    ) : (
+                      <MessagesSquare size={15} strokeWidth={1.7} />
+                    )}
+                    让 TA 批注这段
+                  </button>
+                </>
+              ) : (
+                <span className="sr-note-meta">还没有角色：先在「我的 → 角色」里创建，就能让 TA 为这段写批注。</span>
+              )}
+            </div>
+            <p className="sr-note-meta" style={{ marginTop: 6 }}>只把这一段原文发给 AI，不会发送整章。</p>
           </div>
         </div>
       )}

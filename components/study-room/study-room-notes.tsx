@@ -11,10 +11,18 @@ import {
   ArrowDownUp,
   Layers,
   Image as ImageIcon,
+  MessagesSquare,
 } from "lucide-react";
 
-import { loadAllNotes, loadBooks, loadChapters, deleteNote, saveNote } from "@/lib/reading-storage";
-import type { Book, ReadingNote } from "@/lib/reading-types";
+import {
+  loadAllNotes,
+  loadAllAnnotations,
+  loadBooks,
+  loadChapters,
+  deleteNote,
+  saveNote,
+} from "@/lib/reading-storage";
+import type { Book, ReadingAnnotation, ReadingNote } from "@/lib/reading-types";
 
 type StudyRoomNotesProps = {
   onBack: () => void;
@@ -32,12 +40,19 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
   const [groupByBook, setGroupByBook] = useState(true);
   const [showCover, setShowCover] = useState(true);
   const [editing, setEditing] = useState<EditingState | null>(null);
+  // 角色批注：只读，但可以跳回自己的阅读位置
+  const [annotations, setAnnotations] = useState<ReadingAnnotation[] | null>(null);
+  const [showAnnotations, setShowAnnotations] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const [allNotes] = await Promise.all([loadAllNotes()]);
+      const [allNotes, allAnnotations] = await Promise.all([
+        loadAllNotes(),
+        loadAllAnnotations().catch(() => []),
+      ]);
       if (cancelled) return;
+      setAnnotations(allAnnotations);
       const bookMap: Record<string, Book> = {};
       for (const book of loadBooks()) bookMap[book.id] = book;
       setBooks(bookMap);
@@ -113,12 +128,71 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
     setEditing(null);
   };
 
+  /** 角色批注与用户批注分开管理：这里只展示与回跳，不提供编辑 */
+  const filteredAnnotations = useMemo(() => {
+    if (!annotations) return [];
+    const q = query.trim().toLowerCase();
+    const matched = q
+      ? annotations.filter((item) => {
+          const bookTitle = books[item.bookId]?.title ?? "";
+          return (
+            item.content.toLowerCase().includes(q) ||
+            item.characterName.toLowerCase().includes(q) ||
+            bookTitle.toLowerCase().includes(q)
+          );
+        })
+      : annotations;
+    const sorted = [...matched].sort((a, b) => {
+      const ta = new Date(a.createdAt).getTime();
+      const tb = new Date(b.createdAt).getTime();
+      return sortDesc ? tb - ta : ta - tb;
+    });
+    return sorted;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [annotations, query, sortDesc, books, chapterTitles]);
+
+  const renderAnnotationCard = (item: ReadingAnnotation) => {
+    const book = books[item.bookId];
+    return (
+      <div key={item.id} className="sr-note-card" data-source="character">
+        {item.quote && <p className="sr-note-quote">{item.quote}</p>}
+        <p className="sr-note-thought">
+          {item.emoji && <span className="sr-mark-emoji">{item.emoji} </span>}
+          {item.content}
+        </p>
+        <div className="sr-note-foot">
+          <span className="sr-note-meta">
+            {item.characterName} · {book?.title ?? "未知书籍"} ·{" "}
+            {chapterTitles[`${item.bookId}:${item.chapterIndex}`] || "第 " + (item.chapterIndex + 1) + " 章"} ·{" "}
+            {new Date(item.createdAt).toLocaleDateString("zh-CN")}
+          </span>
+          <span className="sr-note-tools">
+            <button
+              type="button"
+              className="sr-note-tool"
+              title="回到我读到的地方"
+              disabled={!book}
+              onClick={() => book && onOpenSource(book, item.chapterIndex, item.paragraphIndex)}
+            >
+              <Quote size={15} strokeWidth={1.7} />
+            </button>
+          </span>
+        </div>
+      </div>
+    );
+  };
+
   const renderCard = (note: ReadingNote) => {
     const book = books[note.bookId];
     return (
       <div key={note.id} className="sr-note-card">
         <p className="sr-note-quote">{note.quote}</p>
-        {note.content && <p className="sr-note-thought">{note.content}</p>}
+        {(note.emoji || note.content) && (
+          <p className="sr-note-thought">
+            {note.emoji && <span className="sr-mark-emoji">{note.emoji} </span>}
+            {note.content}
+          </p>
+        )}
         <div className="sr-note-foot">
           <span className="sr-note-meta">
             {book?.title ?? "未知书籍"} · {chapterLabel(note)} ·{" "}
@@ -204,7 +278,26 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
               <ArrowDownUp size={13} strokeWidth={1.8} style={{ marginRight: 5 }} />
               {sortDesc ? "从新到旧" : "从旧到新"}
             </button>
+            <button
+              type="button"
+              className="sr-chip"
+              data-active={showAnnotations ? "true" : undefined}
+              onClick={() => setShowAnnotations((v) => !v)}
+            >
+              <MessagesSquare size={13} strokeWidth={1.8} style={{ marginRight: 5 }} />
+              角色批注
+            </button>
           </div>
+
+          {showAnnotations && filteredAnnotations.length > 0 && (
+            <div className="sr-note-group">
+              <div className="sr-note-group-head">
+                <span className="sr-note-group-title">角色批注</span>
+                <span className="sr-note-group-count">{filteredAnnotations.length}</span>
+              </div>
+              {filteredAnnotations.map(renderAnnotationCard)}
+            </div>
+          )}
 
           {notes === null ? (
             <div className="sr-empty">
