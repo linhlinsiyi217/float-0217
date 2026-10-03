@@ -158,14 +158,13 @@ export const APP_DATA_SPEC: Record<string, AppDataSpec> = {
   },
 
   calendar: {
+    // 经期记录属独立的经期数据，不随日历卸载删除（见 SHARED_NEVER_DELETE 说明）
     kvKeys: [
       "ai_phone_calendar_plans_v1",
       "ai_phone_calendar_config_v1",
-      "ai_phone_menstrual_config_v1",
-      "ai_phone_menstrual_records_v1",
-      "ai_phone_menstrual_period_care_triggers_v1",
     ],
-    dataLabel: "日程、日历设置与经期记录",
+    dataLabel: "日程与日历设置",
+    note: "经期记录为独立数据，保留",
   },
 
   interview_magazine: {
@@ -263,8 +262,8 @@ export const APP_DATA_SPEC: Record<string, AppDataSpec> = {
   },
 
   resource_hub: {
+    // 摊主身份钥匙（含备份）不随卸载删除：删了就无法再管理已发布的资源
     kvKeys: [
-      "ai_phone_resource_hub_identity_v1",
       "ai_phone_resource_hub_my_uploads_v1",
       "ai_phone_resource_hub_profile_v1",
       "ai_phone_resource_hub_upload_cfg_v1",
@@ -272,10 +271,9 @@ export const APP_DATA_SPEC: Record<string, AppDataSpec> = {
       "ai_phone_resource_hub_flowers_sent_v1",
       "ai_phone_resource_hub_flowers_seen_v1",
       "ai_phone_resource_hub_notice_v2",
-      "ai_phone_resource_hub_key_backup_v1",
     ],
-    dataLabel: "摊主身份钥匙、我的发布、昵称头像与集市设置",
-    note: "摊主钥匙删除后，已发布到公开集市的资源将无法再管理",
+    dataLabel: "我的发布、昵称头像与集市设置",
+    note: "摊主身份钥匙保留，便于日后继续管理已发布的资源",
   },
 
   // ── 没有独占数据的应用：数据是共享的，卸载只移除入口 ──
@@ -334,6 +332,12 @@ export const SHARED_NEVER_DELETE = {
     "ai_phone_uninstalled_apps_v1",
     "ai_phone_settings_idb_migrated_v1",
     "ai_phone_idb_migrated_v1",
+    // 用户明确要求保留：经期记录属独立数据；摊主身份钥匙删了就无法再管理已发布资源
+    "ai_phone_menstrual_config_v1",
+    "ai_phone_menstrual_records_v1",
+    "ai_phone_menstrual_period_care_triggers_v1",
+    "ai_phone_resource_hub_identity_v1",
+    "ai_phone_resource_hub_key_backup_v1",
   ],
   prefixes: [
     "ai_phone_mem_evt_count_",
