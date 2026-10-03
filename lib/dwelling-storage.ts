@@ -223,3 +223,12 @@ export function collectRoomImageRefs(layout: DwellingLayout | null | undefined):
     if (!layout) return [];
     return layout.rooms.map(r => r.imageAssetId).filter((v): v is string => Boolean(v));
 }
+
+/** 卸载应用前断开连接，否则 indexedDB.deleteDatabase 会被阻塞。 */
+export function closeDwellingStorage(): void {
+    try {
+        db.close();
+    } catch {
+        // 已经关闭或从未打开
+    }
+}

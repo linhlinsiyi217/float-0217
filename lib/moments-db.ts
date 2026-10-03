@@ -71,3 +71,12 @@ export function dbReplacePosts(posts: MomentPost[]): void {
         await momentsDb.posts.bulkPut(posts);
     }).catch(err => console.warn("[MomentsDB] replace posts failed:", err));
 }
+
+/** 卸载应用前断开连接，否则 indexedDB.deleteDatabase 会被阻塞。 */
+export function closeMomentsStorage(): void {
+    try {
+        momentsDb.close();
+    } catch {
+        // 已经关闭或从未打开
+    }
+}

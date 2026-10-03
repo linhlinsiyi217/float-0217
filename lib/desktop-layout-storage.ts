@@ -3,6 +3,7 @@ import { isCustomAppIconId } from "@/lib/custom-app-types";
 import { loadInstalledCustomApps } from "@/lib/custom-app-storage";
 import { GRID_COLS, GRID_ROWS, WIDGET_SIZE_CELLS, type WidgetInstance } from "@/lib/widget-types";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
+import { loadUninstalledApps } from "./app-uninstall-state";
 
 export const ICON_LAYOUT_STORAGE_KEY = "ai_phone_icon_layout_v2";
 export const ICON_LAYOUT_STORAGE_KEY_V1 = "ai_phone_icon_layout_v1";
@@ -118,6 +119,11 @@ export function createDefaultDesktopIconLayout(_widgets: WidgetInstance[] = []):
   } as DesktopIconLayout;
 }
 
+/** 被用户卸载的内置应用不再回到桌面（默认兜底、文件夹成员都要跳过）。 */
+function isUninstalled(iconId: string): boolean {
+  return loadUninstalledApps().has(iconId);
+}
+
 function normalizePage(raw: unknown, folderIds?: Set<string>): IconPosition[] {
   if (!Array.isArray(raw)) {
     return [];
@@ -144,6 +150,7 @@ function normalizePage(raw: unknown, folderIds?: Set<string>): IconPosition[] {
     if (
       !migratedId
       || (!knownIcons.has(migratedId) && !customIconIds.has(migratedId) && !folderIds?.has(migratedId))
+      || isUninstalled(migratedId)
       || row < 1
       || row > GRID_ROWS
       || col < 1
@@ -256,6 +263,7 @@ export function normalizeDesktopFolders(raw: unknown): DesktopFolderMap {
       if (typeof item !== "string" || item.startsWith("folder:")) continue;
       const migratedId = migrateLegacyDesktopIconId(item, customIconIds);
       if (!migratedId || (!knownIcons.has(migratedId) && !customIconIds.has(migratedId))) continue;
+      if (isUninstalled(migratedId)) continue;
       if (seen.has(migratedId) || members.includes(migratedId)) continue;
       seen.add(migratedId);
       members.push(migratedId);
@@ -305,6 +313,7 @@ export function normalizeDock(raw: unknown): DesktopIconId[] {
     if (
       !migratedId
       || (!knownIcons.has(migratedId) && !customIconIds.has(migratedId))
+      || isUninstalled(migratedId)
       || seen.has(migratedId)
     ) {
       continue;

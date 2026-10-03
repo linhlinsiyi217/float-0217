@@ -456,3 +456,12 @@ export function saveAdventureSummary(worldId: string, summary: AdventureSummary)
   if (typeof window === "undefined") return;
   kvSet(ADVENTURE_SUMMARY_KEY_PREFIX + worldId, JSON.stringify(summary));
 }
+
+/** 卸载应用前断开连接，否则 indexedDB.deleteDatabase 会被阻塞。 */
+export function closeMapStorage(): void {
+    try {
+        mapDb.close();
+    } catch {
+        // 已经关闭或从未打开
+    }
+}
