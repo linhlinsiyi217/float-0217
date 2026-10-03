@@ -102,6 +102,8 @@ export const APP_DATA_SPEC: Record<string, AppDataSpec> = {
       "reading-import-diagnostic-v1",
       "reading_import_diag_v1",
     ],
+    // 书房自己的设置与数据：外观、书架排序、创作草稿、论坛、礼物等
+    kvPrefixes: ["ai_phone_studyroom_"],
     databases: ["reading-db", "reading-raw-files", "reading-appearance-assets"],
     closers: ["reading"],
     special: "coread-sessions",

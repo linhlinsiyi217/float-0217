@@ -127,10 +127,11 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
           ) : tab === "shelf" ? (
             <StudyRoomShelf
               returnFromBookId={returnFromBookId}
-              onOpenBook={(book) => {
+              onOpenBook={(book, chapterIndex, paragraphIndex) => {
                 lastOpenedBookRef.current = book.id;
-                setView({ kind: "reader", book });
+                setView({ kind: "reader", book, chapterIndex, paragraphIndex });
               }}
+              onOpenMessages={() => setView({ kind: "messages" })}
             />
           ) : tab === "store" ? (
             <StudyRoomStore />

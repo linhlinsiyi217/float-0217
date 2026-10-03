@@ -9,6 +9,15 @@ export type Book = {
     createdAt: string;
     /** 真实封面图地址（在线来源提供时才有）；没有则书架用备用样式 */
     cover?: string;
+    /** 来源提供的简介（EPUB 元数据或书目来源）；没有就不显示，不用正文首段冒充 */
+    description?: string;
+    /** 来源提供的主题/标签 */
+    tags?: string[];
+    /** 来源名称与原站链接（联网导入时记录） */
+    sourceLabel?: string;
+    sourceUrl?: string;
+    /** 书房创作的书：记录创作草稿 id，便于回到书桌继续写 */
+    draftId?: string;
 };
 
 export type BookChapter = {
@@ -38,6 +47,9 @@ export type ReadingProgress = {
     progressScope?: "book" | "chapter";
     /** 保存进度时的阅读模式；滚动模式下 scrollPosition 存的是章节内滚动比例(0-1) */
     readingMode?: "page" | "scroll";
+    /** 书房阅读器：屏幕顶部所在段落与段内偏移比例，字号/分页变化后仍能回到原段落 */
+    paragraphIndex?: number;
+    paragraphOffset?: number;
     lastReadAt: string;
 };
 

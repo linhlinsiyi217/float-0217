@@ -1,226 +1,254 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import type { Book } from "@/lib/reading-types";
+import {
+  BOOK_GAP,
+  BASE_BOOK_HEIGHT,
+  ROW_PADDING_LEFT,
+  ROW_PADDING_RIGHT,
+  clampCoverRatio,
+  layoutShelf,
+} from "@/lib/study-room/shelf-layout";
+
+/**
+ * 每本书的动效阶段（明确状态机，阶段结束以 transitionend 为准，定时器只做兜底）：
+ *   shelf ──点击──▶ pulling ──transitionend(rotate)──▶ out
+ *   out ──关闭详情/点另一本──▶ returning ──transitionend(translate)──▶ shelf
+ * pulling 中再次点击同一本书被忽略；点另一本则当前书立即开始归位、新书开始抽出。
+ */
+type Phase = "pulling" | "out" | "returning";
 
 type StudyRoomShelf3DProps = {
   books: Book[];
-  onOpenBook: (book: Book) => void;
-  onRemoveBook: (book: Book) => void;
-  /** 从阅读器返回时，让这本书先以「抽出」状态出现再放回 */
-  returnFromBookId?: string | null;
+  /** 当前被抽出的书（由父组件控制）；null 表示全部在架上 */
+  activeId: string | null;
+  /** 用户点了一本书：父组件据此切换 activeId */
+  onSelect: (book: Book) => void;
+  /** 抽出并转到封面后回调：父组件此时展开书详情 */
+  onPulled?: (book: Book) => void;
+  /** 从阅读器回来：这本书直接以「已抽出」姿态出现，不重放动画 */
+  restoreOutId?: string | null;
 };
 
 type CssVars = CSSProperties & Record<`--${string}`, string | number>;
 
-type BookBox = {
-  book: Book;
-  /** 书脊厚度（书架占位宽度） */
-  spine: number;
-  /** 书高 */
-  height: number;
-  /** 封面宽度（深度方向），按实体书比例 */
-  cover: number;
-  tilt: number;
-  lean: number;
-  /** 无真实封面时的备用底色（不是真实书封，只是占位样式） */
-  tone: string;
-  ink: string;
-};
+/** 兜底时长：略大于 CSS 中对应 transition 的总时长 */
+const PULL_FALLBACK_MS = 820;
+const RETURN_FALLBACK_MS = 640;
 
-/** 备用配色：仅在书本没有真实封面图时使用。 */
-const COVER_TONES: Array<{ tone: string; ink: string }> = [
-  { tone: "#33465e", ink: "#eef2f8" },
-  { tone: "#5a3f36", ink: "#f4ece6" },
-  { tone: "#3d4d41", ink: "#edf2ed" },
-  { tone: "#5c3a46", ink: "#f6ecef" },
-  { tone: "#413f4e", ink: "#f0f0f5" },
-  { tone: "#2f4b4c", ink: "#eaf3f3" },
-  { tone: "#5d4a2e", ink: "#f6f0e4" },
-  { tone: "#3a4150", ink: "#eef1f6" },
-  { tone: "#4c3a55", ink: "#f3ecf6" },
-  { tone: "#355168", ink: "#eaf2f8" },
-];
-
-const SHELF_ROW_WIDTH = 320;
-const BOOK_GAP = 4;
-const MIN_SPINE = 20;
-const MAX_SPINE = 46;
-/** 实体书封面宽高比（宽 / 高），用于抽出后展示完整正常比例的封面 */
-const COVER_RATIO = 0.66;
-
-function hashString(value: string): number {
-  let hash = 0;
-  for (let i = 0; i < value.length; i += 1) hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
-  return hash;
+function readBookScale(el: HTMLElement | null): number {
+  if (!el) return 1;
+  const raw = getComputedStyle(el).getPropertyValue("--sr-book-scale").trim();
+  const value = Number.parseFloat(raw);
+  return Number.isFinite(value) && value > 0.3 && value < 3 ? value : 1;
 }
 
-function toBookBox(book: Book, index: number, height: number): BookBox {
-  const hash = hashString(book.id || book.title);
-  const spine = Math.max(MIN_SPINE, Math.min(MAX_SPINE, Math.round(MIN_SPINE + book.totalChapters * 0.5 + ((hash % 7) - 3))));
-  const boxHeight = height + (hash % 3) * 6;
-  const tilt = ((hash >> 3) % 5) - 2;
-  const lean = index % 7 === 3 ? -3 : 0;
-  const tone = COVER_TONES[hash % COVER_TONES.length];
-  return {
-    book,
-    spine,
-    height: boxHeight,
-    cover: Math.round(boxHeight * COVER_RATIO),
-    tilt,
-    lean,
-    tone: tone.tone,
-    ink: tone.ink,
-  };
+function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 }
 
-/**
- * 把书分配到若干层书架。默认至少两层（上下两层实体书架），
- * 书多时按宽度继续加层（外层可滚动）；书很少时保持真实空位，不复制书填充。
- */
-function distributeRows(boxes: BookBox[], rowWidth: number): BookBox[][] {
-  if (boxes.length === 0) return [];
-  if (boxes.length === 1) return [boxes];
-
-  const totalWidth = boxes.reduce((sum, box) => sum + box.spine + BOOK_GAP, 0);
-  let rowCount = Math.max(2, Math.ceil(totalWidth / rowWidth));
-  rowCount = Math.min(rowCount, boxes.length);
-
-  const rows: BookBox[][] = Array.from({ length: rowCount }, () => []);
-  const perRow = boxes.length / rowCount;
-  boxes.forEach((box, index) => {
-    const rowIndex = Math.min(rowCount - 1, Math.floor(index / perRow));
-    rows[rowIndex].push(box);
-  });
-  return rows;
-}
-
-export function StudyRoomShelf3D({ books, onOpenBook, onRemoveBook, returnFromBookId }: StudyRoomShelf3DProps) {
-  const [selectedId, setSelectedId] = useState<string | null>(returnFromBookId ?? null);
-  const [openingId, setOpeningId] = useState<string | null>(null);
+export function StudyRoomShelf3D({ books, activeId, onSelect, onPulled, restoreOutId }: StudyRoomShelf3DProps) {
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [rowWidth, setRowWidth] = useState(0);
+  const [scale, setScale] = useState(1);
+  const [phases, setPhases] = useState<Record<string, Phase>>(() =>
+    restoreOutId ? { [restoreOutId]: "out" } : {},
+  );
+  const phasesRef = useRef(phases);
+  phasesRef.current = phases;
+  const timersRef = useRef<Map<string, number>>(new Map());
+  // 封面源图比例（宽/高），读到后用于实体书正面比例
+  const [ratios, setRatios] = useState<Record<string, number>>({});
   // 真实封面加载失败的书：退回备用样式，不留破图
   const [failedCovers, setFailedCovers] = useState<Set<string>>(new Set());
-  const openTimerRef = useRef<number | null>(null);
 
-  const markCoverFailed = (bookId: string) =>
-    setFailedCovers((prev) => (prev.has(bookId) ? prev : new Set(prev).add(bookId)));
+  const onPulledRef = useRef(onPulled);
+  onPulledRef.current = onPulled;
+  const booksRef = useRef(books);
+  booksRef.current = books;
+
+  // 按容器实际宽度排布；宽度变化（横竖屏、窗口缩放）时重新分层
+  useLayoutEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const measure = () => {
+      setRowWidth(Math.max(el.clientWidth - ROW_PADDING_LEFT - ROW_PADDING_RIGHT, 60));
+      setScale(readBookScale(el));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const rows = useMemo(() => (rowWidth > 0 ? layoutShelf(books, rowWidth, scale) : []), [books, rowWidth, scale]);
+
+  const clearTimer = (id: string) => {
+    const timer = timersRef.current.get(id);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      timersRef.current.delete(id);
+    }
+  };
+
+  /** 只有当前阶段与预期一致时才推进，避免 transitionend 与兜底定时器重复推进。 */
+  const finish = useCallback((id: string, expected: Phase) => {
+    if (phasesRef.current[id] !== expected) return;
+    clearTimer(id);
+    const synced = { ...phasesRef.current };
+    if (expected === "pulling") synced[id] = "out";
+    else delete synced[id];
+    phasesRef.current = synced;
+    setPhases((prev) => {
+      if (prev[id] !== expected) return prev;
+      const next = { ...prev };
+      if (expected === "pulling") next[id] = "out";
+      else delete next[id];
+      return next;
+    });
+    if (expected === "pulling") {
+      const book = booksRef.current.find((b) => b.id === id);
+      if (book) onPulledRef.current?.(book);
+    }
+  }, []);
+
+  const start = useCallback((id: string, phase: "pulling" | "returning") => {
+    clearTimer(id);
+    // 先同步更新 ref：减弱动态时兜底定时器为 0ms，可能早于重渲染触发
+    phasesRef.current = { ...phasesRef.current, [id]: phase };
+    setPhases((prev) => ({ ...prev, [id]: phase }));
+    const wait = prefersReducedMotion() ? 0 : phase === "pulling" ? PULL_FALLBACK_MS : RETURN_FALLBACK_MS;
+    timersRef.current.set(id, window.setTimeout(() => finish(id, phase), wait));
+  }, [finish]);
+
+  // activeId 变化驱动：新书抽出，其余已抽出/抽出中的书归位
+  useEffect(() => {
+    const current = phasesRef.current;
+    for (const [id, phase] of Object.entries(current)) {
+      if (id !== activeId && (phase === "pulling" || phase === "out")) start(id, "returning");
+    }
+    if (activeId && current[activeId] !== "pulling" && current[activeId] !== "out") start(activeId, "pulling");
+  }, [activeId, start]);
+
+  // 卸载时清掉所有兜底定时器，不残留
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      for (const timer of timers.values()) window.clearTimeout(timer);
+      timers.clear();
+    };
+  }, []);
+
   const coverOf = (book: Book): string | undefined =>
     book.cover && !failedCovers.has(book.id) ? book.cover : undefined;
 
-  // 书高按层数自适应：层数越多每层越矮，保证两层能在手机可用高度内完整呈现
-  const rows = useMemo(() => {
-    const baseHeight = books.length <= 8 ? 200 : 176;
-    const boxes = books.map((book, index) => toBookBox(book, index, baseHeight));
-    return distributeRows(boxes, SHELF_ROW_WIDTH);
-  }, [books]);
-
-  const selected = books.find((b) => b.id === selectedId) ?? null;
-
-  // 从阅读器返回：先以抽出状态呈现，随后滑回架上（放回动效）
-  useEffect(() => {
-    if (!returnFromBookId) return;
-    const timer = window.setTimeout(() => setSelectedId((current) => (current === returnFromBookId ? null : current)), 420);
-    return () => window.clearTimeout(timer);
-  }, [returnFromBookId]);
-
-  useEffect(() => () => {
-    if (openTimerRef.current !== null) window.clearTimeout(openTimerRef.current);
-  }, []);
-
-  const handleBookClick = (book: Book) => {
-    if (openingId) return;
-    if (selectedId === book.id) {
-      // 抽出后再点：向读者方向抬起，随后进入阅读
-      setOpeningId(book.id);
-      openTimerRef.current = window.setTimeout(() => {
-        onOpenBook(book);
-        setOpeningId(null);
-      }, 340);
-      return;
-    }
-    setSelectedId(book.id);
-  };
+  const rowMinHeight = Math.round((BASE_BOOK_HEIGHT + 14) * scale);
 
   return (
-    <div className="sr3-stage" onClick={(e) => { if (e.target === e.currentTarget) setSelectedId(null); }}>
+    <div className="sr3-stage" ref={stageRef}>
       <div className="sr3-shelves">
-        {rows.map((row, rowIndex) => (
-          <div className="sr3-shelf" key={rowIndex}>
-            <div className="sr3-row">
-              {row.map(({ book, spine, height, cover, tilt, lean, tone, ink }) => {
-                const open = selectedId === book.id;
-                const opening = openingId === book.id;
-                const coverUrl = coverOf(book);
-                const style: CssVars = {
-                  "--w": `${spine}px`,
-                  "--h": `${height}px`,
-                  "--d": `${cover}px`,
-                  "--tilt": `${open || opening ? 0 : tilt}deg`,
-                  "--lean": `${open || opening ? 0 : lean}deg`,
-                  "--tone": tone,
-                  "--ink": ink,
-                  transformOrigin: lean ? "bottom left" : "bottom center",
-                  // 倾斜的书绕左下角转，顶部会向左压到邻居，补一点左边距让开
-                  marginLeft: lean ? 10 : undefined,
-                };
-                return (
-                  <button
-                    key={book.id}
-                    type="button"
-                    className="sr3-book"
-                    data-open={open ? "true" : undefined}
-                    data-opening={opening ? "true" : undefined}
-                    style={style}
-                    onClick={(e) => { e.stopPropagation(); handleBookClick(book); }}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      onRemoveBook(book);
-                    }}
-                    aria-label={book.title}
-                    title={open ? `打开《${book.title}》` : book.title}
-                  >
-                    <span className="sr3-face sr3-spine">
-                      <span className="sr3-spine-title">{book.title}</span>
-                      {book.author && <span className="sr3-spine-author">{book.author}</span>}
-                    </span>
-                    <span className="sr3-face sr3-fore" />
-                    <span className="sr3-face sr3-cover sr3-cover-right">
-                      {coverUrl ? (
-                        // 需要 onError 退回备用样式；next/image 的失败回退不便于此处的 3D 面
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          className="sr3-cover-art"
-                          src={coverUrl}
-                          alt=""
-                          loading="lazy"
-                          onError={() => markCoverFailed(book.id)}
-                        />
-                      ) : (
-                        <>
-                          <span className="sr3-cover-band" aria-hidden />
-                          <span className="sr3-cover-title">{book.title}</span>
-                          {book.author && <span className="sr3-cover-author">{book.author}</span>}
-                        </>
-                      )}
-                    </span>
-                    <span className="sr3-face sr3-cover sr3-cover-left" />
-                    <span className="sr3-face sr3-top" />
-                    <span className="sr3-face sr3-bottom" />
-                  </button>
-                );
-              })}
+        {rows.map((row, rowIndex) => {
+          // 计算每本书在本层的中心位置，抽出时把封面往层内拉，避免贴边被裁
+          let cursor = ROW_PADDING_LEFT;
+          return (
+            <div className="sr3-shelf" key={rowIndex} data-empty={row.length === 0 ? "true" : undefined}>
+              <div className="sr3-row" style={{ minHeight: rowMinHeight, paddingLeft: ROW_PADDING_LEFT, paddingRight: ROW_PADDING_RIGHT }}>
+                {row.map(({ book, spine, height, tilt, lean, tone, ink }) => {
+                  const phase = phases[book.id];
+                  const w = Math.round(spine * scale);
+                  const h = Math.round(height * scale);
+                  const ratio = clampCoverRatio(ratios[book.id]);
+                  const d = Math.round(h * ratio);
+                  const center = cursor + w / 2;
+                  cursor += w + BOOK_GAP * scale;
+                  const rowTotal = rowWidth + ROW_PADDING_LEFT + ROW_PADDING_RIGHT;
+                  // 抽出后封面宽 ≈ d；让封面完整落在层内
+                  const minCenter = d / 2 + 8;
+                  const maxCenter = rowTotal - d / 2 - 8;
+                  const shift = Math.round(Math.min(Math.max(center, minCenter), maxCenter) - center);
+                  const coverUrl = coverOf(book);
+                  const style: CssVars = {
+                    "--w": `${w}px`,
+                    "--h": `${h}px`,
+                    "--d": `${d}px`,
+                    "--tilt": `${tilt}deg`,
+                    "--lean": `${lean}deg`,
+                    "--shift": `${shift}px`,
+                    "--tone": tone,
+                    "--ink": ink,
+                    marginRight: `${BOOK_GAP * scale}px`,
+                  };
+                  return (
+                    <button
+                      key={book.id}
+                      type="button"
+                      className="sr3-book"
+                      data-phase={phase}
+                      data-lean={lean ? "true" : undefined}
+                      data-narrow={w < 30 ? "true" : undefined}
+                      style={style}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // 抽出动画中重复点击同一本：忽略，不重复触发
+                        if (phase === "pulling") return;
+                        onSelect(book);
+                      }}
+                      onTransitionEnd={(e) => {
+                        if (e.target !== e.currentTarget) return;
+                        if (phase === "pulling" && e.propertyName === "rotate") finish(book.id, "pulling");
+                        else if (phase === "returning" && e.propertyName === "translate") finish(book.id, "returning");
+                      }}
+                      aria-label={`${book.title}${book.author ? `，${book.author}` : ""}`}
+                      aria-pressed={phase === "out" || phase === "pulling"}
+                    >
+                      <span className="sr3-face sr3-spine">
+                        <span className="sr3-spine-title">{book.title}</span>
+                        {book.author && <span className="sr3-spine-author">{book.author}</span>}
+                      </span>
+                      <span className="sr3-face sr3-fore" />
+                      <span className="sr3-face sr3-cover sr3-cover-right" data-fallback={coverUrl ? undefined : "true"}>
+                        {coverUrl ? (
+                          // 需要 onError 退回备用样式、onLoad 读取源图比例；next/image 不便用于 3D 面
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            className="sr3-cover-art"
+                            src={coverUrl}
+                            alt=""
+                            decoding="async"
+                            onLoad={(e) => {
+                              const img = e.currentTarget;
+                              if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                                const r = img.naturalWidth / img.naturalHeight;
+                                setRatios((prev) => (prev[book.id] === r ? prev : { ...prev, [book.id]: r }));
+                              }
+                            }}
+                            onError={() => setFailedCovers((prev) => (prev.has(book.id) ? prev : new Set(prev).add(book.id)))}
+                          />
+                        ) : (
+                          <>
+                            <span className="sr3-cover-band" aria-hidden />
+                            <span className="sr3-cover-title">{book.title}</span>
+                            {book.author && <span className="sr3-cover-author">{book.author}</span>}
+                            <span className="sr3-cover-fallback-tag">暂无封面</span>
+                          </>
+                        )}
+                      </span>
+                      <span className="sr3-face sr3-cover sr3-cover-left" />
+                      <span className="sr3-face sr3-top" />
+                      <span className="sr3-face sr3-bottom" />
+                    </button>
+                  );
+                })}
+              </div>
+              <span className="sr3-board" aria-hidden />
+              <span className="sr3-board-edge" aria-hidden />
+              <span className="sr3-contact" aria-hidden />
             </div>
-            <span className="sr3-board" aria-hidden />
-            <span className="sr3-board-edge" aria-hidden />
-            <span className="sr3-contact" aria-hidden />
-          </div>
-        ))}
+          );
+        })}
       </div>
-
-      <p className="sr3-hint">
-        {selected ? `再点一次打开《${selected.title}》` : "点一本书从架上抽出"}
-      </p>
     </div>
   );
 }

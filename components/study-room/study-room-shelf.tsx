@@ -1,15 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookPlus } from "lucide-react";
 
-import { deleteBook, loadBooks } from "@/lib/reading-storage";
+import { deleteBook, loadAllProgress, loadBooks } from "@/lib/reading-storage";
 import { importBookFromBlob, UnsupportedBookFormatError } from "@/lib/study-room/import";
+import { moveInOrder, sortShelfBooks, type ShelfSort } from "@/lib/study-room/shelf-layout";
+import { loadShelfPrefs, saveShelfPrefs, type ShelfPrefs } from "@/lib/study-room/shelf-prefs";
 import type { Book } from "@/lib/reading-types";
 import { StudyRoomShelf3D } from "./study-room-shelf3d";
+import { StudyRoomBookDetail } from "./study-room-book-detail";
 
 type StudyRoomShelfProps = {
-  onOpenBook: (book: Book) => void;
+  onOpenBook: (book: Book, chapterIndex?: number, paragraphIndex?: number) => void;
+  onOpenMessages: () => void;
   returnFromBookId?: string | null;
 };
 
@@ -18,19 +22,66 @@ type ImportState =
   | { status: "running"; label: string }
   | { status: "error"; message: string };
 
-export function StudyRoomShelf({ onOpenBook, returnFromBookId }: StudyRoomShelfProps) {
+const SORT_OPTIONS: Array<{ value: ShelfSort; label: string }> = [
+  { value: "import", label: "导入顺序" },
+  { value: "recent", label: "最近阅读" },
+  { value: "manual", label: "手动排序" },
+];
+
+/** 从阅读器回来后，书先以抽出姿态停留片刻再放回架上 */
+const RETURN_HOLD_MS = 420;
+
+export function StudyRoomShelf({ onOpenBook, onOpenMessages, returnFromBookId }: StudyRoomShelfProps) {
   const [books, setBooks] = useState<Book[]>([]);
+  const [lastReadAt, setLastReadAt] = useState<Record<string, string>>({});
+  const [prefs, setPrefs] = useState<ShelfPrefs>(() => loadShelfPrefs());
   const [importState, setImportState] = useState<ImportState>({ status: "idle" });
+  const [activeId, setActiveId] = useState<string | null>(returnFromBookId ?? null);
+  const [detailBook, setDetailBook] = useState<Book | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setBooks(loadBooks());
-  };
+    const all = await loadAllProgress().catch(() => []);
+    setLastReadAt(Object.fromEntries(all.filter((p) => p.lastReadAt).map((p) => [p.bookId, p.lastReadAt])));
+  }, []);
 
   useEffect(() => {
     void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refresh]);
+
+  // 从阅读器返回：保持抽出一小会儿，然后归位
+  useEffect(() => {
+    if (!returnFromBookId) return;
+    const timer = window.setTimeout(() => setActiveId((id) => (id === returnFromBookId ? null : id)), RETURN_HOLD_MS);
+    return () => window.clearTimeout(timer);
+  }, [returnFromBookId]);
+
+  const sorted = useMemo(
+    () => sortShelfBooks(books, prefs.sort, { manualOrder: prefs.manualOrder, lastReadAt }),
+    [books, prefs, lastReadAt],
+  );
+
+  const updatePrefs = (next: ShelfPrefs) => {
+    setPrefs(next);
+    saveShelfPrefs(next);
+  };
+
+  const changeSort = (sort: ShelfSort) => {
+    // 切到手动时以当前看到的顺序为起点，避免书突然跳位
+    const manualOrder = sort === "manual" ? sorted.map((b) => b.id) : prefs.manualOrder;
+    updatePrefs({ sort, manualOrder });
+  };
+
+  const moveBook = (book: Book, delta: -1 | 1) => {
+    const base = sorted.map((b) => b.id);
+    updatePrefs({ ...prefs, manualOrder: moveInOrder(base, book.id, delta) });
+  };
+
+  const closeDetail = () => {
+    setDetailBook(null);
+    setActiveId(null);
+  };
 
   const handleFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -53,6 +104,7 @@ export function StudyRoomShelf({ onOpenBook, returnFromBookId }: StudyRoomShelfP
 
   const handleDelete = async (book: Book) => {
     if (!confirm(`确定从书架移除《${book.title}》吗？该书的阅读进度、书签与笔记会一并删除。`)) return;
+    closeDetail();
     await deleteBook(book.id);
     await refresh();
   };
@@ -70,6 +122,22 @@ export function StudyRoomShelf({ onOpenBook, returnFromBookId }: StudyRoomShelfP
           {importState.status === "running" ? importState.label : "导入本地书"}
         </button>
         <input ref={fileInputRef} type="file" accept=".txt,.epub,.pdf" hidden onChange={handleFile} />
+        {books.length > 1 && (
+          <div className="sr-sort" role="radiogroup" aria-label="书架排序">
+            {SORT_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={prefs.sort === opt.value}
+                data-active={prefs.sort === opt.value ? "true" : undefined}
+                onClick={() => changeSort(opt.value)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {importState.status === "error" && (
@@ -91,10 +159,29 @@ export function StudyRoomShelf({ onOpenBook, returnFromBookId }: StudyRoomShelfP
         </div>
       ) : (
         <StudyRoomShelf3D
-          books={books}
-          onOpenBook={onOpenBook}
-          onRemoveBook={handleDelete}
-          returnFromBookId={returnFromBookId}
+          books={sorted}
+          activeId={activeId}
+          restoreOutId={returnFromBookId}
+          onSelect={(book) => {
+            // 再点已抽出的书：放回去
+            if (activeId === book.id) closeDetail();
+            else {
+              setDetailBook(null);
+              setActiveId(book.id);
+            }
+          }}
+          onPulled={(book) => setDetailBook(book)}
+        />
+      )}
+
+      {detailBook && (
+        <StudyRoomBookDetail
+          book={detailBook}
+          onClose={closeDetail}
+          onRead={(book, chapterIndex, paragraphIndex) => onOpenBook(book, chapterIndex, paragraphIndex)}
+          onOpenMessages={onOpenMessages}
+          onRemove={handleDelete}
+          onMove={prefs.sort === "manual" ? (delta) => moveBook(detailBook, delta) : undefined}
         />
       )}
     </div>

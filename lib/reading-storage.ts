@@ -197,6 +197,13 @@ export async function loadProgress(bookId: string): Promise<ReadingProgress | nu
     return p || null;
 }
 
+/** 全部书的进度（书架「最近阅读」排序与书详情使用）。 */
+export async function loadAllProgress(): Promise<ReadingProgress[]> {
+    const all = await db.progress.toArray();
+    for (const p of all) _progressCache.set(p.bookId, p);
+    return all;
+}
+
 export async function saveProgress(progress: ReadingProgress): Promise<void> {
     await db.progress.put(progress);
     _progressCache.set(progress.bookId, progress);

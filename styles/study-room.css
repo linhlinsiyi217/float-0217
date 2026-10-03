@@ -294,7 +294,7 @@
   color: var(--c-text);
   font-size: 12.5px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 .sr-chip[data-active="true"] {
   background: color-mix(in srgb, var(--c-icon-active) 92%, transparent);
@@ -408,12 +408,12 @@
 }
 
 /* ══════════════════════════════════════════
-   3D 立体书架（上下两层实体书架）
-   用页面底色承托，每层各有横向架板与接触阴影；
-   书脊只显示书名/作者，真实封面放在正面（不裁成细条贴书脊）。
+   3D 立体书架（至少两层横向实体层板，从左到右放书）
+   书脊只显示书名/作者；真实封面放在正面（不裁成细条贴书脊）。
+   动效只用 transform 系列属性，阶段由组件状态机驱动。
    ══════════════════════════════════════════ */
 
-/* 书架页：内容居中，超出时整页滚动 */
+/* 书架页：超出时整页滚动 */
 .sr-tab-pane:has(.sr3-stage) {
   display: flex;
   flex-direction: column;
@@ -427,16 +427,11 @@
 }
 
 .sr3-stage {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  padding: 10px 6px 0;
-  overflow: visible;
+  flex: 0 0 auto;
+  padding: 6px 0 0;
 }
 
 .sr3-shelves {
-  margin: auto 0; /* 有空间时垂直居中；内容超高时自动失效并由外层滚动 */
   display: flex;
   flex-direction: column;
   gap: var(--sr-shelf-gap, 34px);
@@ -451,8 +446,9 @@
   position: relative;
   display: flex;
   align-items: flex-end;
-  justify-content: center;
-  min-height: calc(208px * var(--sr-book-scale, 1));
+  justify-content: flex-start; /* 第一本靠左，逐本向右 */
+  perspective: 900px;
+  perspective-origin: 50% 30%;
   transform-style: preserve-3d;
 }
 
@@ -487,48 +483,58 @@
   bottom: 12px;
   height: 10px;
   border-radius: 50%;
-  background: radial-gradient(ellipse at 50% 100%, rgba(30, 40, 60, 0.18), rgba(30, 40, 60, 0) 72%);
+  background: radial-gradient(ellipse at 50% 100%, rgba(30, 40, 60, 0.16), rgba(30, 40, 60, 0) 72%);
   pointer-events: none;
 }
+.sr3-shelf[data-empty="true"] .sr3-contact { opacity: 0.4; }
 
-/* ── 书本 ── */
+/* ── 书本 ──
+   基础姿态写在 transform（倾斜 / 微转），抽出姿态写在独立的 translate / rotate，
+   两者分开过渡：先平移离架，再转向封面；归位反过来。 */
 .sr3-book {
   position: relative;
   flex: 0 0 auto;
   width: var(--w);
   height: var(--h);
-  margin-right: 4px;
   padding: 0;
   border: 0;
   background: transparent;
   cursor: pointer;
   transform-style: preserve-3d;
-  transform-origin: bottom center;
+  transform-origin: 50% 100%;
   transform: rotateZ(var(--lean, 0deg)) rotateY(var(--tilt, 0deg));
-  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
-  scale: var(--sr-book-scale, 1);
+  translate: 0 0 0;
+  rotate: y 0deg;
+  transition:
+    translate 0.36s cubic-bezier(0.22, 1, 0.36, 1) 0.14s,
+    rotate 0.3s cubic-bezier(0.4, 0, 0.2, 1) 0s,
+    transform 0.3s ease;
+  -webkit-tap-highlight-color: transparent;
 }
-/* 抽出：离开书架、向前上方移出并转向封面（避开相邻书与架板） */
-.sr3-book[data-open="true"] {
-  transform: translateZ(132px) translateY(-32px) rotateY(-90deg);
-  z-index: 20;
-  transition: transform 0.52s cubic-bezier(0.22, 1, 0.36, 1);
+/* 倾斜的书绕左下角向右倒，只用于每层最后一本（右侧有空位） */
+.sr3-book[data-lean="true"] { transform-origin: 0% 100%; }
+
+.sr3-book[data-phase] { z-index: 20; will-change: transform, translate, rotate; }
+.sr3-book[data-phase="pulling"],
+.sr3-book[data-phase="out"] {
+  transform: rotateZ(0deg) rotateY(0deg);
+  translate: var(--shift, 0px) -26px 120px;
+  rotate: y -90deg;
+  transition:
+    translate 0.4s cubic-bezier(0.22, 1, 0.36, 1) 0s,
+    rotate 0.42s cubic-bezier(0.33, 1, 0.68, 1) 0.2s,
+    transform 0.3s ease;
 }
-/* 进入阅读：再向读者抬起 */
-.sr3-book[data-opening="true"] {
-  transform: translateZ(250px) translateY(-44px) rotateY(-90deg);
-  z-index: 30;
-  transition: transform 0.34s cubic-bezier(0.4, 0, 0.2, 1);
-}
+.sr3-book[data-phase="returning"] { z-index: 15; }
 
 @media (prefers-reduced-motion: reduce) {
   .sr3-book,
-  .sr3-book[data-open="true"],
-  .sr3-book[data-opening="true"] {
+  .sr3-book[data-phase] {
     transition: none;
   }
 }
+
+.sr3-book:focus-visible { outline: 2px solid var(--sr-accent, #4a4a4a); outline-offset: 3px; }
 
 .sr3-face {
   position: absolute;
@@ -551,7 +557,7 @@
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 5px;
   border-radius: 2px 2px 1px 1px;
   overflow: hidden;
   background: linear-gradient(
@@ -565,14 +571,16 @@
   box-shadow:
     inset 1px 0 0 rgba(255, 255, 255, 0.30),
     inset -1px 0 0 rgba(0, 0, 0, 0.28),
-    0 8px 16px rgba(24, 32, 48, 0.20);
+    0 8px 16px rgba(24, 32, 48, 0.18);
 }
 .sr3-spine-title,
 .sr3-spine-author {
   writing-mode: vertical-rl;
   text-orientation: upright;
   overflow: hidden;
-  max-height: 92%;
+  max-height: 88%;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--ink, #f2f4f8);
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.28);
 }
@@ -586,17 +594,20 @@
   font-weight: 500;
   letter-spacing: 0.4px;
   opacity: 0.78;
+  max-height: 40%;
 }
+/* 书脊太窄时只留书名 */
+.sr3-book[data-narrow="true"] .sr3-spine-author { display: none; }
 
-/* 书页侧面：暖白纸色 + 细密横纹 */
+/* 书页侧面：浅冷白纸色 + 细密横纹（不是白方块） */
 .sr3-fore {
   transform: rotateY(180deg) translateZ(calc(var(--d) / 2));
   border-radius: 2px;
-  background: repeating-linear-gradient(180deg, #f7f2e8 0px, #f7f2e8 2px, #e8dfd0 3px, #e8dfd0 4px);
-  box-shadow: inset 0 0 0 1px rgba(122, 106, 82, 0.16);
+  background: repeating-linear-gradient(180deg, #f4f3ef 0px, #f4f3ef 2px, #e2e0da 3px, #e2e0da 4px);
+  box-shadow: inset 0 0 0 1px rgba(90, 96, 110, 0.14);
 }
 
-/* 封面 / 封底：尺寸 = 封面宽 × 高（实体书比例） */
+/* 封面 / 封底：尺寸 = 封面宽 × 高（读取源图比例） */
 .sr3-cover {
   width: var(--d);
   height: var(--h);
@@ -613,7 +624,7 @@
     var(--tone) 44%,
     color-mix(in srgb, var(--tone) 82%, #000) 100%
   );
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10), 0 10px 26px rgba(24, 32, 48, 0.22);
 }
 .sr3-cover::before {
   content: "";
@@ -649,6 +660,18 @@
   font-size: 11px;
   color: color-mix(in srgb, var(--ink, #f2f4f8) 78%, transparent);
 }
+/* 无真实封面的备用样式：明确标注，不冒充真实书封 */
+.sr3-cover-fallback-tag {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--ink, #f2f4f8) 80%, transparent);
+  border: 0.5px solid color-mix(in srgb, var(--ink, #f2f4f8) 40%, transparent);
+}
 .sr3-cover-right { transform: rotateY(90deg) translateZ(calc(var(--w) / 2)); }
 .sr3-cover-left { transform: rotateY(-90deg) translateZ(calc(var(--w) / 2)); }
 
@@ -659,13 +682,13 @@
   height: var(--d);
   margin-left: calc(var(--w) / -2);
   margin-top: calc(var(--d) / -2);
-  background: linear-gradient(180deg, #f7f2e8 0%, #e4dccd 100%);
-  box-shadow: inset 0 0 0 1px rgba(122, 106, 82, 0.14);
+  background: linear-gradient(180deg, #f4f3ef 0%, #dddbd4 100%);
+  box-shadow: inset 0 0 0 1px rgba(90, 96, 110, 0.12);
 }
 .sr3-top { transform: rotateX(90deg) translateZ(calc(var(--h) / 2)); }
 .sr3-bottom { transform: rotateX(-90deg) translateZ(calc(var(--h) / 2)); }
 
-/* 真实封面铺满正面，保留原始宽高比（object-fit: cover 只做极小的溢出裁切） */
+/* 真实封面铺满正面，比例来自源图，object-fit 只处理极小误差 */
 .sr3-cover-art {
   position: absolute;
   inset: 0;
@@ -676,13 +699,30 @@
   z-index: 1;
 }
 
-/* 选中书的下方小提示 */
+/* 书架工具条：排序 + 导入 */
+.sr-shelf-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.sr-shelf-tools .sr-btn { flex: 1 1 auto; }
+.sr-shelf-sort {
+  flex: 0 0 auto;
+  height: 42px;
+  padding: 0 12px;
+  border-radius: var(--ui-radius-card);
+  border: 0.5px solid var(--c-card-border);
+  background: var(--c-card);
+  color: var(--c-text-title);
+  font-size: 13px;
+}
 .sr3-hint {
   text-align: center;
   font-size: 12px;
   color: var(--c-text);
   min-height: 18px;
-  padding-top: 10px;
+  padding-top: 12px;
 }
 /* ══════════════════════════════════════════
    阅读增强：选中操作条、书摘标记、批注、书签
@@ -1708,4 +1748,130 @@
   font-size: 11.5px;
   color: var(--c-text);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ── 书架排序 ── */
+.sr-shelf-root .sr-actions { flex-wrap: wrap; }
+.sr-sort {
+  flex-basis: 100%;
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--c-input);
+  border: 0.5px solid var(--c-card-border);
+}
+.sr-sort > button {
+  flex: 1;
+  min-height: 30px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--c-text);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.sr-sort > button[data-active="true"] {
+  background: var(--c-panel);
+  color: var(--c-text-title);
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(20, 28, 45, 0.1);
+}
+
+/* ── 书详情（抽出后展开） ── */
+.sr-detail-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(16, 20, 28, 0.16);
+  animation: sr-detail-fade 0.22s ease;
+}
+@keyframes sr-detail-fade { from { opacity: 0; } to { opacity: 1; } }
+.sr-detail {
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+  max-height: 78vh;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 18px calc(14px + env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
+  border-radius: var(--sr-radius, 22px) var(--sr-radius, 22px) 0 0;
+  border: 0.5px solid var(--c-card-border);
+  background: color-mix(in srgb, var(--c-panel) 88%, transparent);
+  backdrop-filter: blur(var(--ui-blur)) saturate(var(--ui-saturate));
+  -webkit-backdrop-filter: blur(var(--ui-blur)) saturate(var(--ui-saturate));
+  box-shadow: 0 -10px 34px rgba(20, 28, 45, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  animation: sr-sheet-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.sr-detail-grip {
+  width: 36px; height: 4px;
+  margin: 0 auto 10px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--c-text) 30%, transparent);
+}
+.sr-detail-close { position: absolute; top: 10px; right: 10px; }
+.sr-detail-head { display: flex; gap: 14px; padding-right: 32px; }
+.sr-detail-cover {
+  flex: none;
+  width: 86px;
+  aspect-ratio: 0.68;
+  border-radius: 4px 8px 8px 4px;
+  overflow: hidden;
+  background: linear-gradient(160deg, #eef2f6, #cfd6de);
+  box-shadow: 0 6px 16px rgba(20, 28, 45, 0.2), inset 3px 0 0 rgba(0, 0, 0, 0.08);
+}
+.sr-detail-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sr-detail-cover[data-fallback="true"] {
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: 10px 8px; box-sizing: border-box;
+}
+.sr-detail-cover-title {
+  font-size: 12px; font-weight: 600; line-height: 1.4; color: #3a4048;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+.sr-detail-cover-tag { font-size: 10px; color: #7a828c; }
+.sr-detail-info { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.sr-detail-title { margin: 0; font-size: 17px; line-height: 1.35; color: var(--c-text-title); overflow-wrap: anywhere; }
+.sr-detail-author { font-size: 13px; color: var(--c-text); }
+.sr-detail-meta { font-size: 11.5px; color: var(--c-text); opacity: 0.75; }
+.sr-detail-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.sr-detail-tag {
+  font-size: 11px; padding: 2px 7px; border-radius: 999px;
+  background: var(--c-input); color: var(--c-text);
+  border: 0.5px solid var(--c-card-border);
+}
+.sr-detail-progress { display: flex; align-items: center; gap: 8px; margin-top: auto; font-size: 11.5px; color: var(--c-text); }
+.sr-detail-progress .sr-progress { flex: 1; }
+.sr-detail-actions { display: flex; margin: 14px 0 6px; }
+.sr-detail-extra { display: flex; gap: 8px; margin-bottom: 6px; }
+.sr-detail-scroll { overflow-y: auto; min-height: 0; margin: 0 -4px; padding: 0 4px; overscroll-behavior: contain; }
+.sr-detail-h { margin: 14px 0 6px; font-size: 13px; font-weight: 600; color: var(--c-text-title); }
+.sr-detail-desc { margin: 0; font-size: 13px; line-height: 1.75; color: var(--c-text); white-space: pre-wrap; }
+.sr-detail-muted { margin: 0; font-size: 12.5px; color: var(--c-text); opacity: 0.7; }
+.sr-detail-toc, .sr-detail-notes { list-style: none; margin: 0; padding: 0; }
+.sr-detail-toc button, .sr-detail-notes button {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  min-height: 36px; padding: 6px 4px;
+  border: 0; border-bottom: 0.5px solid var(--c-card-border);
+  background: transparent; color: var(--c-text-title);
+  font-size: 13px; text-align: left; cursor: pointer;
+}
+.sr-detail-toc button:active, .sr-detail-notes button:active { background: var(--c-input); }
+.sr-detail-toc button[data-current="true"] { font-weight: 600; }
+.sr-detail-toc-no { flex: none; width: 26px; font-size: 11px; color: var(--c-text); opacity: 0.7; }
+.sr-detail-toc-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-detail-toc .sr-detail-more { justify-content: center; color: var(--c-text); border-bottom: 0; }
+.sr-detail-notes svg { flex: none; color: var(--c-text); }
+.sr-detail-note-text { flex: 1; min-width: 0; line-height: 1.55; overflow-wrap: anywhere; }
+.sr-detail-note-text em { font-style: normal; color: var(--c-text); }
+.sr-detail-footer { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 4px; }
+.sr-detail-footer .sr-btn { flex: 1 1 auto; min-height: 38px; font-size: 13px; text-decoration: none; }
+.sr-btn-danger { color: var(--c-danger); }
+@media (prefers-reduced-motion: reduce) {
+  .sr-detail, .sr-detail-mask { animation: none; }
 }
