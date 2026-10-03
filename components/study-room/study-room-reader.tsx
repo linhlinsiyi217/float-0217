@@ -23,6 +23,7 @@ import {
   deleteBookmark,
 } from "@/lib/reading-storage";
 import type { Book, BookChapter, ReadingBookmark, ReadingNote } from "@/lib/reading-types";
+import { loadAppearance } from "@/lib/study-room/appearance";
 import { StudyRoomCoread } from "./study-room-coread";
 
 type StudyRoomReaderProps = {
@@ -47,6 +48,8 @@ type AnnotateState = {
   draft: string;
 };
 
+type RestoreTarget = { paragraphIndex?: number; paragraphOffset?: number; fraction: number };
+
 function makeId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 }
@@ -61,9 +64,12 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   const [flash, setFlash] = useState<string | null>(null);
   const [coreadOpen, setCoreadOpen] = useState(false);
   const [coreadAnchor, setCoreadAnchor] = useState(0);
+  // 顶/底栏：点正文空白处切换；外观里可设为默认隐藏
+  const [barsHidden, setBarsHidden] = useState(() => loadAppearance().vars["--sr-bar-autohide"] === "1");
+  const [showHint, setShowHint] = useState(false);
 
   const bodyRef = useRef<HTMLDivElement>(null);
-  const restoreRef = useRef<number | null>(null);
+  const restoreRef = useRef<RestoreTarget | null>(null);
   const pendingAnchorRef = useRef<number | null>(initialParagraphIndex ?? null);
 
   const isPdf = book.format === "pdf";
@@ -108,7 +114,10 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
       const startIndex = initialChapterIndex !== undefined
         ? Math.min(Math.max(initialChapterIndex, 0), Math.max(chs.length - 1, 0))
         : Math.min(Math.max(progress?.chapterIndex ?? 0, 0), Math.max(chs.length - 1, 0));
-      restoreRef.current = progress?.scrollPosition ?? 0;
+      // 只有回到上次读的那一章才恢复位置；从目录/笔记跳转用指定段落
+      restoreRef.current = progress && initialChapterIndex === undefined && progress.chapterIndex === startIndex
+        ? { paragraphIndex: progress.paragraphIndex, paragraphOffset: progress.paragraphOffset, fraction: progress.scrollPosition }
+        : null;
       setChapterIndex(startIndex);
     })();
     return () => {
@@ -135,7 +144,19 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
     }
     const target = restoreRef.current;
     restoreRef.current = null;
-    body.scrollTop = target && chapterIndex > 0 ? body.scrollHeight * target : 0;
+    if (!target) {
+      body.scrollTop = 0;
+      return;
+    }
+    // 优先按段落锚点恢复：字号/行距变化后仍落在同一段
+    if (target.paragraphIndex !== undefined) {
+      const el = body.querySelector<HTMLElement>(`[data-pi="${target.paragraphIndex}"]`);
+      if (el) {
+        body.scrollTop = Math.max(el.offsetTop + el.offsetHeight * (target.paragraphOffset ?? 0) - 8, 0);
+        return;
+      }
+    }
+    body.scrollTop = Math.max(body.scrollHeight - body.clientHeight, 0) * target.fraction;
   }, [chapterIndex, chapter]);
 
   // 保存进度
@@ -147,11 +168,14 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
       const fraction = body.scrollHeight > body.clientHeight
         ? body.scrollTop / (body.scrollHeight - body.clientHeight)
         : 0;
+      const anchor = readAnchor();
       void saveProgress({
         bookId: book.id,
         chapterIndex,
         scrollPosition: Math.min(Math.max(fraction, 0), 1),
         readingMode: "scroll",
+        paragraphIndex: anchor.paragraphIndex,
+        paragraphOffset: anchor.paragraphOffset,
         lastReadAt: new Date().toISOString(),
       });
     };
@@ -297,6 +321,44 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
     clearSelection();
   };
 
+  /** 屏幕顶部所在段落 + 段内偏移比例，用于跨字号/分页恢复位置。 */
+  function readAnchor(): { paragraphIndex?: number; paragraphOffset?: number } {
+    const body = bodyRef.current;
+    if (!body) return {};
+    const top = body.scrollTop + 8;
+    const nodes = body.querySelectorAll<HTMLElement>("[data-pi]");
+    for (const node of Array.from(nodes)) {
+      if (node.offsetTop + node.offsetHeight > top) {
+        const offset = node.offsetHeight > 0 ? (top - node.offsetTop) / node.offsetHeight : 0;
+        return { paragraphIndex: Number(node.dataset.pi ?? 0), paragraphOffset: Math.min(Math.max(offset, 0), 1) };
+      }
+    }
+    return {};
+  }
+
+  // 点正文切换顶/底栏；选中文字、点按钮或链接时不切换
+  const handleBodyClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest("button, a, input, textarea")) return;
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) return;
+    if (!barsHidden) setShowHint(true);
+    setBarsHidden(!barsHidden);
+  };
+
+  useEffect(() => {
+    if (!showHint) return;
+    const timer = window.setTimeout(() => setShowHint(false), 1800);
+    return () => window.clearTimeout(timer);
+  }, [showHint]);
+
+  // 键盘：Esc 唤回工具栏，保证返回入口始终可达
+  useEffect(() => {
+    if (!barsHidden) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setBarsHidden(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [barsHidden]);
+
   /** 找到当前屏幕顶部附近的段落索引，供书签定位。 */
   const visibleParagraphIndex = (): number => {
     const body = bodyRef.current;
@@ -313,8 +375,8 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   const progressPct = total > 0 ? ((chapterIndex + 1) / total) * 100 : 0;
 
   return (
-    <div className="sr-reader">
-      <header className="sr-reader-header">
+    <div className="sr-reader" data-bars={barsHidden ? "hidden" : undefined}>
+      <header className="sr-reader-header" aria-hidden={barsHidden || undefined}>
         <button type="button" className="sr-icon-btn" onClick={onBack} aria-label="返回书架">
           <ChevronLeft size={22} strokeWidth={1.6} />
         </button>
@@ -348,7 +410,7 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
         </div>
       </header>
 
-      <div ref={bodyRef} className="sr-reader-body">
+      <div ref={bodyRef} className="sr-reader-body" onClick={handleBodyClick}>
         {chapters === null ? (
           <div className="sr-empty" style={{ paddingTop: 60 }}>
             <p>正在载入正文…</p>
@@ -378,6 +440,7 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
       </div>
 
       {flash && <div className="sr-flash">{flash}</div>}
+      {barsHidden && showHint && <div className="sr-reader-hint">轻点正文显示工具栏</div>}
 
       {selection && !annotate && (
         <div

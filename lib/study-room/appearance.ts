@@ -56,6 +56,12 @@ export const VAR_DEFS: Array<{
   { key: "--sr-reader-leading", module: "reader", label: "行距", type: "range", fallback: "1.95", min: 1.3, max: 2.6, step: 0.05, unit: "" },
   { key: "--sr-reader-ink", module: "reader", label: "正文颜色", type: "color", fallback: "#33383f" },
   { key: "--sr-reader-bg", module: "reader", label: "阅读底色", type: "color", fallback: "#fbfcfe" },
+  // 顶/底栏：隐藏后轻点正文即可唤回，返回入口不会永久不可达
+  { key: "--sr-bar-autohide", module: "reader", label: "进入时隐藏工具栏", type: "toggle", fallback: "0" },
+  { key: "--sr-bar-btn", module: "reader", label: "工具栏按钮尺寸", type: "range", fallback: "40", min: 34, max: 52, step: 1, unit: "px" },
+  { key: "--sr-bar-bg", module: "reader", label: "工具栏底色", type: "color", fallback: "#ffffff" },
+  { key: "--sr-bar-alpha", module: "reader", label: "工具栏不透明度", type: "range", fallback: "70", min: 20, max: 100, step: 1, unit: "%" },
+  { key: "--sr-bar-ink", module: "reader", label: "工具栏图标/文字色", type: "color", fallback: "#1c1f24" },
 
   // 聊天室
   { key: "--sr-chat-send", module: "chat", label: "发送气泡", type: "color", fallback: "#0a84ff" },
