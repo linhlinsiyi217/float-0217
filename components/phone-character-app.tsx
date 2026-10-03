@@ -77,10 +77,6 @@ const CHARACTER_AVATAR_COMPRESSION_FALLBACKS = [
 
 const POLAROID_RATIOS = [
   { label: "1:1", className: "ratio-square" },
-  { label: "3:4", className: "ratio-portrait" },
-  { label: "4:3", className: "ratio-landscape" },
-  { label: "16:9", className: "ratio-16-9" },
-  { label: "9:16", className: "ratio-9-16" },
 ] as const;
 
 const POLAROID_SIZE_WIDTHS = { small: 110, medium: 130, large: 150 } as const;
