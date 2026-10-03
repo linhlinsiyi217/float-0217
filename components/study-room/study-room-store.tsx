@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { Search, Download, ExternalLink, Loader2, Compass } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Search, Download, ExternalLink, Loader2, Compass, RotateCw } from "lucide-react";
 
 import {
   READABILITY_LABEL,
   KIND_LABEL,
+  hasCJK,
   type BookKind,
   type BookSearchResult,
+  type SearchFailure,
 } from "@/lib/study-room/book-source";
 import { importBookFromBlob } from "@/lib/study-room/import";
 
@@ -26,32 +28,53 @@ export function StudyRoomStore() {
   const [results, setResults] = useState<BookSearchResult[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [failedSources, setFailedSources] = useState<string[]>([]);
+  const [failedSources, setFailedSources] = useState<SearchFailure[]>([]);
+  const [aliasNote, setAliasNote] = useState<string | null>(null);
   const [importingId, setImportingId] = useState<string | null>(null);
   const [importedIds, setImportedIds] = useState<Set<string>>(new Set());
   const [notice, setNotice] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
 
+  // 旧请求不能覆盖新搜索：新的搜索会中止上一次请求，并用序号丢弃迟到的响应
+  const abortRef = useRef<AbortController | null>(null);
+  const seqRef = useRef(0);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   const runSearch = async (event?: React.FormEvent) => {
     event?.preventDefault();
     const q = query.trim();
     if (!q || loading) return;
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const seq = ++seqRef.current;
+
     setLoading(true);
     setError(null);
     setFailedSources([]);
+    setAliasNote(null);
     setNotice(null);
     setSearched(true);
     try {
-      const res = await fetch(`/api/study-room/search?q=${encodeURIComponent(q)}&kind=${kind}`);
+      const res = await fetch(`/api/study-room/search?q=${encodeURIComponent(q)}&kind=${kind}`, {
+        signal: controller.signal,
+      });
+      if (seq !== seqRef.current) return;
       if (!res.ok) throw new Error("search failed");
-      const data = (await res.json()) as { results: BookSearchResult[]; failed: string[] };
+      const data = (await res.json()) as { results: BookSearchResult[]; failed: SearchFailure[]; alias?: string };
+      if (seq !== seqRef.current) return;
       setResults(data.results ?? []);
       setFailedSources(data.failed ?? []);
-    } catch {
+      setAliasNote(data.alias ?? null);
+    } catch (err) {
+      if (seq !== seqRef.current) return;
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setResults([]);
       setError("搜索服务暂时不可用，请稍后重试。");
     } finally {
-      setLoading(false);
+      if (seq === seqRef.current) setLoading(false);
     }
   };
 
@@ -108,10 +131,17 @@ export function StudyRoomStore() {
         </div>
       )}
 
+      {aliasNote && (
+        <div className="sr-note-card">
+          <div className="sr-note-meta">已按别名「{aliasNote}」在各来源一并检索。</div>
+        </div>
+      )}
+
       {failedSources.length > 0 && (
         <div className="sr-note-card">
           <div className="sr-note-meta">
-            有来源暂时不可用：{failedSources.join("、")}。其他来源的结果仍会显示。
+            有来源暂时没有返回结果：
+            {failedSources.map((src) => `${src.label}（${src.reason ?? "不可用"}）`).join("、")}。其他来源的结果仍会显示。
           </div>
         </div>
       )}
@@ -119,6 +149,9 @@ export function StudyRoomStore() {
       {error && (
         <div className="sr-empty" style={{ paddingTop: 30 }}>
           <p>{error}</p>
+          <button type="button" className="sr-btn" onClick={() => void runSearch()} style={{ marginTop: 10 }}>
+            <RotateCw size={15} strokeWidth={1.8} /> 重新搜索
+          </button>
         </div>
       )}
 
@@ -135,7 +168,15 @@ export function StudyRoomStore() {
           <p>
             {searched ? "没有找到匹配的书。" : "输入书名或作者开始搜索。"}
             <br />
-            可以试试书名片段、作者名，或去掉标点（如「简爱」而不是「简·爱」）。
+            可以试试书名片段或作者名；标点和繁简体都可以（「简爱」「简·爱」「Jane Eyre」都行）。
+          </p>
+          {kind === "comic" && hasCJK(query) && (
+            <p style={{ marginTop: 8 }}>
+              漫画来源以日文原名与英文名为主，中文名可能查不到：试试原作名（如 ONE PIECE），或切到「全部」看看其他来源。
+            </p>
+          )}
+          <p style={{ marginTop: 8 }}>
+            也可以切到别的分类再搜一次，或在「书架」页用「导入本地书」直接导入自己的 TXT / EPUB。
           </p>
         </div>
       )}
@@ -166,6 +207,7 @@ export function StudyRoomStore() {
                   <div className="sr-res-tags">
                     <span className="sr-res-source">{item.sourceLabel}</span>
                     <span className="sr-res-kind">{KIND_LABEL[item.kind]}</span>
+                    {item.match === "author" && <span className="sr-res-kind">作者相关</span>}
                     <span className={`sr-res-read sr-res-read--${item.readability}`}>
                       {READABILITY_LABEL[item.readability]}
                     </span>

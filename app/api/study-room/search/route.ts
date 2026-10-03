@@ -1,25 +1,60 @@
 // app/api/study-room/search/route.ts — 书房书城：统一联网搜书入口。
 // 所有外部请求都在服务端发起（避免浏览器 CORS），不包含任何私钥。
+//
+// 这里负责「把结果收干净」：只保留真正匹配书名/作者的结果，按分类约束来源，
+// 排序后返回；单个来源失败只在 failed 里列出，不影响其他来源。
 
 import { NextResponse } from "next/server";
 
 import { searchAllSources } from "@/lib/study-room/providers";
-import { normalizeQuery, toSimplified, type BookKind, type BookSearchResult } from "@/lib/study-room/book-source";
+import { normalizeQuery, toSimplified, type BookKind, type BookSearchResult, type SearchFailure } from "@/lib/study-room/book-source";
+import { dedupeFailures, rankResults } from "@/lib/study-room/search-rank";
+import { aliasFor } from "@/lib/study-room/aliases";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const KINDS: Array<BookKind | "all"> = ["all", "novel", "comic", "material"];
 
-function dedupe(results: BookSearchResult[]): BookSearchResult[] {
-  const seen = new Set<string>();
-  const out: BookSearchResult[] = [];
-  for (const item of results) {
-    if (seen.has(item.id)) continue;
-    seen.add(item.id);
-    out.push(item);
+type SearchResponse = {
+  results: BookSearchResult[];
+  failed: SearchFailure[];
+  query: string;
+  /** 命中人工维护别名时，实际额外使用的检索词（用于给用户一句说明） */
+  alias?: string;
+};
+
+/** 结果缓存：同一关键词反复搜索时不再打来源接口（来源大多有频率限制）。 */
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_MAX = 120;
+const cache = new Map<string, { at: number; body: SearchResponse }>();
+
+function cacheGet(key: string): SearchResponse | null {
+  const hit = cache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > CACHE_TTL_MS) {
+    cache.delete(key);
+    return null;
   }
-  return out;
+  return hit.body;
+}
+
+function cacheSet(key: string, body: SearchResponse): void {
+  if (cache.size >= CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(key, { at: Date.now(), body });
+}
+
+async function runSearch(query: string, kind: BookKind | "all"): Promise<SearchResponse> {
+  const { results, failed, terms } = await searchAllSources({ query, kind, limit: 20 });
+  return {
+    results: rankResults(results, terms, kind),
+    failed: dedupeFailures(failed),
+    query,
+    alias: aliasFor(query)?.others[0],
+  };
 }
 
 export async function GET(request: Request) {
@@ -29,27 +64,37 @@ export async function GET(request: Request) {
   const kind = (KINDS.includes(kindParam as BookKind | "all") ? kindParam : "all") as BookKind | "all";
 
   if (!raw) {
-    return NextResponse.json({ results: [], failed: [], query: "" });
+    return NextResponse.json({ results: [], failed: [], query: "" } satisfies SearchResponse);
   }
 
   const query = normalizeQuery(raw) || raw;
+  const key = `${kind}:${query}`;
+  const cached = cacheGet(key);
+  if (cached) return NextResponse.json(cached);
 
   try {
-    let { results, failed } = await searchAllSources({ query, kind, limit: 20 });
+    let payload = await runSearch(query, kind);
 
-    // 繁简回退：没有结果时用简体再试一次，提高中文命中率。
-    if (results.length === 0) {
+    // 繁简回退：一个结果都没有时用简体再试一次，提高中文命中率。
+    if (payload.results.length === 0) {
       const simplified = toSimplified(query);
       if (simplified && simplified !== query) {
-        const retry = await searchAllSources({ query: simplified, kind, limit: 20 });
-        results = retry.results;
-        failed = Array.from(new Set([...failed, ...retry.failed]));
+        const retry = await runSearch(simplified, kind);
+        payload = {
+          ...retry,
+          query,
+          failed: dedupeFailures([...payload.failed, ...retry.failed]),
+        };
       }
     }
 
-    return NextResponse.json({ results: dedupe(results), failed, query });
+    cacheSet(key, payload);
+    return NextResponse.json(payload);
   } catch (error) {
     console.error("[study-room/search]", error);
-    return NextResponse.json({ results: [], failed: ["all"], error: "搜索服务暂时不可用" }, { status: 502 });
+    return NextResponse.json(
+      { results: [], failed: [{ id: "all", label: "全部来源", reason: "搜索服务暂时不可用" }], query },
+      { status: 502 },
+    );
   }
 }
