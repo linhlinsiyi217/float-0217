@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronRight, StickyNote, BookOpenText } from "lucide-react";
+import { ChevronRight, StickyNote, BookOpenText, MessagesSquare } from "lucide-react";
 
 import { loadBooks } from "@/lib/reading-storage";
 
 type StudyRoomMineProps = {
   onOpenNotes: () => void;
+  onOpenMessages: () => void;
 };
 
-export function StudyRoomMine({ onOpenNotes }: StudyRoomMineProps) {
+export function StudyRoomMine({ onOpenNotes, onOpenMessages }: StudyRoomMineProps) {
   const [bookCount, setBookCount] = useState(0);
 
   useEffect(() => {
@@ -29,6 +30,19 @@ export function StudyRoomMine({ onOpenNotes }: StudyRoomMineProps) {
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
           <StickyNote size={18} strokeWidth={1.6} />
           笔记
+        </span>
+        <ChevronRight size={18} strokeWidth={1.6} color="var(--c-icon)" />
+      </button>
+
+      <button
+        type="button"
+        className="sr-btn"
+        style={{ width: "100%", marginBottom: 12, justifyContent: "space-between" }}
+        onClick={onOpenMessages}
+      >
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <MessagesSquare size={18} strokeWidth={1.6} />
+          共读记录
         </span>
         <ChevronRight size={18} strokeWidth={1.6} color="var(--c-icon)" />
       </button>

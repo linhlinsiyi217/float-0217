@@ -9,6 +9,7 @@ import {
   Copy,
   Quote,
   PenLine,
+  MessagesSquare,
 } from "lucide-react";
 
 import {
@@ -22,6 +23,7 @@ import {
   deleteBookmark,
 } from "@/lib/reading-storage";
 import type { Book, BookChapter, ReadingBookmark, ReadingNote } from "@/lib/reading-types";
+import { StudyRoomCoread } from "./study-room-coread";
 
 type StudyRoomReaderProps = {
   book: Book;
@@ -57,6 +59,8 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   const [selection, setSelection] = useState<SelectionState | null>(null);
   const [annotate, setAnnotate] = useState<AnnotateState | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
+  const [coreadOpen, setCoreadOpen] = useState(false);
+  const [coreadAnchor, setCoreadAnchor] = useState(0);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<number | null>(null);
@@ -315,16 +319,33 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
           <ChevronLeft size={22} strokeWidth={1.6} />
         </button>
         <div className="sr-reader-title">{book.title}</div>
-        <button
-          type="button"
-          className="sr-icon-btn"
-          data-active={currentBookmark ? "true" : undefined}
-          onClick={handleToggleBookmark}
-          aria-label={currentBookmark ? "取消本章书签" : "为本章加书签"}
-          disabled={!chapter}
-        >
-          {currentBookmark ? <BookmarkCheck size={20} strokeWidth={1.7} /> : <Bookmark size={20} strokeWidth={1.6} />}
-        </button>
+        <div className="sr-reader-actions">
+          <button
+            type="button"
+            className="sr-icon-btn"
+            data-active={coreadOpen ? "true" : undefined}
+            onClick={() => {
+              setCoreadAnchor(visibleParagraphIndex());
+              setCoreadOpen(true);
+              clearSelection();
+            }}
+            aria-label="打开共读"
+            title="AI 共读"
+            disabled={!chapter || isPdf}
+          >
+            <MessagesSquare size={20} strokeWidth={1.6} />
+          </button>
+          <button
+            type="button"
+            className="sr-icon-btn"
+            data-active={currentBookmark ? "true" : undefined}
+            onClick={handleToggleBookmark}
+            aria-label={currentBookmark ? "取消本章书签" : "为本章加书签"}
+            disabled={!chapter}
+          >
+            {currentBookmark ? <BookmarkCheck size={20} strokeWidth={1.7} /> : <Bookmark size={20} strokeWidth={1.6} />}
+          </button>
+        </div>
       </header>
 
       <div ref={bodyRef} className="sr-reader-body">
@@ -436,6 +457,17 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
             <ChevronRight size={20} strokeWidth={1.7} />
           </button>
         </footer>
+      )}
+
+      {coreadOpen && (
+        <StudyRoomCoread
+          book={book}
+          chapter={chapter}
+          chapterIndex={chapterIndex}
+          readParagraphIndex={coreadAnchor}
+          selectedText={selection?.text}
+          onClose={() => setCoreadOpen(false)}
+        />
       )}
     </div>
   );

@@ -11,6 +11,7 @@ import { StudyRoomDesk } from "./study-room-desk";
 import { StudyRoomMine } from "./study-room-mine";
 import { StudyRoomNotes } from "./study-room-notes";
 import { StudyRoomReader } from "./study-room-reader";
+import { StudyRoomMessages } from "./study-room-messages";
 
 type StudyRoomAppProps = {
   onClose: () => void;
@@ -21,7 +22,8 @@ type StudyRoomTab = "shelf" | "store" | "desk" | "mine";
 type StudyRoomView =
   | { kind: "tabs" }
   | { kind: "reader"; book: Book; chapterIndex?: number; paragraphIndex?: number }
-  | { kind: "notes" };
+  | { kind: "notes" }
+  | { kind: "messages" };
 
 const TAB_META: Record<StudyRoomTab, { label: string; icon: typeof Library; subtitle: string }> = {
   shelf: { label: "书架", icon: Library, subtitle: "已收藏的书" },
@@ -71,6 +73,10 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
     );
   }
 
+  if (view.kind === "messages") {
+    return <StudyRoomMessages onBack={() => setView({ kind: "tabs" })} />;
+  }
+
   const active = TAB_META[tab];
 
   return (
@@ -102,7 +108,10 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
           ) : tab === "desk" ? (
             <StudyRoomDesk />
           ) : (
-            <StudyRoomMine onOpenNotes={() => setView({ kind: "notes" })} />
+            <StudyRoomMine
+              onOpenNotes={() => setView({ kind: "notes" })}
+              onOpenMessages={() => setView({ kind: "messages" })}
+            />
           )}
         </div>
       </div>
