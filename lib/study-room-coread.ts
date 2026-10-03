@@ -69,12 +69,4 @@ export function getCoreadSession(bookId: string, characterId: string): ChatSessi
  * 组装送给 AI 的正文范围：只包含已读到的段落，避免剧透。
  * 选中文字单独附在后面，作为本轮讨论的明确焦点。
  */
-export function buildReadRange(paragraphs: string[], readParagraphIndex: number, selectedText?: string): string {
-  const upTo = Math.max(0, Math.min(readParagraphIndex, paragraphs.length - 1));
-  const body = paragraphs
-    .slice(0, upTo + 1)
-    .map((p, i) => `[${i + 1}] ${p}`)
-    .join("\n\n");
-  const focus = selectedText?.trim() ? `\n\n[当前选中] ${selectedText.trim()}` : "";
-  return body + focus;
-}
+export { buildReadRange } from "./study-room/read-range";
