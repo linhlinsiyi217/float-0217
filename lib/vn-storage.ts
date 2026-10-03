@@ -419,3 +419,12 @@ export function saveVnConfig(key: string, value: string): void {
     vnDb.config.delete(key).catch(() => undefined);
   }
 }
+
+/** 卸载应用前断开连接，否则 indexedDB.deleteDatabase 会被阻塞。 */
+export function closeVnStorage(): void {
+    try {
+        vnDb.close();
+    } catch {
+        // 已经关闭或从未打开
+    }
+}

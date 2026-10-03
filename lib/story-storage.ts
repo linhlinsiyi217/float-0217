@@ -286,3 +286,12 @@ export function loadStoryProjectionEntries(
 
   return projections;
 }
+
+/** 卸载应用前断开连接，否则 indexedDB.deleteDatabase 会被阻塞。 */
+export function closeStoryStorage(): void {
+    try {
+        storyDb.close();
+    } catch {
+        // 已经关闭或从未打开
+    }
+}

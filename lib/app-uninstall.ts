@@ -4,22 +4,35 @@
 // - 卸载只作用于「当前用户已安装的应用」，不动公开仓库源文件、不删全站后端、不替其他用户卸载。
 // - 按应用归属删除数据，绝不用 clear() 清空整个数据库或整站存储。
 // - 内置应用卸载后必须记住，否则 normalizeLayout 的默认兜底会把图标加回来。
-// - 数据清理规则集中在 APP_DATA 登记表；没有登记的应保持图标移除但如实报告。
+// - 归属规则集中在 lib/app-uninstall-data.ts；没有独占数据或未登记的应用，
+//   只移除图标与入口，并如实报告，不去乱删共享数据。
 
 import { kvGet, kvSet, kvRemove, kvKeysWithPrefix } from "./kv-db";
 import { customAppIdFromIconId } from "./custom-app-types";
 import { uninstallCustomAppAsync } from "./custom-app-storage";
 import { removeCustomAppRegistrationsAsync } from "./custom-app-registration";
 import { deleteDatabase } from "./data-management/idb";
-import { closeReadingStorage } from "./reading-storage";
+import { loadChatSessions, deleteChatSession } from "./chat-storage";
 import { loadCoreadRefs, forgetCoreadRefs } from "./study-room-coread";
-import { deleteChatSession } from "./chat-storage";
 import { markAppUninstalled } from "./app-uninstall-state";
+import { APP_DATA_SPEC } from "./app-uninstall-data";
 import type { DesktopIconId, IconId } from "./desktop-config";
+
+// 删除数据库前必须断开的 Dexie 连接
+import { closeReadingStorage } from "./reading-storage";
+import { closeCheckPhoneStorage } from "./checkphone-storage";
+import { closeDwellingStorage } from "./dwelling-storage";
+import { closeMapStorage } from "./map-storage";
+import { closeStoryStorage } from "./story-storage";
+import { closeVnStorage } from "./vn-storage";
+import { closeMomentsStorage } from "./moments-db";
+// 卸载时需要停掉的应用专属后台服务
+import { stopDiaryEntryTimerService } from "./diary-entry-timer-service";
+import { stopMomentsService } from "./moments-engine";
 
 export { loadUninstalledApps, isAppUninstalled, markAppUninstalled, restoreApp } from "./app-uninstall-state";
 
-/** 自定义 APP 在宿主侧按 appId 存的固定键（卸载时之前不会清理）。 */
+/** 自定义 APP 在宿主侧按 appId 存的固定键（卸载时必须清理）。 */
 const CUSTOM_APP_HOST_KEYS = [
   "ai_phone_custom_app_notifications_v1",
   "ai_phone_custom_app_badges_v1",
@@ -28,62 +41,64 @@ const CUSTOM_APP_HOST_KEYS = [
   "ai_phone_custom_app_suggestions_v1",
 ];
 
-// ── 数据归属登记表 ──
-
-export type AppDataDescriptor = {
-  /** 完整 kv 键 */
-  kvKeys?: string[];
-  /** kv 键前缀（会删除所有匹配键） */
-  kvPrefixes?: string[];
-  /** 需要整体删除的 IndexedDB 数据库 */
-  databases?: string[];
-  /** 额外清理（如关闭连接、删除该应用的会话） */
-  cleanup?: () => void | Promise<void>;
-  /** 面向用户的说明：卸载会删掉什么 */
-  dataLabel: string;
+const CLOSERS: Record<string, () => void> = {
+  reading: closeReadingStorage,
+  checkphone: closeCheckPhoneStorage,
+  dwelling: closeDwellingStorage,
+  map: closeMapStorage,
+  story: closeStoryStorage,
+  vn: closeVnStorage,
+  moments: closeMomentsStorage,
 };
 
-export const APP_DATA: Partial<Record<IconId, AppDataDescriptor>> = {
-  studyroom: {
-    kvKeys: [
-      "ai_phone_reading_interaction_config_v1",
-      "ai_phone_reading_appearance_v1",
-      "ai_phone_studyroom_coread_sessions_v1",
-    ],
-    databases: ["reading-db", "reading-raw-files", "reading-appearance-assets"],
-    cleanup: async () => {
-      // 先断开 Dexie 连接，再删除该书的共读会话
-      closeReadingStorage();
-      for (const ref of loadCoreadRefs()) {
-        deleteChatSession(ref.sessionId);
-      }
-      forgetCoreadRefs(() => true);
-    },
-    dataLabel: "书籍、阅读进度、书签、书摘、批注、共读记录与阅读设置",
-  },
+const SERVICE_STOPPERS: Record<string, () => void> = {
+  diary: stopDiaryEntryTimerService,
+  moments: stopMomentsService,
 };
 
-/** 某应用是否登记了数据清理规则。 */
+/** 特殊清理：涉及跨会话/跨存储的处理。 */
+function runSpecial(kind: string): void {
+  if (kind === "chat-sessions-except-coread-and-group") {
+    // 私聊会话可删；书房的共读会话与群聊共用同一存储，必须保留。
+    for (const session of loadChatSessions()) {
+      if (session.id.startsWith("coread_") || session.isGroup) continue;
+      deleteChatSession(session.id);
+    }
+    return;
+  }
+  if (kind === "coread-sessions") {
+    for (const ref of loadCoreadRefs()) deleteChatSession(ref.sessionId);
+    forgetCoreadRefs(() => true);
+  }
+}
+
+/** 某应用是否有需要清理的独占数据。 */
 export function hasDataRule(iconId: string): boolean {
-  return Boolean(APP_DATA[iconId as IconId]);
+  const spec = APP_DATA_SPEC[iconId];
+  return Boolean(spec && !spec.noOwnData);
 }
 
 export function dataLabelFor(iconId: string): string {
-  return APP_DATA[iconId as IconId]?.dataLabel ?? "";
+  return APP_DATA_SPEC[iconId]?.dataLabel ?? "";
 }
 
-// ── 执行清理 ──
+/** 无独占数据时的说明（用于确认框与结果提示）。 */
+export function sharedNoteFor(iconId: string): string {
+  return APP_DATA_SPEC[iconId]?.note ?? "";
+}
 
 async function cleanBuiltinData(iconId: IconId): Promise<boolean> {
-  const descriptor = APP_DATA[iconId];
-  if (!descriptor) return false;
+  const spec = APP_DATA_SPEC[iconId];
+  if (!spec || spec.noOwnData) return false;
 
-  for (const key of descriptor.kvKeys ?? []) kvRemove(key);
-  for (const prefix of descriptor.kvPrefixes ?? []) {
+  for (const key of spec.kvKeys ?? []) kvRemove(key);
+  for (const prefix of spec.kvPrefixes ?? []) {
     for (const key of kvKeysWithPrefix(prefix)) kvRemove(key);
   }
-  if (descriptor.cleanup) await descriptor.cleanup();
-  for (const dbName of descriptor.databases ?? []) {
+  for (const closer of spec.closers ?? []) CLOSERS[closer]?.();
+  if (spec.special) runSpecial(spec.special);
+  for (const service of spec.stopServices ?? []) SERVICE_STOPPERS[service]?.();
+  for (const dbName of spec.databases ?? []) {
     await deleteDatabase(dbName).catch((err) => {
       console.warn("[uninstall] 删除数据库失败:", dbName, err);
     });
@@ -120,7 +135,7 @@ export type UninstallResult = {
   iconId: DesktopIconId;
   /** 是否执行了专属数据清理 */
   dataRemoved: boolean;
-  /** 已删除内容的说明（未登记时为提示语） */
+  /** 已删除内容的说明，或未删除时的原因 */
   detail: string;
 };
 
@@ -143,11 +158,12 @@ export async function uninstallApp(iconId: DesktopIconId): Promise<UninstallResu
   markAppUninstalled(builtinId);
 
   const removed = await cleanBuiltinData(builtinId);
+  if (removed) {
+    return { iconId, dataRemoved: true, detail: dataLabelFor(builtinId) };
+  }
   return {
     iconId,
-    dataRemoved: removed,
-    detail: removed
-      ? dataLabelFor(builtinId)
-      : "该应用数据清理规则尚未登记，此次只移除了图标与入口，未删除其数据。",
+    dataRemoved: false,
+    detail: sharedNoteFor(builtinId) || "该应用没有独占数据，只移除了图标与入口。",
   };
 }

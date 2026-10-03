@@ -44,7 +44,7 @@ import { AppMarketApp } from "@/components/app-market/app-market-app";
 import { CustomAppRunner } from "@/components/app-market/custom-app-runner";
 import { CustomAppForegroundBoundary } from "@/components/app-market/custom-app-failure";
 import { hydrateKvDb, kvGet, kvSet, kvRemove, kvKeysWithPrefix } from "@/lib/kv-db";
-import { uninstallApp, restoreApp, loadUninstalledApps, isAppUninstalled, hasDataRule } from "@/lib/app-uninstall";
+import { uninstallApp, restoreApp, loadUninstalledApps, isAppUninstalled, hasDataRule, dataLabelFor } from "@/lib/app-uninstall";
 import { ConfirmDialog, BottomSheet } from "@/components/ui/modal";
 import { deleteDatabase } from "@/lib/data-management/idb";
 import { hydrateStoryStorage } from "@/lib/story-storage";
@@ -5152,9 +5152,11 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                 <ConfirmDialog
                   title={`卸载「${uninstallTarget.label}」`}
                   message={
-                    uninstallTarget.isCustom || hasDataRule(uninstallTarget.id)
-                      ? "卸载将同时删除该应用的数据（缓存、配置与记录）。此操作不可撤销。"
-                      : "该应用的数据清理规则尚未登记：此次只会移除图标与入口，不会删除其它共享数据。"
+                    uninstallTarget.isCustom
+                      ? "卸载将同时删除该应用的数据（配置、记录与专属文件）。此操作不可撤销。"
+                      : hasDataRule(uninstallTarget.id)
+                        ? `卸载将同时删除：${dataLabelFor(uninstallTarget.id)}。此操作不可撤销。`
+                        : `「${uninstallTarget.label}」的数据是全局共享的（角色、账号、API 配置等），卸载只移除图标与入口，不会删除它们。`
                   }
                   confirmLabel={uninstalling ? "正在卸载…" : "卸载"}
                   cancelLabel="取消"
