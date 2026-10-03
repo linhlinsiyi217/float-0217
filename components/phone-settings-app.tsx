@@ -14,7 +14,7 @@ import { WorldBookManager } from "./settings/worldbook-manager";
 import { RegexManager } from "./settings/regex-manager";
 import { DataManagement } from "./settings/data-management";
 import { UserIdentitySettings } from "./settings/user-identity";
-import { AboutDeclaration } from "./settings/about-declaration";
+import { UpdateLogPage } from "./settings/update-log-page";
 import { BindingManager } from "./settings/binding-manager";
 import { WeixinSettings } from "./settings/weixin-settings";
 import { CloudServicesPage } from "./settings/cloud-services-setup";
@@ -36,9 +36,13 @@ export const SettingsContext = createContext<{
     setSubpageRightAction: (page: string, action: ReactNode | null) => void;
 }>({ setSubpageTitle: () => { }, setOverrideBack: () => { }, setSubpageRightAction: () => { } });
 
+export type SettingsSubPage = SubPage;
+
 type SettingsPageProps = {
     onClose: () => void;
     onNotice: (msg: string) => void;
+    /** 外部（如更新弹窗）指定要直接打开的页面 */
+    initialPage?: SubPage;
 };
 
 type SubPage =
@@ -73,7 +77,7 @@ const SETTINGS_MENU = [
     { id: "toolbox", icon: Wrench, label: "聊天工具箱", desc: "外部工具调用", iconColor: BINDING_ACCENTS.voice , glass: "toolbox" },
     { id: "agentComputer", icon: Laptop, label: "角色电脑", desc: "云端小电脑（自部署）", iconColor: BINDING_ACCENTS.memory , glass: "agent-computer" },
     { id: "identity", icon: UserCircle, label: "用户身份", desc: "个人信息", iconColor: BINDING_ACCENTS.identity , glass: "identity" },
-    { id: "about", icon: Info, label: "关于与声明", desc: "版本与协议", iconColor: BINDING_ACCENTS.memory , glass: "about" },
+    { id: "about", icon: Info, label: "更新日志", desc: "版本与更新内容", iconColor: BINDING_ACCENTS.memory , glass: "about" },
 ] as const;
 
 const realtimeIconStyle = {
@@ -104,8 +108,8 @@ const logoutIconStyle = {
     "--icon-color": "var(--c-danger)",
 } as CSSProperties;
 
-export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
-    const [currentPage, setCurrentPage] = useState<SubPage>("main");
+export function PhoneSettingsApp({ onClose, onNotice, initialPage }: SettingsPageProps) {
+    const [currentPage, setCurrentPage] = useState<SubPage>(initialPage ?? "main");
     const [subpageTitle, setSubpageTitle] = useState<string | null>(null);
     const [subpageRightActions, setSubpageRightActions] = useState<Record<string, ReactNode>>({});
     const [overrideBack, setOverrideBack] = useState<(() => void) | null>(null);
@@ -327,7 +331,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
             case "identity":
                 return <UserIdentitySettings />;
             case "about":
-                return <AboutDeclaration />;
+                return <UpdateLogPage />;
             default:
                 return null;
         }

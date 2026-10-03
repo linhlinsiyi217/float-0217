@@ -9,7 +9,7 @@ import { startMomentsService, stopMomentsService } from "@/lib/moments-engine";
 import { bgTimerCleanup } from "@/lib/bg-timer";
 import { PhoneThemeApp } from "@/components/phone-theme-app";
 import { PhoneCharacterApp } from "@/components/phone-character-app";
-import { PhoneSettingsApp } from "@/components/phone-settings-app";
+import { PhoneSettingsApp, type SettingsSubPage } from "@/components/phone-settings-app";
 import { PhoneChatApp } from "@/components/chat/phone-chat-app";
 import { PhonePlaceholderApp } from "@/components/phone-placeholder-app";
 import MusicApp from "@/components/music/music-app";
@@ -2380,6 +2380,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
   // Allow other components to switch apps via custom event
   const [chatInitSessionId, setChatInitSessionId] = useState<string | null>(null);
+  // 让别的应用能直接打开设置的某个页面（例如更新弹窗里的「查看全部更新日志」）
+  const [settingsInitialPage, setSettingsInitialPage] = useState<SettingsSubPage | null>(null);
   const [activeChatSession, setActiveChatSession] = useState<ChatSession | null>(null);
   const [customAppLaunchContext, setCustomAppLaunchContext] = useState<CustomAppLaunchState | null>(null);
   const [appMarketLaunchContext, setAppMarketLaunchContext] = useState<Record<string, unknown> | null>(null);
@@ -2395,7 +2397,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
           : {};
         if (customAppId) {
           openCustomAppWithBackgroundUpdateCheck(toCustomAppIconId(customAppId), launchContextRecord);
-          if (detail.sessionId) setChatInitSessionId(detail.sessionId);
+          if (detail.settingsPage) setSettingsInitialPage(detail.settingsPage as SettingsSubPage);
+        if (detail.sessionId) setChatInitSessionId(detail.sessionId);
           else setChatInitSessionId(null);
           return;
         }
@@ -4081,6 +4084,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
         <PhoneSettingsApp
           onClose={() => setActiveApp(null)}
           onNotice={setNotice}
+          initialPage={settingsInitialPage ?? undefined}
         />
       );
     }

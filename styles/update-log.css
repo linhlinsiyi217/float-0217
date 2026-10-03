@@ -1,0 +1,91 @@
+/* styles/update-log.css — 全局更新日志页面与更新弹窗。
+   数据只有一份（lib/update-log.ts），这里只管样式。 */
+
+.sr2-update-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: min(78vh, 620px);
+}
+.sr2-update-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sr2-update-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  flex: 0 0 auto;
+  background: color-mix(in srgb, var(--c-icon-active) 12%, var(--c-input));
+  color: var(--c-icon-active);
+}
+.sr2-update-date {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--c-text);
+}
+.sr2-update-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.sr2-update-entry {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--c-input);
+}
+.sr2-update-entry-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.sr2-update-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--c-text-title);
+  background: color-mix(in srgb, var(--c-icon-active) 14%, transparent);
+}
+.sr2-update-app {
+  font-size: 12.5px;
+  color: var(--c-text-title);
+  font-weight: 500;
+}
+.sr2-update-entry-title {
+  margin: 0 0 4px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--c-text-title);
+}
+.sr2-update-entry ul,
+.sr2-update-pending ul {
+  margin: 0 0 0 18px;
+  padding: 0;
+}
+.sr2-update-entry li,
+.sr2-update-pending li {
+  list-style: disc;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--c-text);
+}
+.sr2-update-pending {
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-size: 12.5px;
+  color: var(--c-text);
+  background: color-mix(in srgb, var(--c-icon-amber) 12%, var(--c-input));
+}
+.sr2-update-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
