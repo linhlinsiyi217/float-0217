@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, Library, Store, NotebookPen, User } from "lucide-react";
 
 import { hydrateReadingStorage } from "@/lib/reading-storage";
@@ -38,6 +38,15 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState<StudyRoomTab>("shelf");
   const [view, setView] = useState<StudyRoomView>({ kind: "tabs" });
+  // 从阅读器返回时，让那本书先以「抽出」状态出现再放回架上
+  const lastOpenedBookRef = useRef<string | null>(null);
+  const [returnFromBookId, setReturnFromBookId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!returnFromBookId) return;
+    const timer = window.setTimeout(() => setReturnFromBookId(null), 1400);
+    return () => window.clearTimeout(timer);
+  }, [returnFromBookId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,7 +66,10 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
         book={view.book}
         initialChapterIndex={view.chapterIndex}
         initialParagraphIndex={view.paragraphIndex}
-        onBack={() => setView({ kind: "tabs" })}
+        onBack={() => {
+          setReturnFromBookId(lastOpenedBookRef.current);
+          setView({ kind: "tabs" });
+        }}
       />
     );
   }
@@ -102,7 +114,13 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
               <p>正在打开书房…</p>
             </div>
           ) : tab === "shelf" ? (
-            <StudyRoomShelf onOpenBook={(book) => setView({ kind: "reader", book })} />
+            <StudyRoomShelf
+              returnFromBookId={returnFromBookId}
+              onOpenBook={(book) => {
+                lastOpenedBookRef.current = book.id;
+                setView({ kind: "reader", book });
+              }}
+            />
           ) : tab === "store" ? (
             <StudyRoomStore />
           ) : tab === "desk" ? (

@@ -10,6 +10,7 @@ import { StudyRoomShelf3D } from "./study-room-shelf3d";
 
 type StudyRoomShelfProps = {
   onOpenBook: (book: Book) => void;
+  returnFromBookId?: string | null;
 };
 
 type ImportState =
@@ -17,7 +18,7 @@ type ImportState =
   | { status: "running"; label: string }
   | { status: "error"; message: string };
 
-export function StudyRoomShelf({ onOpenBook }: StudyRoomShelfProps) {
+export function StudyRoomShelf({ onOpenBook, returnFromBookId }: StudyRoomShelfProps) {
   const [books, setBooks] = useState<Book[]>([]);
   const [importState, setImportState] = useState<ImportState>({ status: "idle" });
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -57,7 +58,7 @@ export function StudyRoomShelf({ onOpenBook }: StudyRoomShelfProps) {
   };
 
   return (
-    <div>
+    <div className="sr-shelf-root">
       <div className="sr-actions">
         <button
           type="button"
@@ -89,7 +90,12 @@ export function StudyRoomShelf({ onOpenBook }: StudyRoomShelfProps) {
           </p>
         </div>
       ) : (
-        <StudyRoomShelf3D books={books} onOpenBook={onOpenBook} onRemoveBook={handleDelete} />
+        <StudyRoomShelf3D
+          books={books}
+          onOpenBook={onOpenBook}
+          onRemoveBook={handleDelete}
+          returnFromBookId={returnFromBookId}
+        />
       )}
     </div>
   );

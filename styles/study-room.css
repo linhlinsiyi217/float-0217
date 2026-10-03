@@ -409,37 +409,99 @@
 
 /* ══════════════════════════════════════════
    3D 立体书架
-   书本是真正的空间盒子：书脊、封面前后、书页侧面、书顶。
-   选中后从架上抽出并转向封面，再进入阅读。
+   书本是空间盒子：书脊、封面前后、书页侧面、书顶与书底。
+   作品色按书名稳定分配（没有真实封面图时不编造内容，只给颜色）；
+   选中后抽出、转向封面，再点一次抬起进入阅读；返回时放回架上。
    ══════════════════════════════════════════ */
 
+/* 书架页：让书柜填满可用高度，避免下方出现大片空白 */
+.sr-tab-pane:has(.sr3-stage) {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: calc(82px + env(safe-area-inset-bottom, 0px));
+}
+.sr-shelf-root {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .sr3-stage {
-  perspective: 1400px;
-  perspective-origin: 50% 42%;
-  padding: 30px 6px 6px;
+  perspective: 1500px;
+  perspective-origin: 50% 62%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 6px 8px 0;
+}
+
+/* 书架外壳：填满可用高度的拟态书柜，书坐在最下一层 */
+.sr3-case {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  flex: 1 1 auto;
+  min-height: 300px;
+  padding: 26px 10px 4px;
+  border-radius: var(--ui-radius-panel, 20px);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.66) 0%, rgba(232, 236, 243, 0.30) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.35),
+    0 12px 34px rgba(30, 40, 60, 0.07);
 }
 
 .sr3-row {
   position: relative;
   display: flex;
   align-items: flex-end;
-  justify-content: flex-start;
-  min-height: 170px;
-  padding: 0 6px 6px;
+  justify-content: center;
+  min-height: 264px;
+  padding: 0 6px 14px;
   transform-style: preserve-3d;
 }
-.sr3-row + .sr3-row { margin-top: 44px; }
+.sr3-row + .sr3-row { margin-top: 46px; }
 
-/* 薄书架板：低存在感的一条线 + 极浅投影 */
+/* 薄书架板：一条有厚度和高光的托板，书坐在它上面 */
 .sr3-board {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 7px;
-  border-radius: 3px;
-  background: linear-gradient(180deg, #e7eaf0 0%, #cfd4dd 100%);
-  box-shadow: 0 4px 10px rgba(30, 40, 60, 0.12);
+  left: 4px;
+  right: 4px;
+  bottom: 8px;
+  height: 9px;
+  border-radius: 4px 4px 3px 3px;
+  background: linear-gradient(180deg, #eef1f6 0%, #d5dae3 55%, #c2c9d5 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 8px 18px rgba(30, 40, 60, 0.16);
+}
+/* 板的前沿阴影，让书与板之间有一道接触暗影 */
+.sr3-board-edge {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 3px;
+  height: 5px;
+  border-radius: 0 0 4px 4px;
+  background: linear-gradient(180deg, #c6cdd9 0%, #a9b1c0 100%);
+  box-shadow: 0 2px 4px rgba(30, 40, 60, 0.14);
+}
+/* 书底与板之间的接触阴影 */
+.sr3-row::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 14px;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 100%, rgba(30, 40, 60, 0.20), rgba(30, 40, 60, 0) 72%);
+  pointer-events: none;
 }
 
 .sr3-book {
@@ -455,11 +517,20 @@
   transform-style: preserve-3d;
   transform-origin: bottom center;
   transform: rotateZ(var(--lean, 0deg)) rotateY(var(--tilt, 0deg));
-  transition: transform 0.44s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
 }
+/* 抽出：离开书架、向外抬起、转向封面 */
 .sr3-book[data-open="true"] {
-  transform: translateZ(78px) translateY(-20px) rotateY(-90deg);
+  transform: translateZ(98px) translateY(-24px) rotateY(-90deg);
   z-index: 6;
+  transition: transform 0.52s cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* 进入阅读：再向读者抬起并轻微放大 */
+.sr3-book[data-opening="true"] {
+  transform: translateZ(210px) translateY(-34px) rotateY(-90deg) scale(1.05);
+  z-index: 8;
+  transition: transform 0.34s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .sr3-face {
@@ -467,10 +538,9 @@
   left: 50%;
   top: 50%;
   backface-visibility: hidden;
-  overflow: hidden;
 }
 
-/* 书脊：面向读者，写着书名 */
+/* 书脊（面向读者，写着书名）与书页对面 */
 .sr3-spine,
 .sr3-fore {
   width: var(--w);
@@ -478,53 +548,70 @@
   margin-left: calc(var(--w) / -2);
   margin-top: calc(var(--h) / -2);
 }
-.sr3-spine { transform: translateZ(calc(var(--d) / 2)); }
-.sr3-fore { transform: rotateY(180deg) translateZ(calc(var(--d) / 2)); background: #f4f5f8; }
+.sr3-spine {
+  transform: translateZ(calc(var(--d) / 2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px 2px 1px 1px;
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--tone) 76%, #000) 0%,
+    color-mix(in srgb, var(--tone) 72%, #fff) 17%,
+    color-mix(in srgb, var(--tone) 90%, #fff) 36%,
+    var(--tone) 60%,
+    color-mix(in srgb, var(--tone) 78%, #000) 100%
+  );
+  box-shadow:
+    inset 1px 0 0 rgba(255, 255, 255, 0.30),
+    inset -1px 0 0 rgba(0, 0, 0, 0.28),
+    0 9px 18px rgba(24, 32, 48, 0.22);
+}
+.sr3-spine-title {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 1.1px;
+  color: var(--ink, #f2f4f8);
+  max-height: 90%;
+  overflow: hidden;
+  padding: 4px 0;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.28);
+}
 
-/* 封面 / 封底：书脊两侧的大面 */
+/* 书页侧面：暖白纸色 + 细密横纹，倾斜时露出的是纸而不是白块 */
+.sr3-fore {
+  transform: rotateY(180deg) translateZ(calc(var(--d) / 2));
+  border-radius: 2px;
+  background: repeating-linear-gradient(
+    180deg,
+    #f7f2e8 0px,
+    #f7f2e8 2px,
+    #e8dfd0 3px,
+    #e8dfd0 4px
+  );
+  box-shadow: inset 0 0 0 1px rgba(122, 106, 82, 0.16);
+}
+
+/* 封面 / 封底 */
 .sr3-cover {
   width: var(--d);
   height: var(--h);
   margin-left: calc(var(--d) / -2);
   margin-top: calc(var(--h) / -2);
-}
-.sr3-cover-right { transform: rotateY(90deg) translateZ(calc(var(--w) / 2)); }
-.sr3-cover-left { transform: rotateY(-90deg) translateZ(calc(var(--w) / 2)); }
-
-/* 书顶：书脊厚 × 封面宽的一条 */
-.sr3-top {
-  width: var(--w);
-  height: var(--d);
-  margin-left: calc(var(--w) / -2);
-  margin-top: calc(var(--d) / -2);
-  transform: rotateX(90deg) translateZ(calc(var(--h) / 2));
-  background: #eef0f4;
-}
-
-/* 书页侧面：横向细纹的纸张感 */
-.sr3-spine {
-  background: linear-gradient(120deg, #dfe4ec 0%, #eef1f6 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 6px 12px rgba(30, 40, 60, 0.16);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.sr3-spine-title {
-  writing-mode: vertical-rl;
-  text-orientation: upright;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  color: #2c3440;
-  max-height: 92%;
-  overflow: hidden;
-  padding: 4px 0;
-}
-.sr3-cover {
-  background: linear-gradient(150deg, #f2f4f8 0%, #e2e7ef 100%);
   display: flex;
   flex-direction: column;
-  padding: 12px 12px 12px 16px;
+  padding: 16px 14px 14px 20px;
+  border-radius: 2px 6px 6px 2px;
+  overflow: hidden;
+  background: linear-gradient(
+    155deg,
+    color-mix(in srgb, var(--tone) 62%, #fff) 0%,
+    var(--tone) 44%,
+    color-mix(in srgb, var(--tone) 82%, #000) 100%
+  );
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10);
 }
 .sr3-cover::before {
   content: "";
@@ -532,31 +619,54 @@
   left: 0;
   top: 0;
   bottom: 0;
-  width: 6px;
-  background: linear-gradient(90deg, rgba(0, 0, 0, 0.14), rgba(0, 0, 0, 0.02));
+  width: 9px;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.30), rgba(0, 0, 0, 0.02));
+}
+.sr3-cover-band {
+  position: absolute;
+  left: 20px;
+  right: 8px;
+  top: 46%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.22);
 }
 .sr3-cover-title {
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 600;
-  line-height: 1.4;
-  color: #2c3440;
+  line-height: 1.45;
+  color: var(--ink, #f2f4f8);
   display: -webkit-box;
   -webkit-line-clamp: 5;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.20);
 }
 .sr3-cover-author {
   margin-top: auto;
   font-size: 10.5px;
-  color: #6b7280;
+  color: color-mix(in srgb, var(--ink, #f2f4f8) 76%, transparent);
 }
+.sr3-cover-right { transform: rotateY(90deg) translateZ(calc(var(--w) / 2)); }
+.sr3-cover-left { transform: rotateY(-90deg) translateZ(calc(var(--w) / 2)); }
+
+/* 书顶 / 书底：同宽同深的一条纸口 */
+.sr3-top,
+.sr3-bottom {
+  width: var(--w);
+  height: var(--d);
+  margin-left: calc(var(--w) / -2);
+  margin-top: calc(var(--d) / -2);
+  background: linear-gradient(180deg, #f7f2e8 0%, #e4dccd 100%);
+  box-shadow: inset 0 0 0 1px rgba(122, 106, 82, 0.14);
+}
+.sr3-top { transform: rotateX(90deg) translateZ(calc(var(--h) / 2)); }
+.sr3-bottom { transform: rotateX(-90deg) translateZ(calc(var(--h) / 2)); }
 
 /* 选中书的下方小提示 */
 .sr3-hint {
   text-align: center;
   font-size: 12px;
   color: var(--c-text);
-  margin-top: 34px;
   min-height: 18px;
 }
 
@@ -886,16 +996,17 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* 共读侧栏与独立聊天室统一用苹果「信息」配色：蓝色发送 / 浅灰接收 */
 .sr-coread-msg[data-role="user"] {
   align-self: flex-end;
-  background: color-mix(in srgb, var(--c-icon-active) 92%, transparent);
-  color: #fff;
+  background: #0a84ff;
+  color: #ffffff;
   border-bottom-right-radius: 5px;
 }
 .sr-coread-msg[data-role="assistant"] {
   align-self: flex-start;
-  background: var(--c-input);
-  color: var(--c-text-title);
+  background: #e9e9eb;
+  color: #1c1c1e;
   border-bottom-left-radius: 5px;
 }
 .sr-coread-msg[data-role="system"] {
