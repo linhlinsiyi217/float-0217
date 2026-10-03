@@ -33,10 +33,12 @@ type DetailData = {
 };
 
 const TOC_PREVIEW = 8;
+/** 长目录一次只多渲染这么多章，避免上千章全进 DOM */
+const TOC_STEP = 60;
 
 export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onRemove, onMove, extraActions }: StudyRoomBookDetailProps) {
   const [data, setData] = useState<DetailData | null>(null);
-  const [showAllToc, setShowAllToc] = useState(false);
+  const [tocLimit, setTocLimit] = useState(TOC_PREVIEW);
   const [coverFailed, setCoverFailed] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportNote, setExportNote] = useState<string | null>(null);
@@ -44,7 +46,7 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
   useEffect(() => {
     let cancelled = false;
     setData(null);
-    setShowAllToc(false);
+    setTocLimit(TOC_PREVIEW);
     setCoverFailed(false);
     void (async () => {
       const [chapters, progress, notes, bookmarks, allAnnotations] = await Promise.all([
@@ -116,7 +118,7 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
     }
   };
 
-  const toc = data ? (showAllToc ? data.chapterTitles : data.chapterTitles.slice(0, TOC_PREVIEW)) : [];
+  const toc = data ? data.chapterTitles.slice(0, tocLimit) : [];
   const cover = book.cover && !coverFailed ? book.cover : undefined;
 
   return (
@@ -200,9 +202,21 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
               ))}
               {data.chapterTitles.length > TOC_PREVIEW && (
                 <li>
-                  <button type="button" className="sr-detail-more" onClick={() => setShowAllToc((v) => !v)}>
-                    {showAllToc ? "收起目录" : `展开全部 ${data.chapterTitles.length} 章`}
-                  </button>
+                  {tocLimit < data.chapterTitles.length ? (
+                    <button
+                      type="button"
+                      className="sr-detail-more"
+                      onClick={() =>
+                        setTocLimit((limit) => Math.min(limit + TOC_STEP, data.chapterTitles.length))
+                      }
+                    >
+                      再看 {Math.min(TOC_STEP, data.chapterTitles.length - tocLimit)} 章（共 {data.chapterTitles.length} 章）
+                    </button>
+                  ) : (
+                    <button type="button" className="sr-detail-more" onClick={() => setTocLimit(TOC_PREVIEW)}>
+                      收起目录
+                    </button>
+                  )}
                 </li>
               )}
             </ol>

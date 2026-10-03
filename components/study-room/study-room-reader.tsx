@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -66,6 +66,12 @@ type AnnotateState = {
 
 type RestoreTarget = { paragraphIndex?: number; paragraphOffset?: number; fraction: number };
 
+/** 长章节只渲染当前位置附近的一段，避免上千段一次性进 DOM。 */
+const LARGE_CHAPTER_PARAGRAPHS = 600;
+const RENDER_WINDOW = 400;
+const WINDOW_LEAD = 40;
+const WINDOW_STEP = 200;
+
 function makeId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 }
@@ -90,6 +96,12 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   // 顶/底栏：点正文空白处切换；外观里可设为默认隐藏
   const [barsHidden, setBarsHidden] = useState(() => loadAppearance().vars["--sr-bar-autohide"] === "1");
   const [showHint, setShowHint] = useState(false);
+
+  // 当前渲染的段落窗口（长章节用；短章节就是全部段落）
+  const [range, setRange] = useState({ start: 0, end: Number.MAX_SAFE_INTEGER });
+  const rangeRef = useRef(range);
+  rangeRef.current = range;
+  const preHeightRef = useRef<number | null>(null);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<RestoreTarget | null>(null);
@@ -138,6 +150,20 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
       restoreRef.current = progress && initialChapterIndex === undefined && progress.chapterIndex === startIndex
         ? { paragraphIndex: progress.paragraphIndex, paragraphOffset: progress.paragraphOffset, fraction: progress.scrollPosition }
         : null;
+      // 先把渲染窗口定在目标段落附近，再切章，这样恢复滚动时目标段已经在 DOM 里
+      const targetParagraph = initialParagraphIndex
+        ?? (restoreRef.current?.paragraphIndex !== undefined ? restoreRef.current.paragraphIndex : undefined)
+        ?? 0;
+      const chapterLength = chs[startIndex]?.paragraphs.length ?? 0;
+      if (chapterLength > LARGE_CHAPTER_PARAGRAPHS) {
+        const start = Math.min(
+          Math.max(targetParagraph - WINDOW_LEAD, 0),
+          Math.max(chapterLength - RENDER_WINDOW, 0),
+        );
+        setRange({ start, end: Math.min(start + RENDER_WINDOW, chapterLength) });
+      } else {
+        setRange({ start: 0, end: chapterLength });
+      }
       setChapterIndex(startIndex);
     })();
     return () => {
@@ -185,10 +211,13 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
     if (!body || !chapters || chapters.length === 0) return;
     let timer: number | null = null;
     const persist = () => {
-      const fraction = body.scrollHeight > body.clientHeight
-        ? body.scrollTop / (body.scrollHeight - body.clientHeight)
-        : 0;
       const anchor = readAnchor();
+      // 长章节是分窗渲染的，滚动比例按「段落位置」换算才准
+      const fraction = paragraphs.length > LARGE_CHAPTER_PARAGRAPHS
+        ? Math.min(Math.max(((anchor.paragraphIndex ?? 0) + (anchor.paragraphOffset ?? 0)) / paragraphs.length, 0), 1)
+        : body.scrollHeight > body.clientHeight
+          ? body.scrollTop / (body.scrollHeight - body.clientHeight)
+          : 0;
       void saveProgress({
         bookId: book.id,
         chapterIndex,
@@ -210,6 +239,44 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
       persist();
     };
   }, [book.id, chapterIndex, chapters]);
+
+  // 长章节：滚到两端时继续展开上下相邻的段落
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body || paragraphs.length <= LARGE_CHAPTER_PARAGRAPHS) return;
+    const onScroll = () => {
+      const prev = rangeRef.current;
+      let { start, end } = prev;
+      let changed = false;
+      if (body.scrollTop + body.clientHeight > body.scrollHeight - 700 && end < paragraphs.length) {
+        end = Math.min(paragraphs.length, end + WINDOW_STEP);
+        changed = true;
+      }
+      if (body.scrollTop < 400 && start > 0) {
+        const step = Math.min(WINDOW_STEP, start);
+        start -= step;
+        // 记下展开前的高度，渲染后把滚动位置补回来，视觉上不跳动
+        preHeightRef.current = body.scrollHeight;
+        changed = true;
+      }
+      if (changed) {
+        const next = { start, end };
+        rangeRef.current = next;
+        setRange(next);
+      }
+    };
+    body.addEventListener("scroll", onScroll, { passive: true });
+    return () => body.removeEventListener("scroll", onScroll);
+  }, [paragraphs.length, chapterIndex]);
+
+  // 向上展开后补回滚动高度差
+  useLayoutEffect(() => {
+    const body = bodyRef.current;
+    if (!body || preHeightRef.current === null) return;
+    const delta = body.scrollHeight - preHeightRef.current;
+    preHeightRef.current = null;
+    if (delta > 0) body.scrollTop += delta;
+  }, [range]);
 
   // 选中文字 → 弹出精简操作条
   useEffect(() => {
@@ -495,7 +562,8 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
         ) : (
           <>
             {chapter && <h2 className="sr-chapter-title">{chapter.title}</h2>}
-            {paragraphs.map((para, index) => {
+            {paragraphs.slice(range.start, range.end).map((para, offset) => {
+              const index = range.start + offset;
               const paraMarks = marks.get(index);
               return (
                 <div key={index} className="sr-para-block">

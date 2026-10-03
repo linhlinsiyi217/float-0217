@@ -31,6 +31,9 @@ type StudyRoomNotesProps = {
 
 type EditingState = { note: ReadingNote; draft: string };
 
+/** 笔记很多时一次只渲染这么多，避免一次进几千张卡片 */
+const NOTE_PAGE = 60;
+
 export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
   const [notes, setNotes] = useState<ReadingNote[] | null>(null);
   const [books, setBooks] = useState<Record<string, Book>>({});
@@ -43,6 +46,7 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
   // 角色批注：只读，但可以跳回自己的阅读位置
   const [annotations, setAnnotations] = useState<ReadingAnnotation[] | null>(null);
   const [showAnnotations, setShowAnnotations] = useState(true);
+  const [listLimit, setListLimit] = useState(NOTE_PAGE);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,15 +102,17 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notes, query, sortDesc, books, chapterTitles]);
 
+  const visibleNotes = useMemo(() => filtered.slice(0, listLimit), [filtered, listLimit]);
+
   const grouped = useMemo(() => {
     const map = new Map<string, ReadingNote[]>();
-    for (const note of filtered) {
+    for (const note of visibleNotes) {
       const list = map.get(note.bookId) ?? [];
       list.push(note);
       map.set(note.bookId, list);
     }
     return Array.from(map.entries());
-  }, [filtered]);
+  }, [visibleNotes]);
 
   const handleDelete = async (note: ReadingNote) => {
     if (!confirm("删除这条笔记？原文上的标记也会一并移除。")) return;
@@ -335,7 +341,18 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
               );
             })
           ) : (
-            filtered.map(renderCard)
+            visibleNotes.map(renderCard)
+          )}
+
+          {filtered.length > listLimit && (
+            <button
+              type="button"
+              className="sr-btn"
+              style={{ width: "100%", marginTop: 12, justifyContent: "center" }}
+              onClick={() => setListLimit((limit) => limit + NOTE_PAGE)}
+            >
+              显示更多笔记（还有 {filtered.length - listLimit} 条）
+            </button>
           )}
         </div>
       </div>
