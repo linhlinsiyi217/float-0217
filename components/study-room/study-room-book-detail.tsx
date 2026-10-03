@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, MessagesSquare, Quote, PenLine, Bookmark, Trash2, X } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, MessagesSquare, Quote, PenLine, Bookmark, Trash2, X, FileDown, Loader2 } from "lucide-react";
 
 import { loadAllAnnotations, loadBookmarks, loadChapters, loadNotes, loadProgress } from "@/lib/reading-storage";
 import type { Book, ReadingAnnotation, ReadingBookmark, ReadingNote, ReadingProgress } from "@/lib/reading-types";
 import { loadCoreadRefs, type CoreadRef } from "@/lib/study-room-coread";
 import { loadCharacters } from "@/lib/character-storage";
+import { exportBookAsEpub, safeFileName } from "@/lib/study-room/export-epub";
 
 type StudyRoomBookDetailProps = {
   book: Book;
@@ -37,6 +38,8 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
   const [data, setData] = useState<DetailData | null>(null);
   const [showAllToc, setShowAllToc] = useState(false);
   const [coverFailed, setCoverFailed] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportNote, setExportNote] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +91,30 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
     const inChapter = progress.readingMode === "scroll" ? Math.min(Math.max(progress.scrollPosition, 0), 1) : 0;
     return Math.min(100, Math.round(((progress.chapterIndex + inChapter) / total) * 100));
   }, [progress, total]);
+
+  /** 导出这本为 EPUB：正文按章重建，批注用高亮＋附录两种方式带上。 */
+  const handleExportEpub = async () => {
+    setExporting(true);
+    setExportNote(null);
+    try {
+      const result = await exportBookAsEpub(book);
+      const url = URL.createObjectURL(result.blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = safeFileName(book.title) + ".epub";
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setExportNote(
+        `已导出 ${result.chapters} 章、${result.notes + result.annotations} 条批注` +
+          (result.cover ? "，含封面。" : "（这本书没有封面可不带）。") +
+          "原书内嵌的插图不在书房正文数据里，导出文件中不会出现。",
+      );
+    } catch {
+      setExportNote("导出失败，请稍后重试。");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const toc = data ? (showAllToc ? data.chapterTitles : data.chapterTitles.slice(0, TOC_PREVIEW)) : [];
   const cover = book.cover && !coverFailed ? book.cover : undefined;
@@ -148,6 +175,7 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
           </button>
         </div>
         {extraActions && <div className="sr-detail-extra">{extraActions}</div>}
+        {exportNote && <p className="sr-note-meta" style={{ margin: "8px 2px 0", lineHeight: 1.7 }}>{exportNote}</p>}
 
         <div className="sr-detail-scroll">
           <h3 className="sr-detail-h">简介</h3>
@@ -259,6 +287,10 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
                 <ExternalLink size={16} strokeWidth={1.8} /> 来源页
               </a>
             )}
+            <button type="button" className="sr-btn" onClick={() => void handleExportEpub()} disabled={exporting}>
+              {exporting ? <Loader2 size={16} className="sr-spin" /> : <FileDown size={16} strokeWidth={1.8} />}
+              导出 EPUB
+            </button>
             <button type="button" className="sr-btn sr-btn-danger" onClick={() => onRemove(book)}>
               <Trash2 size={16} strokeWidth={1.8} /> 移出书架
             </button>

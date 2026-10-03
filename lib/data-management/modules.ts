@@ -237,6 +237,7 @@ const PRIMARY_DATA_MODULES: DataModuleDefinition[] = [
     large: true,
     sources: [
       { type: "indexeddb", dbName: "reading-db", label: "阅读书架与章节" },
+      { type: "kv", prefixes: ["ai_phone_studyroom_"], label: "书房外观、书架排序与共读记录" },
       { type: "indexeddb", dbName: "reading-raw-files", label: "阅读原始文件" },
       { type: "indexeddb", dbName: "reading-appearance-assets", label: "阅读外观素材" },
       { type: "indexeddb", dbName: "ai_phone_music_db_v1", label: "本地音乐" },
