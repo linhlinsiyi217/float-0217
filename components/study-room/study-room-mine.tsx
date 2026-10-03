@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronRight, StickyNote, BookOpenText, MessagesSquare, Palette, Database, Brain } from "lucide-react";
+import { ChevronRight, StickyNote, BookOpenText, MessagesSquare, Palette, Database, Brain, Gift } from "lucide-react";
 
 import { loadBooks } from "@/lib/reading-storage";
 
@@ -11,6 +11,7 @@ type StudyRoomMineProps = {
   onOpenAppearance: () => void;
   onOpenBackup: () => void;
   onOpenReadingMemory: () => void;
+  onOpenGifts: () => void;
 };
 
 export function StudyRoomMine({
@@ -19,6 +20,7 @@ export function StudyRoomMine({
   onOpenAppearance,
   onOpenBackup,
   onOpenReadingMemory,
+  onOpenGifts,
 }: StudyRoomMineProps) {
   const [bookCount, setBookCount] = useState(0);
 
@@ -65,6 +67,19 @@ export function StudyRoomMine({
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
           <Palette size={18} strokeWidth={1.6} />
           外观与自定义
+        </span>
+        <ChevronRight size={18} strokeWidth={1.6} color="var(--c-icon)" />
+      </button>
+
+      <button
+        type="button"
+        className="sr-btn"
+        style={{ width: "100%", marginBottom: 12, justifyContent: "space-between" }}
+        onClick={onOpenGifts}
+      >
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <Gift size={18} strokeWidth={1.6} />
+          礼物与送书
         </span>
         <ChevronRight size={18} strokeWidth={1.6} color="var(--c-icon)" />
       </button>

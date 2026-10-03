@@ -2238,3 +2238,51 @@
 /* 书详情里的阶段记录：一行记录 + 删除按钮 */
 .sr-stage-row { display: flex; align-items: flex-start; gap: 4px; }
 .sr-stage-row > button:first-child { flex: 1; min-width: 0; }
+
+/* ── 礼物与送书 ── */
+.sr-gift-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.sr-gift-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 6px 0 10px;
+}
+.sr-gift-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px 6px;
+  border-radius: 14px;
+  border: 0.5px solid var(--c-card-border);
+  background: var(--c-input);
+  color: var(--c-text-title);
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.sr-gift-item[data-active="true"] {
+  border-color: color-mix(in srgb, var(--sr-accent) 50%, transparent);
+  background: color-mix(in srgb, var(--sr-accent) 8%, var(--c-input));
+}
+.sr-gift-item:active { transform: scale(0.96); }
+.sr-gift-name { font-size: 11.5px; font-weight: 500; }
+.sr-gift-desc { font-size: 10px; color: var(--c-text); opacity: 0.85; text-align: center; line-height: 1.3; }
+.sr-gift-result { animation: sr-gift-pop 0.28s ease; }
+.sr-gift-row { display: flex; align-items: flex-start; gap: 10px; }
+.sr-gift-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sr-gift-reply {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--sr-chat-send, #0a84ff) 7%, var(--c-input));
+  font-size: 13px;
+  line-height: 1.7;
+}
+@keyframes sr-gift-pop {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sr-gift-result { animation: none; }
+  .sr-gift-item { transition: none; }
+}

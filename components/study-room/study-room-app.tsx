@@ -20,6 +20,7 @@ import { StudyRoomReadingMemory } from "./study-room-reading-memory";
 import { StudyRoomCreativeEditor } from "./study-room-creative-editor";
 import { StudyRoomForum } from "./study-room-forum";
 import { StudyRoomNpcPanel } from "./study-room-npc-panel";
+import { StudyRoomGifts } from "./study-room-gifts";
 
 type StudyRoomAppProps = {
   onClose: () => void;
@@ -36,7 +37,8 @@ type StudyRoomView =
   | { kind: "backup" }
   | { kind: "readingMemory" }
   | { kind: "creative"; draftId: string }
-  | { kind: "npcPanel" };
+  | { kind: "npcPanel" }
+  | { kind: "gifts" };
 
 const TAB_META: Record<StudyRoomTab, { label: string; icon: typeof Library; subtitle: string }> = {
   shelf: { label: "书架", icon: Library, subtitle: "已收藏的书" },
@@ -138,6 +140,10 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
     return <StudyRoomNpcPanel onBack={() => setView({ kind: "tabs" })} />;
   }
 
+  if (view.kind === "gifts") {
+    return <StudyRoomGifts onBack={() => setView({ kind: "tabs" })} />;
+  }
+
   if (view.kind === "readingMemory") {
     return (
       <StudyRoomReadingMemory
@@ -199,6 +205,7 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
               onOpenAppearance={() => setView({ kind: "appearance" })}
               onOpenBackup={() => setView({ kind: "backup" })}
               onOpenReadingMemory={() => setView({ kind: "readingMemory" })}
+              onOpenGifts={() => setView({ kind: "gifts" })}
             />
           )}
         </div>

@@ -11,11 +11,13 @@ import {
   Users,
   EyeOff,
   BookOpen,
+  Gift,
 } from "lucide-react";
 
 import { loadBooks } from "@/lib/reading-storage";
 import type { Book } from "@/lib/reading-types";
 import { avatarDataUrl } from "@/lib/study-room/npc-avatar";
+import { GiftSheet } from "./gift-sheet";
 import {
   KIND_TEXT,
   addComment,
@@ -60,6 +62,8 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook }: StudyRoomForumPro
   // 含剧透的发言默认糊住，点开才显示
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
   const [replyTo, setReplyTo] = useState<Record<string, string>>({});
+  // 给某个帖子/某位书友送礼
+  const [giftTarget, setGiftTarget] = useState<{ postId: string; npcId?: string; bookTitle?: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const books = useMemo(() => {
     const map: Record<string, Book> = {};
@@ -411,6 +415,20 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook }: StudyRoomForumPro
                   <button
                     type="button"
                     className="sr-note-tool"
+                    title="给这条发言送礼"
+                    onClick={() =>
+                      setGiftTarget({
+                        postId: post.id,
+                        npcId: post.authorKind === "npc" ? post.authorId : undefined,
+                        bookTitle: post.bookTitle,
+                      })
+                    }
+                  >
+                    <Gift size={15} strokeWidth={1.7} />
+                  </button>
+                  <button
+                    type="button"
+                    className="sr-note-tool"
                     title={hidden ? "恢复显示" : "不感兴趣"}
                     onClick={() => save(hidden ? unhidePost(state, post.id) : hidePost(state, post.id))}
                   >
@@ -456,6 +474,22 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook }: StudyRoomForumPro
             </div>
           );
         })
+      )}
+
+      {giftTarget && (
+        <GiftSheet
+          mode="gift"
+          postId={giftTarget.postId}
+          presetRecipient={
+            giftTarget.npcId
+              ? (() => {
+                  const npc = npcById[giftTarget.npcId!];
+                  return npc ? { id: npc.id, name: npc.nickname, kind: "npc" as const } : undefined;
+                })()
+              : undefined
+          }
+          onClose={() => setGiftTarget(null)}
+        />
       )}
     </div>
   );

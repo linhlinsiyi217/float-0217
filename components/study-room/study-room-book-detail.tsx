@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, MessagesSquare, Quote, PenLine, Bookmark, Trash2, X, FileDown, Loader2 } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, MessagesSquare, Quote, PenLine, Bookmark, Trash2, X, FileDown, Loader2, Gift } from "lucide-react";
 
 import { loadAllAnnotations, loadBookmarks, loadChapters, loadNotes, loadProgress } from "@/lib/reading-storage";
 import type { Book, ReadingAnnotation, ReadingBookmark, ReadingNote, ReadingProgress } from "@/lib/reading-types";
 import { loadCoreadRefs, type CoreadRef } from "@/lib/study-room-coread";
 import { loadCharacters } from "@/lib/character-storage";
 import { StudyRoomStageSummary } from "./study-room-stage-summary";
+import { GiftSheet } from "./gift-sheet";
 import { exportBookAsEpub, safeFileName } from "@/lib/study-room/export-epub";
 
 type StudyRoomBookDetailProps = {
@@ -43,6 +44,7 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
   const [coverFailed, setCoverFailed] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportNote, setExportNote] = useState<string | null>(null);
+  const [gifting, setGifting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -304,6 +306,10 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
                 <ExternalLink size={16} strokeWidth={1.8} /> 来源页
               </a>
             )}
+            <button type="button" className="sr-btn" onClick={() => setGifting(true)}>
+              <Gift size={16} strokeWidth={1.7} />
+              赠书 / 送礼
+            </button>
             <button type="button" className="sr-btn" onClick={() => void handleExportEpub()} disabled={exporting}>
               {exporting ? <Loader2 size={16} className="sr-spin" /> : <FileDown size={16} strokeWidth={1.8} />}
               导出 EPUB
@@ -313,6 +319,14 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
             </button>
           </div>
         </div>
+
+        {gifting && (
+          <GiftSheet
+            mode="both"
+            book={{ id: book.id, title: book.title }}
+            onClose={() => setGifting(false)}
+          />
+        )}
       </section>
     </div>
   );
