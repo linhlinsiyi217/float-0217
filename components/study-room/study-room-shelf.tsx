@@ -7,7 +7,6 @@ import {
   addBook,
   deleteBook,
   loadBooks,
-  loadProgress,
   loadReadingInteractionConfig,
   saveChapters,
   saveRawFile,
@@ -19,6 +18,7 @@ import {
   PDF_PAGES_PER_CHAPTER,
 } from "@/lib/reading-parser";
 import type { Book, BookChapter } from "@/lib/reading-types";
+import { StudyRoomShelf3D } from "./study-room-shelf3d";
 
 type StudyRoomShelfProps = {
   onOpenBook: (book: Book) => void;
@@ -31,19 +31,11 @@ type ImportState =
 
 export function StudyRoomShelf({ onOpenBook }: StudyRoomShelfProps) {
   const [books, setBooks] = useState<Book[]>([]);
-  const [progress, setProgress] = useState<Record<string, { chapterIndex: number; total: number }>>({});
   const [importState, setImportState] = useState<ImportState>({ status: "idle" });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = async () => {
-    const next = loadBooks();
-    setBooks(next);
-    const map: Record<string, { chapterIndex: number; total: number }> = {};
-    for (const book of next) {
-      const p = await loadProgress(book.id);
-      map[book.id] = { chapterIndex: p?.chapterIndex ?? 0, total: book.totalChapters };
-    }
-    setProgress(map);
+    setBooks(loadBooks());
   };
 
   useEffect(() => {
@@ -178,38 +170,7 @@ export function StudyRoomShelf({ onOpenBook }: StudyRoomShelfProps) {
           </p>
         </div>
       ) : (
-        <div className="sr-shelf-grid">
-          {books.map((book) => {
-            const p = progress[book.id];
-            const pct = p && p.total > 0 ? Math.round(((p.chapterIndex + 1) / p.total) * 100) : 0;
-            return (
-              <button
-                key={book.id}
-                type="button"
-                className="sr-book"
-                onClick={() => onOpenBook(book)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  void handleDelete(book);
-                }}
-              >
-                <span className="sr-book-cover">
-                  <span className="sr-book-format">{book.format.toUpperCase()}</span>
-                  <span className="sr-book-cover-title">{book.title}</span>
-                  {book.author && <span className="sr-book-cover-author">{book.author}</span>}
-                </span>
-                <span className="sr-book-name">{book.title}</span>
-                {pct > 0 && <span className="sr-book-format" style={{ position: "static", background: "transparent", color: "var(--c-text)", padding: 0 }}>{pct}%</span>}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {books.length > 0 && (
-        <p className="sr-note-meta" style={{ marginTop: 18, textAlign: "center" }}>
-          长按（右键）书本可从书架移除。
-        </p>
+        <StudyRoomShelf3D books={books} onOpenBook={onOpenBook} onRemoveBook={handleDelete} />
       )}
     </div>
   );

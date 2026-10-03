@@ -49,3 +49,36 @@ export type ReadingAnnotation = {
     content: string;
     createdAt: string;
 };
+
+/** 阅读位置书签：记住某一章某一段（含章内滚动比例），方便回到原处。 */
+export type ReadingBookmark = {
+    id: string;
+    bookId: string;
+    chapterIndex: number;
+    paragraphIndex: number;
+    /** 保存时的章内滚动比例(0-1) */
+    scrollFraction?: number;
+    /** 保存时选中的原文片段（没有选中则为空） */
+    excerpt?: string;
+    label?: string;
+    createdAt: string;
+};
+
+/**
+ * 用户自己的书摘与批注。
+ * kind="excerpt" 只保留原文摘录；kind="note" 在摘录之外还有用户写下的想法。
+ * 与 ReadingAnnotation（AI 生成、带角色）分开存储，互不覆盖。
+ */
+export type ReadingNote = {
+    id: string;
+    bookId: string;
+    chapterIndex: number;
+    paragraphIndex: number;
+    kind: "excerpt" | "note";
+    /** 被标记的原文（高亮依据） */
+    quote: string;
+    /** 用户写下的想法；kind="excerpt" 时为空 */
+    content?: string;
+    createdAt: string;
+    updatedAt: string;
+};
