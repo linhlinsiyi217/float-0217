@@ -3,10 +3,17 @@
 import { useEffect, useState } from "react";
 import { Bookmark, StickyNote, NotebookPen } from "lucide-react";
 
+import { CreativePanel } from "./study-room-creative-panel";
+
 import { loadAllBookmarks, loadAllNotes, loadBooks } from "@/lib/reading-storage";
 import type { Book, ReadingBookmark } from "@/lib/reading-types";
 
-export function StudyRoomDesk() {
+type StudyRoomDeskProps = {
+  /** 打开某个创作草稿（写作界面在独立页面） */
+  onOpenDraft: (draftId: string) => void;
+};
+
+export function StudyRoomDesk({ onOpenDraft }: StudyRoomDeskProps) {
   const [bookmarks, setBookmarks] = useState<ReadingBookmark[] | null>(null);
   const [noteCount, setNoteCount] = useState(0);
   const [books, setBooks] = useState<Record<string, Book>>({});
@@ -31,7 +38,9 @@ export function StudyRoomDesk() {
 
   return (
     <div>
-      <div className="sr-section-label">书桌</div>
+      <CreativePanel onOpenDraft={onOpenDraft} />
+
+      <div className="sr-section-label" style={{ marginTop: 18 }}>阅读留下的东西</div>
 
       {!hasContent && (
         <div className="sr-empty" style={{ paddingTop: 24 }}>

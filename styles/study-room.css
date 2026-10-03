@@ -2087,3 +2087,61 @@
   gap: 8px;
   margin-bottom: 6px;
 }
+
+/* ── 书桌创作：草稿列表与章节编辑 ── */
+.sr-creative-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.sr-creative-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sr-creative-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--sr-accent) 8%, var(--c-input));
+  color: var(--c-text-title);
+  flex: 0 0 auto;
+}
+.sr-creative-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sr-creative-item-title {
+  font-size: 15px;
+  color: var(--c-text-title);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sr-creative-chapters { list-style: none; margin: 0 0 12px; padding: 0; }
+.sr-creative-chapter { border-bottom: 0.5px solid var(--c-card-border); }
+.sr-creative-chapter:last-child { border-bottom: 0; }
+.sr-creative-chapter-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 2px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sr-creative-chapter-title { flex: 1; min-width: 0; font-size: 14.5px; color: var(--c-text-title); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-creative-chapter-body { display: flex; flex-direction: column; gap: 8px; padding: 0 2px 14px; }
+.sr-creative-cover {
+  width: 34px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 0.5px solid var(--c-card-border);
+}
