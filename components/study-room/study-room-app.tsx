@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, Library, Store, NotebookPen, User } from "lucide-react";
 
 import { hydrateReadingStorage } from "@/lib/reading-storage";
+import { applyAppearance, loadAppearance } from "@/lib/study-room/appearance";
 import type { Book } from "@/lib/reading-types";
 import { StudyRoomShelf } from "./study-room-shelf";
 import { StudyRoomStore } from "./study-room-store";
@@ -12,6 +13,7 @@ import { StudyRoomMine } from "./study-room-mine";
 import { StudyRoomNotes } from "./study-room-notes";
 import { StudyRoomReader } from "./study-room-reader";
 import { StudyRoomMessages } from "./study-room-messages";
+import { StudyRoomAppearance } from "./study-room-appearance";
 
 type StudyRoomAppProps = {
   onClose: () => void;
@@ -23,7 +25,8 @@ type StudyRoomView =
   | { kind: "tabs" }
   | { kind: "reader"; book: Book; chapterIndex?: number; paragraphIndex?: number }
   | { kind: "notes" }
-  | { kind: "messages" };
+  | { kind: "messages" }
+  | { kind: "appearance" };
 
 const TAB_META: Record<StudyRoomTab, { label: string; icon: typeof Library; subtitle: string }> = {
   shelf: { label: "书架", icon: Library, subtitle: "已收藏的书" },
@@ -41,6 +44,10 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
   // 从阅读器返回时，让那本书先以「抽出」状态出现再放回架上
   const lastOpenedBookRef = useRef<string | null>(null);
   const [returnFromBookId, setReturnFromBookId] = useState<string | null>(null);
+
+  useEffect(() => {
+    applyAppearance(loadAppearance());
+  }, []);
 
   useEffect(() => {
     if (!returnFromBookId) return;
@@ -89,6 +96,10 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
     return <StudyRoomMessages onBack={() => setView({ kind: "tabs" })} />;
   }
 
+  if (view.kind === "appearance") {
+    return <StudyRoomAppearance onBack={() => setView({ kind: "tabs" })} />;
+  }
+
   const active = TAB_META[tab];
 
   return (
@@ -129,6 +140,7 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
             <StudyRoomMine
               onOpenNotes={() => setView({ kind: "notes" })}
               onOpenMessages={() => setView({ kind: "messages" })}
+              onOpenAppearance={() => setView({ kind: "appearance" })}
             />
           )}
         </div>
