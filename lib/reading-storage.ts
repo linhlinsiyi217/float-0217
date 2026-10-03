@@ -211,6 +211,12 @@ export async function saveAnnotations(annotations: ReadingAnnotation[]): Promise
     }
 }
 
+/** 汇总全部书的批注与书摘（书房「笔记区」用，按时间倒序）。 */
+export async function loadAllAnnotations(): Promise<ReadingAnnotation[]> {
+    const all = await db.annotations.toArray();
+    return all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
 export async function deleteAnnotation(annotationId: string): Promise<void> {
     const existing = await db.annotations.get(annotationId);
     if (!existing) return;

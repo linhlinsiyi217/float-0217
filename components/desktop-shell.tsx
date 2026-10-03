@@ -27,7 +27,7 @@ import { DiaryApp } from "@/components/diary/diary-app";
 import { XiaohongshuApp } from "@/components/xiaohongshu/xiaohongshu-app";
 import { StoryApp } from "@/components/story/story-app";
 import { VnApp } from "@/components/vn/vn-app";
-import ReadingApp from "@/components/reading/reading-app";
+import StudyRoomApp from "@/components/study-room/study-room-app";
 import MapApp from "@/components/map/map-app";
 import { DwellingApp } from "@/components/dwelling/dwelling-app";
 import { MascotFloat } from "@/components/mascot/mascot-float";
@@ -4066,8 +4066,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
       return <VnApp onClose={() => setActiveApp(null)} />;
     }
 
-    if (activeApp === "reading") {
-      return <ReadingApp onClose={() => setActiveApp(null)} />;
+    if (activeApp === "studyroom") {
+      return <StudyRoomApp onClose={() => setActiveApp(null)} />;
     }
 
     if (activeApp === "mapmode") {
