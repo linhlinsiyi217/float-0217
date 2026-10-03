@@ -51,7 +51,6 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
   const [listLimit, setListLimit] = useState(NOTE_PAGE);
   const [starredOnly, setStarredOnly] = useState(false);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
-  const [editingTags, setEditingTags] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -257,7 +256,6 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
               title="编辑想法与标签"
               onClick={() => {
                 setEditing({ note, draft: note.content ?? "", tags: (note.tags ?? []).join("、") });
-                setEditingTags((note.tags ?? []).join("、"));
               }}
             >
               <PenLine size={15} strokeWidth={1.7} />
