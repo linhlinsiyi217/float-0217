@@ -25,6 +25,10 @@ import type { Book, BookChapter, ReadingBookmark, ReadingNote } from "@/lib/read
 
 type StudyRoomReaderProps = {
   book: Book;
+  /** 从笔记「回跳原文」时指定章节 */
+  initialChapterIndex?: number;
+  /** 从笔记「回跳原文」时指定段落 */
+  initialParagraphIndex?: number;
   onBack: () => void;
 };
 
@@ -45,7 +49,7 @@ function makeId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
-export function StudyRoomReader({ book, onBack }: StudyRoomReaderProps) {
+export function StudyRoomReader({ book, initialChapterIndex, initialParagraphIndex, onBack }: StudyRoomReaderProps) {
   const [chapters, setChapters] = useState<BookChapter[] | null>(null);
   const [chapterIndex, setChapterIndex] = useState(0);
   const [chapterNotes, setChapterNotes] = useState<ReadingNote[]>([]);
@@ -56,6 +60,7 @@ export function StudyRoomReader({ book, onBack }: StudyRoomReaderProps) {
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<number | null>(null);
+  const pendingAnchorRef = useRef<number | null>(initialParagraphIndex ?? null);
 
   const isPdf = book.format === "pdf";
   const chapter = chapters && chapters.length > 0 ? chapters[Math.min(chapterIndex, chapters.length - 1)] : null;
@@ -96,23 +101,34 @@ export function StudyRoomReader({ book, onBack }: StudyRoomReaderProps) {
       if (cancelled) return;
       setChapters(chs);
       setBookmarks(marks);
-      const startIndex = Math.min(Math.max(progress?.chapterIndex ?? 0, 0), Math.max(chs.length - 1, 0));
+      const startIndex = initialChapterIndex !== undefined
+        ? Math.min(Math.max(initialChapterIndex, 0), Math.max(chs.length - 1, 0))
+        : Math.min(Math.max(progress?.chapterIndex ?? 0, 0), Math.max(chs.length - 1, 0));
       restoreRef.current = progress?.scrollPosition ?? 0;
       setChapterIndex(startIndex);
     })();
     return () => {
       cancelled = true;
     };
-  }, [book.id]);
+  }, [book.id, initialChapterIndex]);
 
   useEffect(() => {
     void refreshChapterNotes();
   }, [refreshChapterNotes]);
 
-  // 恢复滚动位置
+  // 恢复滚动位置（或从笔记回跳时定位到指定段落）
   useEffect(() => {
     const body = bodyRef.current;
     if (!body || !chapter) return;
+    const anchor = pendingAnchorRef.current;
+    pendingAnchorRef.current = null;
+    if (anchor !== null && anchor !== undefined) {
+      const el = body.querySelector<HTMLElement>(`[data-pi="${anchor}"]`);
+      if (el) {
+        body.scrollTop = Math.max(el.offsetTop - 14, 0);
+        return;
+      }
+    }
     const target = restoreRef.current;
     restoreRef.current = null;
     body.scrollTop = target && chapterIndex > 0 ? body.scrollHeight * target : 0;

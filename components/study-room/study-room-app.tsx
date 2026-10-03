@@ -20,7 +20,7 @@ type StudyRoomTab = "shelf" | "store" | "desk" | "mine";
 
 type StudyRoomView =
   | { kind: "tabs" }
-  | { kind: "reader"; book: Book }
+  | { kind: "reader"; book: Book; chapterIndex?: number; paragraphIndex?: number }
   | { kind: "notes" };
 
 const TAB_META: Record<StudyRoomTab, { label: string; icon: typeof Library; subtitle: string }> = {
@@ -50,11 +50,25 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
   }, []);
 
   if (view.kind === "reader") {
-    return <StudyRoomReader book={view.book} onBack={() => setView({ kind: "tabs" })} />;
+    return (
+      <StudyRoomReader
+        book={view.book}
+        initialChapterIndex={view.chapterIndex}
+        initialParagraphIndex={view.paragraphIndex}
+        onBack={() => setView({ kind: "tabs" })}
+      />
+    );
   }
 
   if (view.kind === "notes") {
-    return <StudyRoomNotes onBack={() => setView({ kind: "tabs" })} />;
+    return (
+      <StudyRoomNotes
+        onBack={() => setView({ kind: "tabs" })}
+        onOpenSource={(book, chapterIndex, paragraphIndex) => {
+          setView({ kind: "reader", book, chapterIndex, paragraphIndex });
+        }}
+      />
+    );
   }
 
   const active = TAB_META[tab];
