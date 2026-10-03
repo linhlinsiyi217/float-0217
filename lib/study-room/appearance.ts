@@ -40,7 +40,7 @@ export const VAR_DEFS: Array<{
   unit?: string;
 }> = [
   // 整体
-  { key: "--sr-accent", module: "global", label: "强调色", type: "color", fallback: "#0a84ff" },
+  { key: "--sr-accent", module: "global", label: "界面强调色", type: "color", fallback: "#4a4a4a" },
   { key: "--sr-radius", module: "global", label: "圆角", type: "range", fallback: "20", min: 0, max: 28, step: 1, unit: "px" },
   { key: "--sr-page-bg", module: "global", label: "页面底色", type: "color", fallback: "#f1f2f6" },
 
