@@ -1114,7 +1114,7 @@ function CharListView({
                 <span>NPC</span>
               </button>
               <input
-                ref={fileRef} type="file" accept=".json,.png,image/png,application/json" className="hidden"
+                ref={fileRef} type="file" accept=".json,.png,.pdf,.docx,image/png,application/json" className="hidden"
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
                   if (file) await handleImportFile(file);
