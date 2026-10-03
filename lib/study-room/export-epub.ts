@@ -9,7 +9,7 @@
 import JSZip from "jszip";
 
 import { loadAllAnnotations, loadChapters, loadNotes } from "@/lib/reading-storage";
-import type { Book, ReadingAnnotation, ReadingNote } from "@/lib/reading-types";
+import type { Book, ReadingAnnotation } from "@/lib/reading-types";
 
 export type EpubExportResult = {
   blob: Blob;

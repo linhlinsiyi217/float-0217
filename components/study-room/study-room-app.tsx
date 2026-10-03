@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, Library, Store, NotebookPen, User } from "lucide-react";
+import { ChevronLeft, Library, Store, NotebookPen, User, Users } from "lucide-react";
 
 import { hydrateReadingStorage } from "@/lib/reading-storage";
 import { applyAppearance, loadAppearance } from "@/lib/study-room/appearance";
+import { loadForum } from "@/lib/study-room/forum";
 import type { Book } from "@/lib/reading-types";
 import { StudyRoomShelf } from "./study-room-shelf";
 import { StudyRoomStore } from "./study-room-store";
@@ -17,12 +18,14 @@ import { StudyRoomAppearance } from "./study-room-appearance";
 import { StudyRoomBackup } from "./study-room-backup";
 import { StudyRoomReadingMemory } from "./study-room-reading-memory";
 import { StudyRoomCreativeEditor } from "./study-room-creative-editor";
+import { StudyRoomForum } from "./study-room-forum";
+import { StudyRoomNpcPanel } from "./study-room-npc-panel";
 
 type StudyRoomAppProps = {
   onClose: () => void;
 };
 
-type StudyRoomTab = "shelf" | "store" | "desk" | "mine";
+type StudyRoomTab = "shelf" | "store" | "desk" | "forum" | "mine";
 
 type StudyRoomView =
   | { kind: "tabs" }
@@ -32,16 +35,18 @@ type StudyRoomView =
   | { kind: "appearance" }
   | { kind: "backup" }
   | { kind: "readingMemory" }
-  | { kind: "creative"; draftId: string };
+  | { kind: "creative"; draftId: string }
+  | { kind: "npcPanel" };
 
 const TAB_META: Record<StudyRoomTab, { label: string; icon: typeof Library; subtitle: string }> = {
   shelf: { label: "书架", icon: Library, subtitle: "已收藏的书" },
   store: { label: "书城", icon: Store, subtitle: "搜索与发现" },
-  desk: { label: "书桌", icon: NotebookPen, subtitle: "摘录 · 批注 · 共读" },
+  desk: { label: "书桌", icon: NotebookPen, subtitle: "摘录 · 批注 · 创作" },
+  forum: { label: "书友圈", icon: Users, subtitle: "书友的讨论" },
   mine: { label: "我的", icon: User, subtitle: "书房与阅读" },
 };
 
-const TAB_ORDER: StudyRoomTab[] = ["shelf", "store", "desk", "mine"];
+const TAB_ORDER: StudyRoomTab[] = ["shelf", "store", "desk", "forum", "mine"];
 
 export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
   const [ready, setReady] = useState(false);
@@ -60,6 +65,12 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
     const timer = window.setTimeout(() => setReturnFromBookId(null), 1400);
     return () => window.clearTimeout(timer);
   }, [returnFromBookId]);
+
+  // 论坛名可以在书友管理里改，这里跟着刷新
+  const [forumName, setForumName] = useState<string>(() => loadForum().name);
+  useEffect(() => {
+    setForumName(loadForum().name);
+  }, [tab, view]);
 
   useEffect(() => {
     let cancelled = false;
@@ -123,6 +134,10 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
     );
   }
 
+  if (view.kind === "npcPanel") {
+    return <StudyRoomNpcPanel onBack={() => setView({ kind: "tabs" })} />;
+  }
+
   if (view.kind === "readingMemory") {
     return (
       <StudyRoomReadingMemory
@@ -167,6 +182,14 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
             />
           ) : tab === "store" ? (
             <StudyRoomStore />
+          ) : tab === "forum" ? (
+            <StudyRoomForum
+              onOpenNpcPanel={() => setView({ kind: "npcPanel" })}
+              onOpenBook={(book) => {
+                lastOpenedBookRef.current = book.id;
+                setView({ kind: "reader", book });
+              }}
+            />
           ) : tab === "desk" ? (
             <StudyRoomDesk onOpenDraft={(draftId) => setView({ kind: "creative", draftId })} />
           ) : (
@@ -196,7 +219,7 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
               aria-current={tab === key ? "page" : undefined}
             >
               <Icon size={20} strokeWidth={tab === key ? 2 : 1.6} />
-              <span className="sr-tab-label">{meta.label}</span>
+              <span className="sr-tab-label">{key === "forum" ? forumName : meta.label}</span>
             </button>
           );
         })}

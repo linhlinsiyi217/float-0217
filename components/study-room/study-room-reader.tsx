@@ -29,13 +29,7 @@ import {
 } from "@/lib/reading-storage";
 import type { Book, BookChapter, ReadingAnnotation, ReadingBookmark, ReadingNote } from "@/lib/reading-types";
 import { loadAppearance } from "@/lib/study-room/appearance";
-import {
-  NOTE_EMOJIS,
-  buildNote,
-  marksByParagraph,
-  shortText,
-  type ParagraphMark,
-} from "@/lib/study-room/annotations";
+import { NOTE_EMOJIS, buildNote, marksByParagraph, shortText } from "@/lib/study-room/annotations";
 import { generateAnnotationBatch } from "@/lib/reading-engine";
 import {
   MAX_STAGE_CHAPTERS,
@@ -179,6 +173,8 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
     return () => {
       cancelled = true;
     };
+    // 只在进入阅读器时读一次初始定位，之后章节切换由阅读器自己管
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book.id, initialChapterIndex]);
 
   useEffect(() => {
@@ -248,7 +244,7 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
       if (timer !== null) window.clearTimeout(timer);
       persist();
     };
-  }, [book.id, chapterIndex, chapters]);
+  }, [book.id, chapterIndex, chapters, paragraphs.length]);
 
   // 阶段阅读记忆：按配置在后台更新，不阻塞阅读，失败也不打断
   useEffect(() => {

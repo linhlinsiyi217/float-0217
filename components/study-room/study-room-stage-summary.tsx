@@ -133,12 +133,20 @@ export function StudyRoomStageSummary({ book, onOpenChapter }: StudyRoomStageSum
       ) : (
         <ul className="sr-detail-notes">
           {summaries.map((item) => (
-            <li key={item.id}>
+            <li key={item.id} className="sr-stage-row">
               <button type="button" onClick={() => onJump(item)}>
                 <Sparkles size={14} strokeWidth={1.8} />
                 <span className="sr-detail-note-text">
                   <strong>{item.characterName}</strong> · 第 {item.fromChapter + 1}–{item.toChapter + 1} 章：{item.summary}
                 </span>
+              </button>
+              <button
+                type="button"
+                className="sr-note-tool"
+                title="删除这条记录"
+                onClick={() => void handleDelete(item)}
+              >
+                <Trash2 size={15} strokeWidth={1.7} />
               </button>
             </li>
           ))}

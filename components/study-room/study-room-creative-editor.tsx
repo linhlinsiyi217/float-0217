@@ -389,7 +389,11 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
 
               <div className="sr-appear-row">
                 <span className="sr-appear-label">封面</span>
-                {draft.cover && <img src={draft.cover} alt="封面预览" className="sr-creative-cover" />}
+                {draft.cover && (
+                  // 封面预览用本地 data URL / 远程图，不必走 next/image 优化
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={draft.cover} alt="封面预览" className="sr-creative-cover" />
+                )}
                 <button type="button" className="sr-chip" onClick={() => coverInputRef.current?.click()}>
                   {draft.cover ? "换一张" : "选择图片"}
                 </button>
