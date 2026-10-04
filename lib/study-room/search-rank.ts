@@ -7,6 +7,7 @@
 
 import {
   authorMatchScore,
+  normalizeForMatch,
   titleMatchScore,
   type BookKind,
   type BookSearchResult,
@@ -53,17 +54,47 @@ export function dedupeById(results: BookSearchResult[]): BookSearchResult[] {
  *  - 资料：全部保留
  */
 export function filterByKind(results: BookSearchResult[], kind: BookKind | "all"): BookSearchResult[] {
+  // 资料类永远排在最后（不是删除）：先看能读的书，再往下才是资料
   if (kind === "novel") return results.filter((r) => r.kind !== "material");
   if (kind === "comic") return results.filter((r) => r.kind === "comic");
   return results;
 }
 
+/** 可读能力权重：能直接读的排最前，仅资料排最后（不删除，只是降级）。 */
+const READABILITY_WEIGHT: Record<BookSearchResult["readability"], number> = {
+  readable: 30,
+  preview: 20,
+  import: 8,
+  material: 0,
+};
+
 function scoreOf(result: BookSearchResult, terms: string[]): number {
   const best = bestMatch(result, terms);
   if (!best) return 0;
-  // 能直接读的排前面：这是用户下一步最想点的
-  const readability = result.readability === "readable" ? 8 : result.readability === "preview" ? 4 : 0;
-  return best.score + readability;
+  return best.score + READABILITY_WEIGHT[result.readability];
+}
+
+/** 同一本书的不同版本（来源/语言/年份不同）合成一组，进入详情再挑。 */
+export type ResultGroup = {
+  key: string;
+  /** 代表条目：可读能力最好、匹配最强的那一条 */
+  leader: BookSearchResult;
+  /** 其余版本 */
+  versions: BookSearchResult[];
+};
+
+export function groupVersions(results: BookSearchResult[]): ResultGroup[] {
+  const map = new Map<string, BookSearchResult[]>();
+  for (const item of results) {
+    const key = `${normalizeForMatch(item.title)}|${normalizeForMatch(item.authors[0] ?? "")}`;
+    const list = map.get(key) ?? [];
+    list.push(item);
+    map.set(key, list);
+  }
+  return Array.from(map.entries()).map(([key, list]) => {
+    const sorted = [...list].sort((a, b) => READABILITY_WEIGHT[b.readability] - READABILITY_WEIGHT[a.readability]);
+    return { key, leader: sorted[0], versions: sorted.slice(1) };
+  });
 }
 
 /** 去噪 → 分类约束 → 排序 → 去重限量。terms[0] 为用户原词，其后为别名扩展词。 */

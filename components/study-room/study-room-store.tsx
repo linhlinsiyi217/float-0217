@@ -1,17 +1,24 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Search, Download, ExternalLink, Loader2, Compass, RotateCw } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Search, Loader2, Compass, RotateCw, Heart, BookOpen, Eye, Upload, Info, ChevronDown } from "lucide-react";
 
 import {
-  READABILITY_LABEL,
+  CATEGORY_LABEL,
+  CATEGORY_ORDER,
   KIND_LABEL,
+  READABILITY_LABEL,
   hasCJK,
+  type BookCategory,
   type BookKind,
   type BookSearchResult,
+  type Readability,
   type SearchFailure,
 } from "@/lib/study-room/book-source";
-import { importBookFromBlob } from "@/lib/study-room/import";
+import { groupVersions, type ResultGroup } from "@/lib/study-room/search-rank";
+import { addToWishlist, loadWishlist, removeFromWishlist } from "@/lib/study-room/wishlist";
+import type { Book } from "@/lib/reading-types";
+import { StudyRoomSourceDetail } from "./study-room-source-detail";
 
 type KindFilter = BookKind | "all";
 
@@ -22,24 +29,51 @@ const KIND_CHIPS: Array<{ key: KindFilter; label: string }> = [
   { key: "material", label: "资料" },
 ];
 
-export function StudyRoomStore() {
+/** 可读能力筛选：默认先看能读的。 */
+const READ_CHIPS: Array<{ key: Readability | "all"; label: string }> = [
+  { key: "all", label: "全部状态" },
+  { key: "readable", label: "全文可读" },
+  { key: "preview", label: "可预览" },
+  { key: "import", label: "需自行导入" },
+];
+
+const ERA_OPTIONS: Array<{ key: string; label: string; test: (year?: string) => boolean }> = [
+  { key: "all", label: "不限年代", test: () => true },
+  { key: "new", label: "2000 年后", test: (year) => Number(year ?? 0) >= 2000 },
+  { key: "old", label: "1950 年前", test: (year) => Number(year ?? 9999) <= 1950 },
+];
+
+type StudyRoomStoreProps = {
+  /** 导入或打开书架里的书 */
+  onRead: (book: Book) => void;
+};
+
+export function StudyRoomStore({ onRead }: StudyRoomStoreProps) {
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<KindFilter>("all");
+  const [category, setCategory] = useState<BookCategory | "all">("all");
+  const [readability, setReadability] = useState<Readability | "all">("all");
+  const [source, setSource] = useState<string>("all");
+  const [language, setLanguage] = useState<string>("all");
+  const [era, setEra] = useState<string>("all");
   const [results, setResults] = useState<BookSearchResult[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [failedSources, setFailedSources] = useState<SearchFailure[]>([]);
   const [aliasNote, setAliasNote] = useState<string | null>(null);
-  const [importingId, setImportingId] = useState<string | null>(null);
-  const [importedIds, setImportedIds] = useState<Set<string>>(new Set());
   const [notice, setNotice] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
+  const [detail, setDetail] = useState<{ item: BookSearchResult; versions: BookSearchResult[] } | null>(null);
+  const [showMaterial, setShowMaterial] = useState(false);
+  const [wished, setWished] = useState<Set<string>>(() => new Set(loadWishlist().map((item) => item.id)));
 
-  // 旧请求不能覆盖新搜索：新的搜索会中止上一次请求，并用序号丢弃迟到的响应
+  // 旧请求不能覆盖新搜索
   const abortRef = useRef<AbortController | null>(null);
-  const seqRef = useRef(0);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  const flash = (message: string, ms = 2400) => {
+    setNotice(message);
+    window.setTimeout(() => setNotice((current) => (current === message ? null : current)), ms);
+  };
 
   const runSearch = async (event?: React.FormEvent) => {
     event?.preventDefault();
@@ -49,7 +83,6 @@ export function StudyRoomStore() {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    const seq = ++seqRef.current;
 
     setLoading(true);
     setError(null);
@@ -61,39 +94,140 @@ export function StudyRoomStore() {
       const res = await fetch(`/api/study-room/search?q=${encodeURIComponent(q)}&kind=${kind}`, {
         signal: controller.signal,
       });
-      if (seq !== seqRef.current) return;
       if (!res.ok) throw new Error("search failed");
       const data = (await res.json()) as { results: BookSearchResult[]; failed: SearchFailure[]; alias?: string };
-      if (seq !== seqRef.current) return;
+      if (controller.signal.aborted) return;
       setResults(data.results ?? []);
       setFailedSources(data.failed ?? []);
       setAliasNote(data.alias ?? null);
     } catch (err) {
-      if (seq !== seqRef.current) return;
+      if (controller.signal.aborted) return;
       if (err instanceof DOMException && err.name === "AbortError") return;
       setResults([]);
       setError("搜索服务暂时不可用，请稍后重试。");
     } finally {
-      if (seq === seqRef.current) setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   };
 
-  const handleImport = async (item: BookSearchResult) => {
-    if (!item.importFile) return;
-    setImportingId(item.id);
-    setNotice(null);
-    try {
-      const res = await fetch(`/api/study-room/fetch?url=${encodeURIComponent(item.importFile.url)}`);
-      if (!res.ok) throw new Error("fetch failed");
-      const blob = await res.blob();
-      await importBookFromBlob(blob, `${item.title}.${item.importFile.format}`, undefined, item.cover);
-      setImportedIds((prev) => new Set(prev).add(item.id));
-      setNotice(`《${item.title}》已导入书架，可在「书架」中阅读。`);
-    } catch {
-      setNotice("导入失败，请稍后重试。");
-    } finally {
-      setImportingId(null);
+  const toggleWish = (item: BookSearchResult) => {
+    const next = new Set(wished);
+    if (next.has(item.id)) {
+      removeFromWishlist(item.id);
+      next.delete(item.id);
+      flash("已从想读里移除");
+    } else {
+      addToWishlist(item);
+      next.add(item.id);
+      flash("已记在想读，可在「我的 → 想读的书」查看");
     }
+    setWished(next);
+  };
+
+  const sources = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of results ?? []) set.add(item.sourceLabel);
+    return Array.from(set);
+  }, [results]);
+
+  const languages = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of results ?? []) if (item.language) set.add(item.language);
+    return Array.from(set).slice(0, 8);
+  }, [results]);
+
+  const filtered = useMemo(() => {
+    const eraTest = ERA_OPTIONS.find((option) => option.key === era)?.test ?? (() => true);
+    return (results ?? []).filter((item) => {
+      if (category !== "all" && item.category !== category) return false;
+      if (readability !== "all" && item.readability !== readability) return false;
+      if (source !== "all" && item.sourceLabel !== source) return false;
+      if (language !== "all" && item.language !== language) return false;
+      if (!eraTest(item.year)) return false;
+      return true;
+    });
+  }, [results, category, readability, source, language, era]);
+
+  // 能读的在前，仅资料的收在下方「资料」区
+  const readableGroups = useMemo(() => groupVersions(filtered.filter((item) => item.readability !== "material")), [filtered]);
+  const materialGroups = useMemo(() => groupVersions(filtered.filter((item) => item.readability === "material")), [filtered]);
+
+  const cardActions = (item: BookSearchResult) => (
+    <>
+      {item.readability === "readable" && (
+        <button
+          type="button"
+          className="sr-res-btn sr-res-btn--primary"
+          onClick={() => setDetail({ item, versions: [] })}
+        >
+          <BookOpen size={15} strokeWidth={1.8} />
+          开始阅读
+        </button>
+      )}
+      {item.readability === "preview" && (
+        <button type="button" className="sr-res-btn sr-res-btn--primary" onClick={() => setDetail({ item, versions: [] })}>
+          <Eye size={15} strokeWidth={1.8} />
+          应用内预览
+        </button>
+      )}
+      {item.readability === "import" && (
+        <button type="button" className="sr-res-btn" onClick={() => setDetail({ item, versions: [] })}>
+          <Upload size={15} strokeWidth={1.8} />
+          导入我的文件
+        </button>
+      )}
+      <button
+        type="button"
+        className="sr-res-btn"
+        data-active={wished.has(item.id) ? "true" : undefined}
+        onClick={() => toggleWish(item)}
+      >
+        <Heart size={15} strokeWidth={1.8} fill={wished.has(item.id) ? "currentColor" : "none"} />
+        {wished.has(item.id) ? "已想读" : "想读"}
+      </button>
+    </>
+  );
+
+  const renderGroup = (group: ResultGroup) => {
+    const item = group.leader;
+    const book = item;
+    return (
+      <div key={group.key} className="sr-res-card">
+        <div className="sr-res-cover" style={book.cover ? { backgroundImage: `url("${book.cover}")` } : undefined}>
+          {!book.cover && book.title.slice(0, 1)}
+        </div>
+        <div className="sr-res-main">
+          <button
+            type="button"
+            className="sr-res-title sr-res-title--link"
+            onClick={() => setDetail({ item, versions: group.versions })}
+          >
+            {book.title}
+          </button>
+          <div className="sr-res-meta">
+            {book.authors.length > 0 ? book.authors.join(" / ") : "佚名"}
+            {book.year ? ` · ${book.year}` : ""}
+          </div>
+          {book.description && <div className="sr-res-desc">{book.description}</div>}
+          <div className="sr-res-tags">
+            <span className="sr-res-source">{book.sourceLabel}</span>
+            {book.category && <span className="sr-res-kind">{CATEGORY_LABEL[book.category]}</span>}
+            {!book.category && <span className="sr-res-kind">{KIND_LABEL[book.kind]}</span>}
+            <span className={`sr-res-read sr-res-read--${book.readability}`}>{READABILITY_LABEL[book.readability]}</span>
+            {group.versions.length > 0 && (
+              <button
+                type="button"
+                className="sr-res-more"
+                onClick={() => setDetail({ item, versions: group.versions })}
+              >
+                另 {group.versions.length} 个版本
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="sr-res-actions">{cardActions(book)}</div>
+      </div>
+    );
   };
 
   return (
@@ -125,6 +259,82 @@ export function StudyRoomStore() {
         ))}
       </div>
 
+      <details className="sr-filters">
+        <summary>
+          <Info size={14} strokeWidth={1.7} />
+          分类与筛选
+        </summary>
+        <div className="sr-chip-row" style={{ marginTop: 8 }}>
+          <button
+            type="button"
+            className="sr-chip"
+            data-active={category === "all" ? "true" : undefined}
+            onClick={() => setCategory("all")}
+          >
+            全部类型
+          </button>
+          {CATEGORY_ORDER.map((key) => (
+            <button
+              key={key}
+              type="button"
+              className="sr-chip"
+              data-active={category === key ? "true" : undefined}
+              onClick={() => setCategory(key)}
+            >
+              {CATEGORY_LABEL[key]}
+            </button>
+          ))}
+        </div>
+        <div className="sr-chip-row" style={{ marginTop: 6 }}>
+          {READ_CHIPS.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              className="sr-chip"
+              data-active={readability === chip.key ? "true" : undefined}
+              onClick={() => setReadability(chip.key)}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+        <div className="sr-chip-row" style={{ marginTop: 6 }}>
+          {ERA_OPTIONS.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              className="sr-chip"
+              data-active={era === option.key ? "true" : undefined}
+              onClick={() => setEra(option.key)}
+            >
+              {option.label}
+            </button>
+          ))}
+          {sources.map((item) => (
+            <button
+              key={item}
+              type="button"
+              className="sr-chip"
+              data-active={source === item ? "true" : undefined}
+              onClick={() => setSource(source === item ? "all" : item)}
+            >
+              {item}
+            </button>
+          ))}
+          {languages.map((item) => (
+            <button
+              key={item}
+              type="button"
+              className="sr-chip"
+              data-active={language === item ? "true" : undefined}
+              onClick={() => setLanguage(language === item ? "all" : item)}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      </details>
+
       {notice && (
         <div className="sr-note-card">
           <div className="sr-note-meta">{notice}</div>
@@ -140,8 +350,8 @@ export function StudyRoomStore() {
       {failedSources.length > 0 && (
         <div className="sr-note-card">
           <div className="sr-note-meta">
-            有来源暂时没有返回结果：
-            {failedSources.map((src) => `${src.label}（${src.reason ?? "不可用"}）`).join("、")}。其他来源的结果仍会显示。
+            这些来源这次没有返回结果：{failedSources.map((src) => src.label).join("、")}（
+            {Array.from(new Set(failedSources.map((src) => src.reason ?? "暂时不可用"))).join("、")}）。其它来源的结果照常显示。
           </div>
         </div>
       )}
@@ -162,7 +372,7 @@ export function StudyRoomStore() {
         </div>
       )}
 
-      {!loading && !error && results && results.length === 0 && (
+      {!loading && !error && results && filtered.length === 0 && (
         <div className="sr-empty" style={{ paddingTop: 40 }}>
           <Compass size={42} strokeWidth={1} />
           <p>
@@ -176,67 +386,50 @@ export function StudyRoomStore() {
             </p>
           )}
           <p style={{ marginTop: 8 }}>
-            也可以切到别的分类再搜一次，或在「书架」页用「导入本地书」直接导入自己的 TXT / EPUB。
+            也可以放宽上面的筛选条件，或在「书架」页用「导入本地书」直接导入自己的 TXT / EPUB。
           </p>
         </div>
       )}
 
-      {!loading && !error && results && results.length > 0 && (
+      {!loading && !error && readableGroups.length > 0 && (
         <div className="sr-res-list">
           <div className="sr-res-count">
-            {results.length} 个结果 · 来自 {Array.from(new Set(results.map((r) => r.sourceLabel))).join(" / ")}
+            {readableGroups.length} 本可读或可预览 · 来自{" "}
+            {Array.from(new Set(readableGroups.map((group) => group.leader.sourceLabel))).join(" / ")}
           </div>
-          {results.map((item) => {
-            const imported = importedIds.has(item.id);
-            const importing = importingId === item.id;
-            return (
-              <div key={item.id} className="sr-res-card">
-                <div
-                  className="sr-res-cover"
-                  style={item.cover ? { backgroundImage: `url("${item.cover}")` } : undefined}
-                >
-                  {!item.cover && item.title.slice(0, 1)}
-                </div>
-                <div className="sr-res-main">
-                  <div className="sr-res-title">{item.title}</div>
-                  <div className="sr-res-meta">
-                    {item.authors.length > 0 ? item.authors.join(" / ") : "佚名"}
-                    {item.year ? ` · ${item.year}` : ""}
-                  </div>
-                  {item.description && <div className="sr-res-desc">{item.description}</div>}
-                  <div className="sr-res-tags">
-                    <span className="sr-res-source">{item.sourceLabel}</span>
-                    <span className="sr-res-kind">{KIND_LABEL[item.kind]}</span>
-                    {item.match === "author" && <span className="sr-res-kind">作者相关</span>}
-                    <span className={`sr-res-read sr-res-read--${item.readability}`}>
-                      {READABILITY_LABEL[item.readability]}
-                    </span>
-                  </div>
-                </div>
-                <div className="sr-res-actions">
-                  {item.importFile && (
-                    <button
-                      type="button"
-                      className="sr-res-btn sr-res-btn--primary"
-                      onClick={() => handleImport(item)}
-                      disabled={importing || imported}
-                    >
-                      {importing ? <Loader2 size={15} className="sr-spin" /> : <Download size={15} strokeWidth={1.8} />}
-                      {imported ? "已导入" : "导入书架"}
-                    </button>
-                  )}
-                  <a className="sr-res-btn" href={item.externalUrl} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink size={15} strokeWidth={1.8} />
-                    前往原站
-                  </a>
-                </div>
-              </div>
-            );
-          })}
-          <p className="sr-note-meta" style={{ marginTop: 16, textAlign: "center" }}>
-            结果为各来源的公开书目，可读能力按上架状态标注；无法阅读全文的来源只提供跳转。
-          </p>
+          {readableGroups.map(renderGroup)}
         </div>
+      )}
+
+      {!loading && !error && materialGroups.length > 0 && (
+        <div className="sr-res-list">
+          <button type="button" className="sr-material-toggle" onClick={() => setShowMaterial((value) => !value)} aria-expanded={showMaterial}>
+            <ChevronDown size={15} strokeWidth={1.8} style={{ transform: showMaterial ? "rotate(180deg)" : undefined }} />
+            资料（{materialGroups.length}）
+            <span className="sr-note-meta">公告、判决、纯书目等，没有正文阅读</span>
+          </button>
+          {showMaterial && materialGroups.map(renderGroup)}
+        </div>
+      )}
+
+      {!loading && !error && (readableGroups.length > 0 || materialGroups.length > 0) && (
+        <p className="sr-note-meta" style={{ marginTop: 16, textAlign: "center", lineHeight: 1.8 }}>
+          可读状态按来源实际上架情况标注：全文可读可以直接导入书房，可预览在应用内看预览，
+          需自行导入的书房拿不到正文。不会把只有封面的条目说成能读。
+        </p>
+      )}
+
+      {detail && (
+        <StudyRoomSourceDetail
+          item={detail.item}
+          versions={detail.versions}
+          onClose={() => setDetail(null)}
+          onRead={(book) => {
+            setDetail(null);
+            onRead(book);
+          }}
+          onSwitch={(item) => setDetail({ item, versions: [] })}
+        />
       )}
     </div>
   );

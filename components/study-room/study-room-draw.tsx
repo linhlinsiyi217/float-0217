@@ -13,6 +13,8 @@ import {
   type DrawCategory,
 } from "@/lib/study-room/draw";
 import type { Book } from "@/lib/reading-types";
+import type { BookSearchResult } from "@/lib/study-room/book-source";
+import { StudyRoomSourceDetail } from "./study-room-source-detail";
 
 type StudyRoomDrawProps = {
   onBack: () => void;
@@ -41,6 +43,7 @@ export function StudyRoomDraw({ onBack, onRead, onImported }: StudyRoomDrawProps
   const [notice, setNotice] = useState<string | null>(null);
   const [importingId, setImportingId] = useState<string | null>(null);
   const [flipKey, setFlipKey] = useState(0);
+  const [detail, setDetail] = useState<BookSearchResult | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -202,11 +205,18 @@ export function StudyRoomDraw({ onBack, onRead, onImported }: StudyRoomDrawProps
                               加入书架
                             </button>
                           )}
-                          {item.externalUrl && (
-                            <a className="sr-chip" href={item.externalUrl} target="_blank" rel="noopener noreferrer">
+                          {item.raw ? (
+                            <button type="button" className="sr-chip" onClick={() => setDetail(item.raw!)}>
                               <Compass size={13} strokeWidth={1.8} />
                               查看详情
-                            </a>
+                            </button>
+                          ) : (
+                            item.externalUrl && (
+                              <a className="sr-chip" href={item.externalUrl} target="_blank" rel="noopener noreferrer">
+                                <Compass size={13} strokeWidth={1.8} />
+                                查看详情
+                              </a>
+                            )
                           )}
                         </div>
                       </div>
@@ -227,6 +237,17 @@ export function StudyRoomDraw({ onBack, onRead, onImported }: StudyRoomDrawProps
           )}
         </div>
       </div>
+
+      {detail && (
+        <StudyRoomSourceDetail
+          item={detail}
+          onClose={() => setDetail(null)}
+          onRead={(book) => {
+            setDetail(null);
+            onRead(book);
+          }}
+        />
+      )}
     </section>
   );
 }

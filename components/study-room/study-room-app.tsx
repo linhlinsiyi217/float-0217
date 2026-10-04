@@ -24,6 +24,7 @@ import { StudyRoomSplash, shouldSkipStudyRoomSplash } from "./study-room-splash"
 import { StudyRoomUpdateLog } from "./study-room-update-log";
 import { StudyRoomUpdateNotice } from "./study-room-update-notice";
 import { StudyRoomDraw } from "./study-room-draw";
+import { StudyRoomWishlist } from "./study-room-wishlist";
 import { StudyRoomNpcPanel } from "./study-room-npc-panel";
 import { StudyRoomGifts } from "./study-room-gifts";
 
@@ -45,7 +46,8 @@ type StudyRoomView =
   | { kind: "npcPanel" }
   | { kind: "gifts" }
   | { kind: "updateLog" }
-  | { kind: "draw" };
+  | { kind: "draw" }
+  | { kind: "wishlist" };
 
 const TAB_META: Record<StudyRoomTab, { label: string; icon: typeof Library; subtitle: string }> = {
   shelf: { label: "书架", icon: Library, subtitle: "已收藏的书" },
@@ -166,6 +168,10 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
     return <StudyRoomUpdateLog onBack={() => setView({ kind: "tabs" })} />;
   }
 
+  if (view.kind === "wishlist") {
+    return <StudyRoomWishlist onBack={() => setView({ kind: "tabs" })} />;
+  }
+
   if (view.kind === "draw") {
     return (
       <StudyRoomDraw
@@ -232,7 +238,12 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
               onOpenMessages={() => setView({ kind: "messages" })}
             />
           ) : tab === "store" ? (
-            <StudyRoomStore />
+            <StudyRoomStore
+              onRead={(book) => {
+                lastOpenedBookRef.current = book.id;
+                setView({ kind: "reader", book });
+              }}
+            />
           ) : tab === "forum" ? (
             <StudyRoomForum
               onOpenNpcPanel={() => setView({ kind: "npcPanel" })}
@@ -252,6 +263,7 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
               onOpenReadingMemory={() => setView({ kind: "readingMemory" })}
               onOpenGifts={() => setView({ kind: "gifts" })}
               onOpenUpdateLog={() => setView({ kind: "updateLog" })}
+              onOpenWishlist={() => setView({ kind: "wishlist" })}
             />
           )}
         </div>

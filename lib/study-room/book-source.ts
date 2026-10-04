@@ -3,10 +3,33 @@
 
 export type BookKind = "novel" | "comic" | "material";
 
-/** 结果的可读能力，三种状态必须分别标注，不能把资料伪装成可读全文。 */
-export type Readability = "readable" | "preview" | "external";
+/**
+ * 结果的可读能力，四种状态必须分别标注，不能把资料或外链伪装成可读全文：
+ *  - readable：来源提供可下载正文（TXT/EPUB），导入书房即可全文阅读
+ *  - preview：来源提供在线预览，可在书房内预览或明确提示去来源预览
+ *  - import：只有书目信息，需要用户自己导入本地文件才能读
+ *  - material：仅资料（公告、判决、纯书目等），不提供阅读入口
+ */
+export type Readability = "readable" | "preview" | "import" | "material";
+
+/** 展示用的细分类型（比小说/漫画/资料更细，用于分类筛选） */
+export type BookCategory =
+  | "novel"
+  | "classic"
+  | "comic"
+  | "poetry"
+  | "drama"
+  | "history"
+  | "philosophy"
+  | "psychology"
+  | "social"
+  | "science"
+  | "biography"
+  | "reference";
 
 export type BookSearchResult = {
+  /** 细分类型，用于分类筛选与展示 */
+  category?: BookCategory;
   /** 全局唯一：`${sourceId}:${sourceItemId}` */
   id: string;
   sourceId: string;
@@ -77,10 +100,64 @@ export const KIND_LABEL: Record<BookKind, string> = {
 };
 
 export const READABILITY_LABEL: Record<Readability, string> = {
-  readable: "书房内可读",
-  preview: "仅可预览",
-  external: "前往原站",
+  readable: "全文可读",
+  preview: "可预览",
+  import: "需本地导入",
+  material: "仅资料",
 };
+
+export const CATEGORY_LABEL: Record<BookCategory, string> = {
+  novel: "小说",
+  classic: "文学经典",
+  comic: "漫画",
+  poetry: "诗歌",
+  drama: "戏剧",
+  history: "历史",
+  philosophy: "哲学",
+  psychology: "心理",
+  social: "社科",
+  science: "科普",
+  biography: "传记",
+  reference: "工具资料",
+};
+
+export const CATEGORY_ORDER: BookCategory[] = [
+  "novel", "classic", "comic", "poetry", "drama", "history",
+  "philosophy", "psychology", "social", "science", "biography", "reference",
+];
+
+// 细分类型关键词：来源给出的题材/分类文本 → 具体类型
+const CATEGORY_WORDS: Array<{ category: BookCategory; words: string[] }> = [
+  { category: "comic", words: ["漫画", "连环画", "绘本", "manga", "comic", "graphic novel"] },
+  { category: "poetry", words: ["诗", "诗选", "诗集", "poetry", "poem"] },
+  { category: "drama", words: ["戏剧", "剧本", "戏曲", "话剧", "drama", "play", "theater"] },
+  { category: "classic", words: ["经典", "名著", "古籍", "classic", "literature", "literary"] },
+  { category: "history", words: ["历史", "史学", "史书", "history", "historical"] },
+  { category: "philosophy", words: ["哲学", "伦理", "philosophy", "ethic"] },
+  { category: "psychology", words: ["心理", "psychology", "psycho"] },
+  { category: "social", words: ["社科", "社会学", "政治", "经济", "法律", "social", "politics", "economics", "law"] },
+  { category: "science", words: ["科普", "科学", "数学", "物理", "生物", "science", "mathematics", "physics", "biology"] },
+  { category: "biography", words: ["传记", "回忆录", "自传", "biography", "memoir", "autobiography"] },
+  { category: "reference", words: ["工具书", "词典", "手册", "教材", "年鉴", "reference", "dictionary", "textbook", "handbook"] },
+  { category: "novel", words: ["小说", "fiction", "novel", "story", "romance", "mystery", "fantasy", "science fiction"] },
+];
+
+/** 细分类型判断：拿不准就用来源给的兜底类型，不硬猜。 */
+export function classifyCategory(text: string | undefined | null, fallback: BookCategory = "novel"): BookCategory {
+  if (!text) return fallback;
+  const lower = text.toLowerCase();
+  for (const entry of CATEGORY_WORDS) {
+    if (entry.words.some((word) => lower.includes(word))) return entry.category;
+  }
+  return fallback;
+}
+
+/** 由「小说/漫画/资料」这类粗分类推细分类型（兜底用） */
+export function categoryFromKind(kind: BookKind): BookCategory {
+  if (kind === "comic") return "comic";
+  if (kind === "material") return "reference";
+  return "novel";
+}
 
 // ── 匹配与分类：把「含关键词的正文」与「真正的这本书」分开 ──
 

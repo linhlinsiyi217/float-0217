@@ -5,7 +5,7 @@
 // 单个来源失败不影响其他来源，失败按来源维度回报（含可读的名称与原因）。
 
 import type { BookKind, BookSearchResult, SearchFailure, SourceSearchParams } from "./book-source";
-import { hasCJK, normalizeForMatch, classifyKind, titleMatchScore } from "./book-source";
+import { hasCJK, normalizeForMatch, classifyKind, classifyCategory, titleMatchScore } from "./book-source";
 import { latinAliasesFor, zhAliasesFor } from "./aliases";
 
 const UA = "LinH-Float-StudyRoom/1.0 (book search; contact: site owner)";
@@ -103,7 +103,8 @@ async function openLibraryTerm(term: string, limit: number, signal: AbortSignal)
         year: doc.first_publish_year ? String(doc.first_publish_year) : undefined,
         language: doc.language?.[0],
         kind,
-        readability: "external",
+        category: classifyCategory(doc.subject?.join(" "), "novel"),
+        readability: "import",
         externalUrl: `https://openlibrary.org${doc.key}`,
         workKey: doc.title ? `ol:${normalizeForMatch(doc.title)}` : undefined,
       };
@@ -158,7 +159,8 @@ async function googleBooksTerm(term: string, limit: number, signal: AbortSignal)
         year: info.publishedDate?.slice(0, 4),
         language: info.language,
         kind: classifyKind(info.categories?.join(" ")) ?? "novel",
-        readability: viewable ? "preview" : "external",
+        category: classifyCategory(info.categories?.join(" "), "novel"),
+        readability: viewable ? "preview" : "import",
         externalUrl: access.webReaderLink || access.previewLink || `https://books.google.com/books?id=${item.id}`,
         description: info.description?.slice(0, 180),
         workKey: info.title ? `gb:${normalizeForMatch(info.title)}` : undefined,
@@ -220,7 +222,8 @@ const gutenberg: Provider = {
           cover: formats["image/jpeg"],
           language: book.languages?.[0],
           kind: classifyKind(book.subjects?.join(" ")) ?? "novel",
-          readability: importFile ? "readable" : "external",
+          category: classifyCategory(book.subjects?.join(" "), "classic"),
+          readability: importFile ? "readable" : "import",
           externalUrl: `https://www.gutenberg.org/ebooks/${book.id}`,
           description: book.subjects?.slice(0, 3).join(" · "),
           importFile,
@@ -290,6 +293,7 @@ const wikisource: Provider = {
       if (!titleHit && !categoryHit) continue;
 
       const kind = classifyKind(`${title} ${categories.join(" ")}`) ?? "novel";
+      const isMaterial = kind === "material";
       out.push({
         id: `wikisource:${title}`,
         sourceId: "wikisource",
@@ -298,7 +302,10 @@ const wikisource: Provider = {
         // 维基文库页面没有结构化作者字段，不做猜测（宁可显示「佚名」）
         authors: [],
         kind,
-        readability: "external",
+        category: classifyCategory(`${title} ${categories.join(" ")}`, "classic"),
+        readability: isMaterial ? "material" : "readable",
+        // 公版正文可直接导入书房阅读；资料类不给阅读入口
+        importFile: isMaterial ? undefined : { url: `/api/study-room/wikitext?title=${encodeURIComponent(title)}`, format: "txt" as const },
         externalUrl: `https://zh.wikisource.org/wiki/${encodeURIComponent(title)}`,
         description: titleHit ? snippet || categories.slice(0, 3).join(" · ") : `维基文库中收录于「${term}」分类的作品`,
         match: titleHit ? undefined : "author",
@@ -355,8 +362,9 @@ const mangadex: Provider = {
         year: attrs.year ? String(attrs.year) : undefined,
         language: "zh",
         kind: "comic",
+        category: "comic",
         // 该站为粉丝翻译转载，不承诺正文可合法获取：只提供书目与原站跳转
-        readability: "external",
+        readability: "import",
         externalUrl: `https://mangadex.org/title/${item.id}`,
         description: titles.filter((t) => t !== zhAlt).slice(0, 2).join(" / "),
         workKey: titles[0] ? `manga:${normalizeForMatch(titles[0])}` : undefined,
@@ -408,7 +416,8 @@ const anilist: Provider = {
         authors: (m.staff?.nodes ?? []).map((n) => n.name?.full ?? "").filter(Boolean),
         cover: m.coverImage?.medium,
         kind: "comic",
-        readability: "external",
+        category: "comic",
+        readability: "import",
         externalUrl: m.siteUrl ?? `https://anilist.co/manga/${m.id}`,
         description: [m.title?.romaji, m.title?.native].filter((v) => v && v !== m.title?.english).join(" / "),
         workKey: m.title?.romaji ? `anilist:${normalizeForMatch(m.title.romaji)}` : undefined,

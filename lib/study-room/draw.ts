@@ -55,6 +55,8 @@ export type DrawCandidate = {
   /** 书城结果带着导入文件信息 */
   importFile?: { url: string; format: "txt" | "epub" };
   externalUrl?: string;
+  /** 原始来源结果：点「查看详情」时复用统一详情页 */
+  raw?: BookSearchResult;
 };
 
 function matchesCategory(book: Book, category: DrawCategory): boolean {
@@ -98,6 +100,7 @@ export function toCandidates(results: BookSearchResult[]): DrawCandidate[] {
         year: item.year,
         importFile: item.importFile,
         externalUrl: item.externalUrl,
+        raw: item,
       });
       continue;
     }
@@ -113,6 +116,7 @@ export function toCandidates(results: BookSearchResult[]): DrawCandidate[] {
         sourceLabel: item.sourceLabel,
         year: item.year,
         externalUrl: item.externalUrl,
+        raw: item,
       });
     }
   }
