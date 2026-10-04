@@ -38,6 +38,12 @@ export type ForumNpc = {
   speechStyle: string;
   /** 与其他书友/用户的关系 */
   relations: string;
+  /** 公开书架上的几本书（人设的一部分，不是真实用户数据） */
+  shelfTitles?: string[];
+  /** 关注了哪些书友（npc id） */
+  following?: string[];
+  /** 被哪些书友关注（npc id 或 "user"） */
+  followers?: string[];
   source: NpcSource;
   /** source="character" 时指向宿主角色卡，复用同一个身份 */
   characterId?: string;
@@ -70,13 +76,92 @@ export type ForumPost = {
   bookTitle?: string;
   bookId?: string;
   spoiler: boolean;
+  /** 帖子里带的图片（data URL，本地压缩后保存） */
+  images?: string[];
+  /** 话题与标签 */
+  topics?: string[];
   likedBy: string[];
+  /** 收藏过这条帖子的用户/书友 id */
+  collectedBy?: string[];
   comments: ForumComment[];
   /** 由 AI 生成的内容会标出来 */
   generated: boolean;
   /** 话题键：同一话题的生成冷却用 */
   topicKey?: string;
   createdAt: string;
+};
+
+/** 收到的互动通知 */
+export type ForumNotification = {
+  id: string;
+  kind: "comment" | "reply" | "like" | "mention" | "follow" | "friend";
+  fromId: string;
+  fromName: string;
+  postId?: string;
+  text?: string;
+  createdAt: string;
+  read: boolean;
+};
+
+/** 草稿箱里的一条草稿（只是还没发布的内容，不是帖子） */
+export type ForumDraft = {
+  id: string;
+  kind: ForumPost["kind"];
+  title?: string;
+  body: string;
+  bookTitle?: string;
+  images?: string[];
+  topics?: string[];
+  spoiler: boolean;
+  updatedAt: string;
+};
+
+/** 计划中的书友评论：错时出现，避免发布瞬间刷出一堆 */
+export type PendingReply = {
+  id: string;
+  postId: string;
+  npcId: string;
+  dueAt: string;
+};
+
+/** 论坛生成规则：分五组，默认开箱可用，普通用户不需要改。 */
+export type ForumRules = {
+  /** 首页动态：自动帖子类型 / 数量 / 话题与内容边界 */
+  feedTypes: string;
+  feedCount: number;
+  feedScope: string;
+  /** 论坛搜索结果：只返回与查询高度相关的帖子、书友、书籍与话题 */
+  searchScope: string;
+  /** 评论与回复：长度、语气、关系感、是否继续追问 */
+  commentLength: string;
+  commentTone: string;
+  commentRelation: string;
+  commentFollowUp: boolean;
+  /** NPC 日常活动：发帖、点赞、关注、送礼、加好友的节奏 */
+  dailyPosts: number;
+  dailyLikes: number;
+  dailyFollows: number;
+  dailyGifts: number;
+  dailyFriends: number;
+  /** 热门话题：近期书籍、作者、类型与阅读话题 */
+  hotTopics: string;
+};
+
+export const DEFAULT_FORUM_RULES: ForumRules = {
+  feedTypes: "书评、推荐、讨论都可以；以读完/在读的书为主，也可以聊听说的书",
+  feedCount: 3,
+  feedScope: "不写辱骂、骚扰与现实中的群体攻击；允许剧透，但含剧透的发言要标出来",
+  searchScope: "只返回与查询关键词高度相关的帖子、书友、书籍与话题，不要塞无关内容",
+  commentLength: "一到三句话，有话则长、无话则短",
+  commentTone: "像真人打字：允许赞同、追问、补充与温和反驳，不要一片夸奖",
+  commentRelation: "按与楼主的关系调整亲疏：熟人更随意，陌生人更客气",
+  commentFollowUp: true,
+  dailyPosts: 2,
+  dailyLikes: 6,
+  dailyFollows: 1,
+  dailyGifts: 1,
+  dailyFriends: 1,
+  hotTopics: "近期大家在聊：经典重读、科幻短篇、历史非虚构、漫画改编",
 };
 
 export type ForumState = {
@@ -89,6 +174,18 @@ export type ForumState = {
   hiddenPostIds: string[];
   /** 生成冷却记录（话题键 → 时间） */
   generatedAt: Record<string, string>;
+  /** 用户关注了哪些书友 */
+  following: string[];
+  /** 收到的互动通知（评论、回复、点赞、提及、好友申请、关注） */
+  notifications: ForumNotification[];
+  /** 草稿箱 */
+  drafts: ForumDraft[];
+  /** 计划中的书友评论（错时出现，刷新后继续） */
+  pendingReplies: PendingReply[];
+  /** 首次进入是否已经初始化过书友与初始内容 */
+  seeded: boolean;
+  /** 论坛生成规则（可编辑，默认开箱可用） */
+  rules: ForumRules;
 };
 
 export const DEFAULT_FORUM: ForumState = {
@@ -98,6 +195,12 @@ export const DEFAULT_FORUM: ForumState = {
   mutedNpcIds: [],
   hiddenPostIds: [],
   generatedAt: {},
+  following: [],
+  notifications: [],
+  drafts: [],
+  pendingReplies: [],
+  seeded: false,
+  rules: DEFAULT_FORUM_RULES,
 };
 
 /** 同一话题多久内不重复生成（用户仍可以手动重来）。 */
@@ -115,6 +218,12 @@ export function loadForum(): ForumState {
       mutedNpcIds: Array.isArray(parsed.mutedNpcIds) ? parsed.mutedNpcIds : [],
       hiddenPostIds: Array.isArray(parsed.hiddenPostIds) ? parsed.hiddenPostIds : [],
       generatedAt: parsed.generatedAt && typeof parsed.generatedAt === "object" ? parsed.generatedAt : {},
+      following: Array.isArray(parsed.following) ? parsed.following : [],
+      notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
+      drafts: Array.isArray(parsed.drafts) ? parsed.drafts : [],
+      pendingReplies: Array.isArray(parsed.pendingReplies) ? parsed.pendingReplies : [],
+      seeded: parsed.seeded === true,
+      rules: { ...DEFAULT_FORUM_RULES, ...(parsed.rules && typeof parsed.rules === "object" ? parsed.rules : {}) },
     };
   } catch {
     return { ...DEFAULT_FORUM };
@@ -170,6 +279,20 @@ const READING_TASTES = [
 const SPEECH_STYLES = [
   "短句，少用感叹号", "爱用比喻，句子里常带画面", "说话像列条目，先结论后理由",
   "常引用书里的原话", "喜欢用问句把话题接下去", "语气随意，常带口头语", "书面感强，用词偏正式",
+];
+
+/** 公开书架候选：人设里「书友喜欢的书」，不是真实用户数据 */
+const SHELF_TITLES: string[][] = [
+  ["红楼梦", "呐喊", "人间词话"],
+  ["局外人", "审判", "卡夫卡短篇集"],
+  ["百年孤独", "霍乱时期的爱情", "没有人给他写信的上校"],
+  ["三体", "球状闪电", "银河帝国：基地"],
+  ["万历十五年", "叫魂", "中国历代政治得失"],
+  ["福尔摩斯探案集", "东方快车谋杀案", "无人生还"],
+  ["瓦尔登湖", "沙乡年鉴", "寂静的春天"],
+  ["小王子", "夜航", "人的大地"],
+  ["海贼王", "灌篮高手", "钢之炼金术师"],
+  ["傲慢与偏见", "简·爱", "呼啸山庄"],
 ];
 
 const RELATIONS = [
@@ -235,6 +358,9 @@ export function generateNpc(options: NpcGenerateOptions = {}): ForumNpc {
     readingTaste: pick(READING_TASTES, random),
     speechStyle: pick(SPEECH_STYLES, random),
     relations: pick(RELATIONS, random),
+    shelfTitles: SHELF_TITLES[Math.floor(random() * SHELF_TITLES.length)] ?? [],
+    following: [],
+    followers: [],
     source: "generated",
     createdAt: now,
     updatedAt: now,

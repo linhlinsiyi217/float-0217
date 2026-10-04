@@ -20,6 +20,7 @@ import {
 } from "@/lib/study-room/gifts";
 import { loadForum } from "@/lib/study-room/forum";
 import { loadCharacters } from "@/lib/character-storage";
+import { HelpTip } from "./help-tip";
 
 /** 礼物图标：原创 SVG，统一 24×24 视口与自己画的路径。 */
 export function GiftIcon({ id, size = 26, className }: { id: GiftId; size?: number; className?: string }) {
@@ -128,6 +129,10 @@ export function GiftSheet({ presetRecipient, book, postId, mode = "gift", onClos
         <div className="sr-gift-head">
           <span className="sr-sheet-label" style={{ margin: 0 }}>
             {kind === "book" ? "送这本书" : "送一份心意"}
+            <HelpTip id="gift" label="送礼说明">
+              礼物是本机记录的虚拟心意：不涉及充值、支付或余额。送出后会存一条记录（谁送的、送给谁、数量与时间），
+              对方可以按人设回一句；重复点击不会重复送出。
+            </HelpTip>
             {book ? ` · 《${book.title}》` : ""}
           </span>
           <button type="button" className="sr-icon-btn" onClick={onClose} aria-label="关闭">

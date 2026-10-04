@@ -38,6 +38,7 @@ import {
   unseenAnnotations,
 } from "@/lib/study-room/annotations";
 import { generateAnnotationBatch } from "@/lib/reading-engine";
+import { HelpTip } from "./help-tip";
 import {
   MAX_STAGE_CHAPTERS,
   generateStageSummary,
@@ -884,7 +885,13 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
                 <span className="sr-note-meta">还没有角色：先在「我的 → 角色」里创建，就能让 TA 为这段写批注。</span>
               )}
             </div>
-            <p className="sr-note-meta" style={{ marginTop: 6 }}>只把这一段原文发给 AI，不会发送整章。</p>
+            <p className="sr-note-meta" style={{ marginTop: 6 }}>
+              只把这一段原文发给 AI，不会发送整章。
+              <HelpTip id="ai-annotate" label="AI 批注说明">
+                点「让 TA 批注这段」会把选中的这一段落和这本书已有的批注记录发给该角色（用你在设置里配的 API），
+                回来的批注存在本机，和你的批注一起显示在这一段下面，可以随时删掉。
+              </HelpTip>
+            </p>
           </div>
         </div>
       )}

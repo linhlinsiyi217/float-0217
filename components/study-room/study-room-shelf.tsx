@@ -53,6 +53,8 @@ export function StudyRoomShelf({ onOpenBook, onOpenMessages, returnFromBookId }:
   // 从阅读器返回：保持抽出一小会儿，然后归位
   useEffect(() => {
     if (!returnFromBookId) return;
+    // 先把这本书设为「已抽出」，停留一小会儿后自然归位（书架的抽出/归位动画本身由 transitionend 驱动）
+    setActiveId((id) => (id === returnFromBookId ? id : returnFromBookId));
     const timer = window.setTimeout(() => setActiveId((id) => (id === returnFromBookId ? null : id)), RETURN_HOLD_MS);
     return () => window.clearTimeout(timer);
   }, [returnFromBookId]);

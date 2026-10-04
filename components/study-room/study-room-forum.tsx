@@ -1,34 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Heart,
-  MessageSquare,
-  PenLine,
-  Send,
-  Sparkles,
-  Square,
-  Users,
-  EyeOff,
-  BookOpen,
-  Gift,
-} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Bell, ChevronLeft, Compass, Loader2, PenLine, Search, X } from "lucide-react";
 
 import { loadBooks } from "@/lib/reading-storage";
 import type { Book } from "@/lib/reading-types";
 import { avatarDataUrl } from "@/lib/study-room/npc-avatar";
-import { GiftSheet } from "./gift-sheet";
 import {
-  KIND_TEXT,
   addComment,
-  addPost,
   generateForumPosts,
+  pickParticipants,
   hidePost,
   loadForum,
-  muteNpc,
-  pickParticipants,
+  makeFriendFromNpc,
   saveForum,
-  topicCooldownRemaining,
   toggleLike,
   unhidePost,
   type ForumNpc,
@@ -36,166 +21,494 @@ import {
   type ForumState,
   type ForumTopic,
 } from "@/lib/study-room/forum";
-
-const ME = "user";
+import {
+  CHANNEL_LABEL,
+  applyComment,
+  channelPosts,
+  consumeReply,
+  dueReplies,
+  ensureSeeded,
+  generateComment,
+  isFollowing,
+  markNotificationsRead,
+  pushNotification,
+  scheduleReplies,
+  searchForum,
+  toggleCollect,
+  toggleFollowNpc,
+  unreadNotifications,
+  type ForumChannel,
+} from "@/lib/study-room/forum-social";
+import { GiftSheet } from "./gift-sheet";
+import { StudyRoomForumCompose } from "./study-room-forum-compose";
+import { StudyRoomForumDrawer } from "./study-room-forum-drawer";
+import { StudyRoomForumPostCard, StudyRoomForumPostView } from "./study-room-forum-post";
+import { StudyRoomForumProfile } from "./study-room-forum-profile";
+import { StudyRoomForumSettings } from "./study-room-forum-settings";
 
 type StudyRoomForumProps = {
   onOpenNpcPanel: () => void;
   onOpenBook: (book: Book) => void;
+  /** 进入「我的」（用户主页复用书房既有的我的） */
+  onOpenMine: () => void;
 };
 
-type Draft = { kind: ForumPost["kind"]; title: string; body: string; bookTitle: string; spoiler: boolean };
+const ME = "user";
+const REPLY_TICK_MS = 20_000;
 
-const EMPTY_DRAFT: Draft = { kind: "post", title: "", body: "", bookTitle: "", spoiler: false };
-
-export function StudyRoomForum({ onOpenNpcPanel, onOpenBook }: StudyRoomForumProps) {
+/**
+ * 书友圈：进来就是能读的信息流。
+ * 普通用户不需要先写话题或提示词：书友与内容会自己生成和维护；
+ * 想看什么就搜、想说什么就发，其余交给书友按人设回应。
+ */
+export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine }: StudyRoomForumProps) {
   const [state, setState] = useState<ForumState>(() => loadForum());
-  const [filter, setFilter] = useState<"all" | ForumPost["kind"]>("all");
-  const [showHidden, setShowHidden] = useState(false);
-  const [composing, setComposing] = useState(false);
-  const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
-  const [topicLabel, setTopicLabel] = useState("");
-  const [topicPrompt, setTopicPrompt] = useState("");
-  const [generating, setGenerating] = useState(false);
+  const [channel, setChannel] = useState<ForumChannel>("recommend");
+  const [view, setView] = useState<
+    | { kind: "feed" }
+    | { kind: "post"; postId: string }
+    | { kind: "compose"; draftId?: string }
+    | { kind: "profile"; npcId: string }
+    | { kind: "search"; query: string }
+    | { kind: "settings" }
+  >({ kind: "feed" });
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [giftTarget, setGiftTarget] = useState<{ postId: string; npcId?: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
-  // 含剧透的发言默认糊住，点开才显示
-  const [revealed, setRevealed] = useState<Record<string, boolean>>({});
-  const [replyTo, setReplyTo] = useState<Record<string, string>>({});
-  // 给某个帖子/某位书友送礼
-  const [giftTarget, setGiftTarget] = useState<{ postId: string; npcId?: string; bookTitle?: string } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const bootstrappedRef = useRef(false);
+  const feedBootstrappedRef = useRef(false);
   const books = useMemo(() => {
     const map: Record<string, Book> = {};
     for (const book of loadBooks()) map[book.id] = book;
     return map;
   }, []);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  const mutate = useCallback((updater: (prev: ForumState) => ForumState) => {
+    setState((prev) => {
+      const next = updater(prev);
+      saveForum(next);
+      return next;
+    });
+  }, []);
 
-  const save = (next: ForumState) => {
-    setState(next);
-    saveForum(next);
-  };
-
-  const flash = (message: string, ms = 2400) => {
+  const flash = useCallback((message: string, ms = 2600) => {
     setNotice(message);
-    window.setTimeout(() => setNotice((n) => (n === message ? null : n)), ms);
-  };
+    window.setTimeout(() => setNotice((current) => (current === message ? null : current)), ms);
+  }, []);
 
-  const npcById = useMemo(() => {
-    const map: Record<string, ForumNpc> = {};
-    for (const npc of state.npcs) map[npc.id] = npc;
-    return map;
-  }, [state.npcs]);
-
-  const visiblePosts = useMemo(() => {
-    return state.posts
-      .filter((post) => (showHidden ? true : !state.hiddenPostIds.includes(post.id)))
-      .filter((post) => (filter === "all" ? true : post.kind === filter))
-      .filter((post) => !(post.authorKind === "npc" && state.mutedNpcIds.includes(post.authorId)))
-      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-  }, [state.posts, state.hiddenPostIds, state.mutedNpcIds, filter, showHidden]);
-
-  const mutedCount = state.mutedNpcIds.length;
-  const hiddenCount = state.hiddenPostIds.length;
-
-  const handlePost = () => {
-    const body = draft.body.trim();
-    if (!body) {
-      flash("先写点内容");
-      return;
+  // 首次进入：没有书友就先建一批（本地生成，不依赖 API）
+  useEffect(() => {
+    if (bootstrappedRef.current) return;
+    bootstrappedRef.current = true;
+    const { state: seeded, created } = ensureSeeded(loadForum());
+    if (created > 0) {
+      saveForum(seeded);
+      setState(seeded);
     }
-    const post: ForumPost = {
-      id: `fp_user_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
-      authorId: ME,
-      authorName: "我",
-      authorKind: "user",
-      kind: draft.kind,
-      title: draft.title.trim() || undefined,
-      body,
-      bookTitle: draft.bookTitle.trim() || undefined,
-      spoiler: draft.spoiler,
-      likedBy: [],
-      comments: [],
-      generated: false,
-      createdAt: new Date().toISOString(),
-    };
-    save(addPost(state, post));
-    setDraft(EMPTY_DRAFT);
-    setComposing(false);
-    flash("已发布");
-  };
+  }, []);
 
-  const runGenerate = async () => {
-    const label = topicLabel.trim() || draft.bookTitle.trim();
-    if (!label) {
-      flash("先说说想让大家聊什么");
-      return;
-    }
-    if (state.npcs.length === 0) {
-      flash("书友圈还没有人，先去「书友管理」生成几位书友", 3000);
-      return;
-    }
-    const topic: ForumTopic = { key: label, label, prompt: topicPrompt.trim() || undefined };
-    const remaining = topicCooldownRemaining(state, topic.key);
-    if (remaining > 0 && !confirm(`这个话题刚聊过（约 ${Math.ceil(remaining / 60000)} 分钟内不建议重复），还要再来一轮？`)) {
-      return;
-    }
-    abortRef.current?.abort();
+  // 首次进入且还没有帖子：让书友先聊几句（按生成规则里的数量），生成不了就如实说明
+  useEffect(() => {
+    if (feedBootstrappedRef.current) return;
+    const current = loadForum();
+    if (current.posts.length > 0 || current.npcs.length === 0) return;
+    feedBootstrappedRef.current = true;
     const controller = new AbortController();
     abortRef.current = controller;
-    setGenerating(true);
-    try {
-      const participants = pickParticipants(state, topic, 3);
-      const posts = await generateForumPosts(state, topic, participants, controller.signal);
-      const next: ForumState = {
-        ...state,
-        posts: [...posts, ...state.posts].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
-        generatedAt: { ...state.generatedAt, [topic.key]: new Date().toISOString() },
-      };
-      save(next);
-      setTopicLabel("");
-      setTopicPrompt("");
-      flash(`${participants.map((p) => p.nickname).join("、")} 聊了几句`, 3000);
-    } catch (err) {
-      if ((err as Error).name === "AbortError") flash("已停止生成");
-      else flash((err as Error).message || "生成失败，可以重试", 3600);
-    } finally {
-      setGenerating(false);
+    void (async () => {
+      setBusy("feed");
+      try {
+        const topic: ForumTopic = {
+          key: "首页动态",
+          label: current.rules.hotTopics.slice(0, 40) || "最近在读什么",
+          prompt: current.rules.feedTypes,
+        };
+        const participants = pickParticipants(current, topic, Math.max(2, Math.min(current.rules.feedCount, 4)));
+        const created = await generateForumPosts(current, topic, participants, controller.signal);
+        if (controller.signal.aborted) return;
+        mutate((prev) => ({ ...prev, posts: [...created.slice(0, Math.max(1, prev.rules.feedCount)), ...prev.posts] }));
+      } catch {
+        if (!controller.signal.aborted) {
+          flash("暂时生成不了初始内容（可能还没绑定模型，或来源暂时不可用）。你可以自己发一条，或到「生成规则」里检查设置。", 4600);
+        }
+      } finally {
+        if (!controller.signal.aborted) setBusy(null);
+      }
+    })();
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 计划中的书友评论：到点就生成一条（错时出现，刷新后继续）
+  const processDueReplies = useCallback(async () => {
+    const current = loadForum();
+    const due = dueReplies(current).slice(0, 2);
+    if (due.length === 0) return;
+    for (const reply of due) {
+      const post = current.posts.find((item) => item.id === reply.postId);
+      const npc = current.npcs.find((item) => item.id === reply.npcId);
+      if (!post || !npc) {
+        mutate((prev) => consumeReply(prev, reply.id));
+        continue;
+      }
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      try {
+        const body = await generateComment(post, npc, current.rules, controller.signal);
+        if (controller.signal.aborted) return;
+        if (!body) {
+          mutate((prev) => consumeReply(prev, reply.id));
+          continue;
+        }
+        mutate((prev) => applyComment(prev, reply, body));
+      } catch {
+        mutate((prev) => consumeReply(prev, reply.id));
+      }
+    }
+  }, [mutate]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => void processDueReplies(), REPLY_TICK_MS);
+    const initial = window.setTimeout(() => void processDueReplies(), 4000);
+    return () => {
+      window.clearInterval(timer);
+      window.clearTimeout(initial);
+    };
+  }, [processDueReplies]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const handleLike = (post: ForumPost) => {
+    const liked = post.likedBy.includes(ME);
+    mutate((prev) => toggleLike(prev, post.id, ME));
+    if (!liked && post.authorId !== ME) {
+      mutate((prev) =>
+        pushNotification(prev, {
+          kind: "like",
+          fromId: post.authorId,
+          fromName: post.authorName,
+          postId: post.id,
+        }),
+      );
     }
   };
 
-  const handleComment = (post: ForumPost) => {
-    const body = (commentDrafts[post.id] ?? "").trim();
-    if (!body) return;
-    const comment = {
-      id: `fc_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
-      authorId: ME,
-      authorName: "我",
-      authorKind: "user" as const,
-      body,
-      replyToId: replyTo[post.id],
-      createdAt: new Date().toISOString(),
-    };
-    save(addComment(state, post.id, comment));
-    setCommentDrafts((prev) => ({ ...prev, [post.id]: "" }));
-    setReplyTo((prev) => ({ ...prev, [post.id]: "" }));
+  const handleComment = (post: ForumPost, body: string, replyToId?: string) => {
+    const text = body.trim();
+    if (!text) return;
+    mutate((prev) =>
+      addComment(prev, post.id, {
+        id: `fc_user_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+        authorId: ME,
+        authorName: "我",
+        authorKind: "user",
+        body: text,
+        replyToId,
+        createdAt: new Date().toISOString(),
+      }),
+    );
+    // 用户参与后，安排书友在稍后错时回应
+    mutate((prev) => scheduleReplies(prev, post.id, 3));
+    flash("已评论，书友们过一会儿会陆续回应");
   };
 
-  return (
-    <div>
-      <div className="sr-forum-head">
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--c-text-title)" }}>{state.name}</div>
-          <div className="sr-note-meta">
-            {state.npcs.length} 位书友 · {state.posts.length} 条发言
-            {mutedCount > 0 ? ` · 已屏蔽 ${mutedCount} 人` : ""}
-          </div>
+  const handleFollow = (npc: ForumNpc) => {
+    const following = isFollowing(state, npc.id);
+    mutate((prev) => toggleFollowNpc(prev, npc.id));
+    flash(following ? `已取消关注 ${npc.nickname}` : `已关注 ${npc.nickname}`);
+  };
+
+  const handleAddFriend = async (npc: ForumNpc) => {
+    setBusy(npc.id);
+    try {
+      const result = await makeFriendFromNpc(state, npc);
+      if (result.created) {
+        mutate((prev) => ({
+          ...prev,
+          npcs: prev.npcs.map((item) =>
+            item.id === npc.id ? { ...item, characterId: result.characterId, source: "character" } : item,
+          ),
+        }));
+      }
+      flash(result.alreadyFriend ? `${npc.nickname} 本来就在聊天好友里` : `已把 ${npc.nickname} 加为好友，去聊天应用里找 TA`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleOpenChat = (npc: ForumNpc) => {
+    if (!npc.characterId) {
+      flash("先加为好友才能在聊天里找到 TA");
+      return;
+    }
+    // 复用宿主的聊天应用：直接跳到这个角色的会话
+    void import("@/lib/chat-storage").then(({ loadChatContacts, createOrGetSession, addChatContact }) => {
+      let contact = loadChatContacts().find((item) => item.characterId === npc.characterId);
+      if (!contact) contact = addChatContact(npc.characterId!) ?? undefined;
+      if (!contact) {
+        flash("聊天里还没加上这位好友");
+        return;
+      }
+      const session = createOrGetSession(contact.id);
+      window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: "chat", sessionId: session.id } }));
+    });
+  };
+
+  const posts = useMemo(() => {
+    const list = channelPosts(state, channel);
+    return showHidden ? list : list;
+  }, [state, channel, showHidden]);
+
+  const hiddenInFeed = useMemo(
+    () => channelPosts({ ...state, hiddenPostIds: [] }, channel).filter((post) => state.hiddenPostIds.includes(post.id)),
+    [state, channel],
+  );
+
+  const unread = unreadNotifications(state);
+
+  // ── 子视图 ──
+  if (view.kind === "compose") {
+    return (
+      <StudyRoomForumCompose
+        state={state}
+        draftId={view.draftId}
+        onClose={() => setView({ kind: "feed" })}
+        onMutate={mutate}
+        onPublished={(postId) => {
+          setView({ kind: "feed" });
+          mutate((prev) => scheduleReplies(prev, postId, 3));
+          flash("已发布，书友们的回应会陆续出现");
+        }}
+        onNotice={flash}
+        onOpenSettings={() => setView({ kind: "settings" })}
+      />
+    );
+  }
+
+  if (view.kind === "settings") {
+    return (
+      <StudyRoomForumSettings
+        state={state}
+        onBack={() => setView({ kind: "feed" })}
+        onMutate={mutate}
+        onNotice={flash}
+        onOpenNpcPanel={onOpenNpcPanel}
+      />
+    );
+  }
+
+  if (view.kind === "post") {
+    const post = state.posts.find((item) => item.id === view.postId);
+    if (!post) {
+      return (
+        <div className="sr-empty">
+          <p>这条帖子已经不在了。</p>
+          <button type="button" className="sr-btn" onClick={() => setView({ kind: "feed" })}>返回</button>
         </div>
-        <button type="button" className="sr-btn" onClick={onOpenNpcPanel}>
-          <Users size={16} strokeWidth={1.7} />
-          书友管理
+      );
+    }
+    return (
+      <StudyRoomForumPostView
+        post={post}
+        state={state}
+        books={books}
+        onBack={() => setView({ kind: "feed" })}
+        onOpenBook={onOpenBook}
+        onLike={() => handleLike(post)}
+        onComment={(body, replyToId) => handleComment(post, body, replyToId)}
+        onCollect={() => mutate((prev) => toggleCollect(prev, post.id))}
+        onGift={() => setGiftTarget({ postId: post.id, npcId: post.authorKind === "npc" ? post.authorId : undefined })}
+        onOpenAuthor={(npcId) => setView({ kind: "profile", npcId })}
+        onEdit={(body) =>
+          mutate((prev) => ({
+            ...prev,
+            posts: prev.posts.map((item) => (item.id === post.id ? { ...item, body } : item)),
+          }))
+        }
+        onDelete={() => {
+          mutate((prev) => ({ ...prev, posts: prev.posts.filter((item) => item.id !== post.id) }));
+          setView({ kind: "feed" });
+          flash("已删除这条帖子");
+        }}
+      />
+    );
+  }
+
+  if (view.kind === "profile") {
+    const npc = state.npcs.find((item) => item.id === view.npcId);
+    if (!npc) {
+      return (
+        <div className="sr-empty">
+          <p>找不到这位书友。</p>
+          <button type="button" className="sr-btn" onClick={() => setView({ kind: "feed" })}>返回</button>
+        </div>
+      );
+    }
+    return (
+      <StudyRoomForumProfile
+        npc={npc}
+        state={state}
+        onBack={() => setView({ kind: "feed" })}
+        onFollow={() => handleFollow(npc)}
+        onAddFriend={() => void handleAddFriend(npc)}
+        onChat={() => handleOpenChat(npc)}
+        onOpenPost={(postId) => setView({ kind: "post", postId })}
+        busy={busy === npc.id}
+      />
+    );
+  }
+
+  if (view.kind === "search") {
+    const result = searchForum(state, view.query);
+    return (
+      <div className="sr-forum-sub">
+        <div className="sr-forum-sub-head">
+          <button type="button" className="sr-icon-btn" onClick={() => setView({ kind: "feed" })} aria-label="返回">
+            <ChevronLeft size={22} strokeWidth={1.6} />
+          </button>
+          <span className="sr-forum-sub-title">搜索「{view.query}」</span>
+        </div>
+        <div className="sr-forum-sub-body">
+          {result.posts.length + result.npcs.length + result.books.length + result.topics.length === 0 ? (
+            <div className="sr-empty">
+              <Compass size={38} strokeWidth={1} />
+              <p>没有找到相关内容。可以换个关键词，或直接发一条帖子问问书友们。</p>
+            </div>
+          ) : (
+            <>
+              {result.npcs.length > 0 && (
+                <>
+                  <div className="sr-section-label">书友</div>
+                  {result.npcs.map((npc) => (
+                    <button
+                      key={npc.id}
+                      type="button"
+                      className="sr-forum-row"
+                      onClick={() => setView({ kind: "profile", npcId: npc.id })}
+                    >
+                      <span className="sr-forum-avatar" aria-hidden>
+                        {npc.avatarUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={npc.avatarUrl} alt="" />
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={avatarDataUrl(npc.avatar)} alt="" />
+                        )}
+                      </span>
+                      <span className="sr-forum-author-main">
+                        <span className="sr-forum-name">{npc.nickname}</span>
+                        <span className="sr-note-meta">{npc.occupation}</span>
+                      </span>
+                    </button>
+                  ))}
+                </>
+              )}
+              {result.books.length > 0 && (
+                <>
+                  <div className="sr-section-label">书籍</div>
+                  <div className="sr-chip-row">
+                    {result.books.map((title) => (
+                      <span key={title} className="sr-chip">《{title}》</span>
+                    ))}
+                  </div>
+                </>
+              )}
+              {result.topics.length > 0 && (
+                <>
+                  <div className="sr-section-label">话题</div>
+                  <div className="sr-chip-row">
+                    {result.topics.map((topic) => (
+                      <span key={topic} className="sr-chip">#{topic}</span>
+                    ))}
+                  </div>
+                </>
+              )}
+              {result.posts.length > 0 && (
+                <>
+                  <div className="sr-section-label">帖子</div>
+                  {result.posts.map((post) => (
+                    <StudyRoomForumPostCard
+                      key={post.id}
+                      post={post}
+                      state={state}
+                      books={books}
+                      onOpen={() => setView({ kind: "post", postId: post.id })}
+                      onLike={() => handleLike(post)}
+                      onOpenBook={onOpenBook}
+                      onOpenAuthor={(npcId) => setView({ kind: "profile", npcId })}
+                      onGift={() => setGiftTarget({ postId: post.id, npcId: post.authorKind === "npc" ? post.authorId : undefined })}
+                      onHide={() => mutate((prev) => hidePost(prev, post.id))}
+                      busy={false}
+                    />
+                  ))}
+                </>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── 信息流 ──
+  return (
+    <div className="sr-forum">
+      <div className="sr-forum-head">
+        <button
+          type="button"
+          className="sr-forum-me"
+          onClick={() => setDrawerOpen(true)}
+          aria-label="打开个人菜单"
+        >
+          <span className="sr-forum-avatar" aria-hidden>
+            <span>我</span>
+          </span>
+        </button>
+        <form
+          className="sr-forum-search"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = event.currentTarget;
+            const input = form.elements.namedItem("q") as HTMLInputElement | null;
+            const value = input?.value.trim() ?? "";
+            if (value) setView({ kind: "search", query: value });
+          }}
+        >
+          <Search size={15} strokeWidth={1.8} aria-hidden />
+          <input name="q" placeholder="搜帖子、书友、书或话题" aria-label="搜索书友圈" />
+        </form>
+        <button
+          type="button"
+          className="sr-forum-icon"
+          aria-label={`通知${unread.length > 0 ? `（${unread.length} 条未读）` : ""}`}
+          onClick={() => {
+            setDrawerOpen(true);
+            mutate((prev) => markNotificationsRead(prev, ["comment", "reply", "like", "mention"]));
+          }}
+        >
+          <Bell size={19} strokeWidth={1.7} />
+          {unread.length > 0 && <i className="sr-forum-dot" aria-hidden />}
+        </button>
+      </div>
+
+      <div className="sr-chip-row sr-forum-channels">
+        {(Object.keys(CHANNEL_LABEL) as ForumChannel[]).map((key) => (
+          <button
+            key={key}
+            type="button"
+            className="sr-chip"
+            data-active={channel === key ? "true" : undefined}
+            onClick={() => setChannel(key)}
+          >
+            {CHANNEL_LABEL[key]}
+          </button>
+        ))}
+        <button type="button" className="sr-chip" onClick={() => setView({ kind: "settings" })}>
+          生成规则
         </button>
       </div>
 
@@ -205,289 +518,100 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook }: StudyRoomForumPro
         </div>
       )}
 
-      <div className="sr-chip-row">
-        <button type="button" className="sr-chip" onClick={() => setComposing((v) => !v)}>
-          <PenLine size={13} strokeWidth={1.8} style={{ marginRight: 5 }} />
-          我要发言
-        </button>
-        {(["all", "post", "review", "recommend"] as const).map((key) => (
-          <button
-            key={key}
-            type="button"
-            className="sr-chip"
-            data-active={filter === key ? "true" : undefined}
-            onClick={() => setFilter(key)}
-          >
-            {key === "all" ? "全部" : KIND_TEXT[key]}
-          </button>
-        ))}
-        {(hiddenCount > 0 || showHidden) && (
-          <button type="button" className="sr-chip" data-active={showHidden ? "true" : undefined} onClick={() => setShowHidden((v) => !v)}>
-            <EyeOff size={13} strokeWidth={1.8} style={{ marginRight: 5 }} />
-            {showHidden ? "隐藏已收起" : `已收起 ${hiddenCount} 条`}
-          </button>
-        )}
-      </div>
+      {busy === "feed" && (
+        <p className="sr-note-meta" style={{ textAlign: "center", lineHeight: 1.7 }}>
+          <Loader2 size={13} className="sr-spin" /> 书友们正在开个头…
+        </p>
+      )}
 
-      {composing && (
-        <div className="sr-note-card">
-          <div className="sr-chip-row" style={{ marginBottom: 8 }}>
-            {(["post", "review", "recommend"] as const).map((kind) => (
-              <button
-                key={kind}
-                type="button"
-                className="sr-chip"
-                data-active={draft.kind === kind ? "true" : undefined}
-                onClick={() => setDraft((prev) => ({ ...prev, kind }))}
-              >
-                {KIND_TEXT[kind]}
+      {posts.length === 0 ? (
+        <div className="sr-empty" style={{ paddingTop: 30 }}>
+          {state.npcs.length === 0 ? (
+            <>
+              <Loader2 size={28} className="sr-spin" />
+              <p>正在准备书友…</p>
+            </>
+          ) : (
+            <>
+              <PenLine size={38} strokeWidth={1} />
+              <p>
+                这个频道还没有内容。
+                <br />
+                点右下角「写帖子」发一条，书友们会来回应；也可以去「书友管理」多请几位书友。
+              </p>
+            </>
+          )}
+        </div>
+      ) : (
+        posts.map((post) => (
+          <StudyRoomForumPostCard
+            key={post.id}
+            post={post}
+            state={state}
+            books={books}
+            onOpen={() => setView({ kind: "post", postId: post.id })}
+            onLike={() => handleLike(post)}
+            onOpenBook={onOpenBook}
+            onOpenAuthor={(npcId) => setView({ kind: "profile", npcId })}
+            onGift={() => setGiftTarget({ postId: post.id, npcId: post.authorKind === "npc" ? post.authorId : undefined })}
+            onHide={() => mutate((prev) => hidePost(prev, post.id))}
+            busy={false}
+          />
+        ))
+      )}
+
+      {hiddenInFeed.length > 0 && (
+        <button
+          type="button"
+          className="sr-material-toggle"
+          onClick={() => setShowHidden((value) => !value)}
+        >
+          <X size={14} strokeWidth={1.8} />
+          {showHidden ? "隐藏已收起的内容" : `已收起 ${hiddenInFeed.length} 条不感兴趣的内容`}
+        </button>
+      )}
+      {showHidden && hiddenInFeed.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          {hiddenInFeed.map((post) => (
+            <div key={post.id} className="sr-note-card">
+              <div className="sr-note-meta">{post.authorName}：{post.body.slice(0, 40)}…</div>
+              <button type="button" className="sr-chip" onClick={() => mutate((prev) => unhidePost(prev, post.id))}>
+                恢复显示
               </button>
-            ))}
-            <button
-              type="button"
-              className="sr-chip"
-              data-active={draft.spoiler ? "true" : undefined}
-              onClick={() => setDraft((prev) => ({ ...prev, spoiler: !prev.spoiler }))}
-            >
-              含剧透
-            </button>
-          </div>
-          <input
-            className="sr-appear-input"
-            style={{ width: "100%", marginBottom: 8 }}
-            value={draft.title}
-            onChange={(e) => setDraft((prev) => ({ ...prev, title: e.target.value }))}
-            placeholder="标题（可留空）"
-            aria-label="帖子标题"
-          />
-          <input
-            className="sr-appear-input"
-            style={{ width: "100%", marginBottom: 8 }}
-            value={draft.bookTitle}
-            onChange={(e) => setDraft((prev) => ({ ...prev, bookTitle: e.target.value }))}
-            placeholder="关联书籍（可留空，书架以外的书也能写）"
-            aria-label="关联书籍"
-          />
-          <textarea
-            className="sr-css-editor"
-            rows={4}
-            value={draft.body}
-            onChange={(e) => setDraft((prev) => ({ ...prev, body: e.target.value }))}
-            placeholder="想说什么…"
-            aria-label="帖子正文"
-          />
-          <div className="sr-css-actions">
-            <button type="button" className="sr-btn sr-btn-primary" onClick={handlePost}>
-              <Send size={15} strokeWidth={1.8} />
-              发布
-            </button>
-            <button type="button" className="sr-btn" onClick={() => setComposing(false)}>
-              取消
-            </button>
-          </div>
+            </div>
+          ))}
         </div>
       )}
 
-      <div className="sr-note-card">
-        <div className="sr-note-meta" style={{ marginBottom: 8, lineHeight: 1.7 }}>
-          让书友们聊聊：一次只为这个话题生成几条发言，可以随时停止；同一话题十分钟内不会重复生成。
-        </div>
-        <input
-          className="sr-appear-input"
-          style={{ width: "100%", marginBottom: 8 }}
-          value={topicLabel}
-          onChange={(e) => setTopicLabel(e.target.value)}
-          placeholder="话题，例如「最近读到的结尾」或书名"
-          aria-label="话题"
+      <button type="button" className="sr-forum-fab" onClick={() => setView({ kind: "compose" })} aria-label="写帖子">
+        <PenLine size={20} strokeWidth={1.9} />
+        <span>写帖子</span>
+      </button>
+
+      {drawerOpen && (
+        <StudyRoomForumDrawer
+          state={state}
+          unread={unread}
+          onClose={() => setDrawerOpen(false)}
+          onMutate={mutate}
+          onOpenCompose={(draftId) => setView({ kind: "compose", draftId })}
+          onOpenPost={(postId) => setView({ kind: "post", postId })}
+          onOpenMine={() => {
+            setDrawerOpen(false);
+            onOpenMine();
+          }}
+          onOpenSettings={() => setView({ kind: "settings" })}
         />
-        <textarea
-          className="sr-css-editor"
-          rows={2}
-          value={topicPrompt}
-          onChange={(e) => setTopicPrompt(e.target.value)}
-          placeholder="想让他们聊什么（可留空）"
-          aria-label="话题补充"
-        />
-        <div className="sr-css-actions">
-          {generating ? (
-            <button type="button" className="sr-btn" onClick={() => abortRef.current?.abort()}>
-              <Square size={15} strokeWidth={2} />
-              停止
-            </button>
-          ) : (
-            <button type="button" className="sr-btn sr-btn-primary" onClick={() => void runGenerate()}>
-              <Sparkles size={15} strokeWidth={1.7} />
-              让书友聊聊
-            </button>
-          )}
-        </div>
-      </div>
-
-      {visiblePosts.length === 0 ? (
-        <div className="sr-empty" style={{ paddingTop: 28 }}>
-          <Users size={40} strokeWidth={1} />
-          <p>
-            {state.posts.length === 0
-              ? "还没有人发言。可以先「书友管理」生成几位书友，或者自己发第一条。"
-              : "当前筛选下没有内容。"}
-          </p>
-        </div>
-      ) : (
-        visiblePosts.map((post) => {
-          const npc = npcById[post.authorId];
-          const avatar = post.authorKind === "user" ? undefined : npc?.avatarUrl ?? (npc ? avatarDataUrl(npc.avatar) : undefined);
-          const liked = post.likedBy.includes(ME);
-          const hidden = state.hiddenPostIds.includes(post.id);
-          const book = post.bookId ? books[post.bookId] : undefined;
-          return (
-            <div key={post.id} className="sr-note-card" data-source={post.authorKind === "npc" ? "character" : undefined}>
-              <div className="sr-forum-author">
-                <span className="sr-forum-avatar" aria-hidden>
-                  {avatar ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={avatar} alt="" />
-                  ) : (
-                    <span>{(post.authorName || "我").slice(0, 1)}</span>
-                  )}
-                </span>
-                <span className="sr-forum-author-main">
-                  <span className="sr-forum-name">{post.authorName}</span>
-                  <span className="sr-note-meta">
-                    {KIND_TEXT[post.kind]}
-                    {post.generated ? " · AI" : ""} · {new Date(post.createdAt).toLocaleString("zh-CN")}
-                  </span>
-                </span>
-                {post.authorKind === "npc" && npc && (
-                  <button
-                    type="button"
-                    className="sr-note-tool"
-                    title={`屏蔽 ${npc.nickname}`}
-                    onClick={() => {
-                      if (!confirm(`屏蔽 ${npc.nickname}？TA 的发言之后不再显示。`)) return;
-                      save(muteNpc(state, npc.id));
-                      flash(`已屏蔽 ${npc.nickname}`);
-                    }}
-                  >
-                    <EyeOff size={15} strokeWidth={1.7} />
-                  </button>
-                )}
-              </div>
-
-              {post.title && <p className="sr-forum-title">{post.title}</p>}
-              {post.spoiler && !revealed[post.id] && (
-                <button
-                  type="button"
-                  className="sr-forum-spoiler"
-                  onClick={() => setRevealed((prev) => ({ ...prev, [post.id]: true }))}
-                >
-                  含剧透 · 点开查看
-                </button>
-              )}
-              <p className="sr-forum-body" data-spoiler={post.spoiler && !revealed[post.id] ? "true" : undefined}>
-                {post.body}
-              </p>
-
-              {post.bookTitle && (
-                <div className="sr-forum-book">
-                  <BookOpen size={13} strokeWidth={1.8} />
-                  {book ? (
-                    <button type="button" className="sr-forum-book-btn" onClick={() => onOpenBook(book)}>
-                      在书房读《{post.bookTitle}》
-                    </button>
-                  ) : (
-                    <span className="sr-note-meta">《{post.bookTitle}》· 不在书架上</span>
-                  )}
-                </div>
-              )}
-
-              <div className="sr-note-foot">
-                <span className="sr-note-tools">
-                  <button
-                    type="button"
-                    className="sr-note-tool"
-                    title={liked ? "取消赞同" : "赞同"}
-                    data-active={liked ? "true" : undefined}
-                    onClick={() => save(toggleLike(state, post.id, ME))}
-                  >
-                    <Heart size={15} strokeWidth={1.7} fill={liked ? "currentColor" : "none"} />
-                    {post.likedBy.length > 0 ? <span className="sr-forum-count">{post.likedBy.length}</span> : null}
-                  </button>
-                  <button
-                    type="button"
-                    className="sr-note-tool"
-                    title="给这条发言送礼"
-                    onClick={() =>
-                      setGiftTarget({
-                        postId: post.id,
-                        npcId: post.authorKind === "npc" ? post.authorId : undefined,
-                        bookTitle: post.bookTitle,
-                      })
-                    }
-                  >
-                    <Gift size={15} strokeWidth={1.7} />
-                  </button>
-                  <button
-                    type="button"
-                    className="sr-note-tool"
-                    title={hidden ? "恢复显示" : "不感兴趣"}
-                    onClick={() => save(hidden ? unhidePost(state, post.id) : hidePost(state, post.id))}
-                  >
-                    <EyeOff size={15} strokeWidth={1.7} />
-                  </button>
-                </span>
-                <span className="sr-note-meta">{post.comments.length > 0 ? `${post.comments.length} 条评论` : "还没有评论"}</span>
-              </div>
-
-              {post.comments.length > 0 && (
-                <ul className="sr-forum-comments">
-                  {post.comments.map((comment) => {
-                    const target = comment.replyToId ? post.comments.find((item) => item.id === comment.replyToId) : undefined;
-                    return (
-                      <li key={comment.id}>
-                        <span className="sr-forum-comment-author">{comment.authorName}</span>
-                        {target ? <span className="sr-note-meta">回复 {target.authorName}：</span> : null}
-                        <span className="sr-forum-comment-body">{comment.body}</span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-
-              <div className="sr-forum-comment-box">
-                <input
-                  className="sr-appear-input"
-                  value={commentDrafts[post.id] ?? ""}
-                  onChange={(e) => setCommentDrafts((prev) => ({ ...prev, [post.id]: e.target.value }))}
-                  placeholder={replyTo[post.id] ? `回复 ${post.comments.find((c) => c.id === replyTo[post.id])?.authorName ?? ""}…` : "写下评论…"}
-                  aria-label="评论"
-                />
-                {replyTo[post.id] && (
-                  <button type="button" className="sr-chip" onClick={() => setReplyTo((prev) => ({ ...prev, [post.id]: "" }))}>
-                    取消回复
-                  </button>
-                )}
-                <button type="button" className="sr-chip" onClick={() => handleComment(post)}>
-                  <MessageSquare size={13} strokeWidth={1.8} style={{ marginRight: 4 }} />
-                  发送
-                </button>
-              </div>
-            </div>
-          );
-        })
       )}
 
       {giftTarget && (
         <GiftSheet
           mode="gift"
           postId={giftTarget.postId}
-          presetRecipient={
-            giftTarget.npcId
-              ? (() => {
-                  const npc = npcById[giftTarget.npcId!];
-                  return npc ? { id: npc.id, name: npc.nickname, kind: "npc" as const } : undefined;
-                })()
-              : undefined
-          }
+          presetRecipient={giftTarget.npcId ? (() => {
+            const npc = state.npcs.find((item) => item.id === giftTarget.npcId);
+            return npc ? { id: npc.id, name: npc.nickname, kind: "npc" as const } : undefined;
+          })() : undefined}
           onClose={() => setGiftTarget(null)}
         />
       )}

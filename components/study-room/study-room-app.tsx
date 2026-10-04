@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, Library, Store, NotebookPen, User, Users } from "lucide-react";
+import { ChevronLeft, Library, Store, NotebookPen, User, Users, Shuffle } from "lucide-react";
 
 import { hydrateReadingStorage } from "@/lib/reading-storage";
 import { applyAppearance, loadAppearance } from "@/lib/study-room/appearance";
@@ -19,6 +19,12 @@ import { StudyRoomBackup } from "./study-room-backup";
 import { StudyRoomReadingMemory } from "./study-room-reading-memory";
 import { StudyRoomCreativeEditor } from "./study-room-creative-editor";
 import { StudyRoomForum } from "./study-room-forum";
+import { StudyRoomDock, type DockItem } from "./study-room-dock";
+import { StudyRoomSplash, shouldSkipStudyRoomSplash } from "./study-room-splash";
+import { StudyRoomUpdateLog } from "./study-room-update-log";
+import { StudyRoomUpdateNotice } from "./study-room-update-notice";
+import { StudyRoomDraw } from "./study-room-draw";
+import { StudyRoomWishlist } from "./study-room-wishlist";
 import { StudyRoomNpcPanel } from "./study-room-npc-panel";
 import { StudyRoomGifts } from "./study-room-gifts";
 
@@ -38,7 +44,10 @@ type StudyRoomView =
   | { kind: "readingMemory" }
   | { kind: "creative"; draftId: string }
   | { kind: "npcPanel" }
-  | { kind: "gifts" };
+  | { kind: "gifts" }
+  | { kind: "updateLog" }
+  | { kind: "draw" }
+  | { kind: "wishlist" };
 
 const TAB_META: Record<StudyRoomTab, { label: string; icon: typeof Library; subtitle: string }> = {
   shelf: { label: "书架", icon: Library, subtitle: "已收藏的书" },
@@ -52,6 +61,8 @@ const TAB_ORDER: StudyRoomTab[] = ["shelf", "store", "desk", "forum", "mine"];
 
 export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
   const [ready, setReady] = useState(false);
+  // 冷启动播放一次启动画面；书房内部切页不重播（见 study-room-splash）
+  const [splashDone, setSplashDone] = useState(() => shouldSkipStudyRoomSplash());
   const [tab, setTab] = useState<StudyRoomTab>("shelf");
   const [view, setView] = useState<StudyRoomView>({ kind: "tabs" });
   // 从阅读器返回时，让那本书先以「抽出」状态出现再放回架上
@@ -85,6 +96,15 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
       cancelled = true;
     };
   }, []);
+
+  // 启动画面：只占一屏，结束后再进入书房（此时才加载书架）
+  if (!splashDone) {
+    return (
+      <section className="sr-app sr-app--splash">
+        <StudyRoomSplash onDone={() => setSplashDone(true)} />
+      </section>
+    );
+  }
 
   if (view.kind === "reader") {
     return (
@@ -144,6 +164,27 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
     return <StudyRoomGifts onBack={() => setView({ kind: "tabs" })} />;
   }
 
+  if (view.kind === "updateLog") {
+    return <StudyRoomUpdateLog onBack={() => setView({ kind: "tabs" })} />;
+  }
+
+  if (view.kind === "wishlist") {
+    return <StudyRoomWishlist onBack={() => setView({ kind: "tabs" })} />;
+  }
+
+  if (view.kind === "draw") {
+    return (
+      <StudyRoomDraw
+        onBack={() => setView({ kind: "tabs" })}
+        onRead={(book) => {
+          lastOpenedBookRef.current = book.id;
+          setView({ kind: "reader", book });
+        }}
+        onImported={() => undefined}
+      />
+    );
+  }
+
   if (view.kind === "readingMemory") {
     return (
       <StudyRoomReadingMemory
@@ -154,6 +195,16 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
   }
 
   const active = TAB_META[tab];
+  // Dock 六个入口：书架 / 书城 / 抽一本 / 书桌 / 书友圈 / 我的
+  const dockItems: DockItem[] = TAB_ORDER.flatMap((key) => {
+    const item: DockItem = {
+      key,
+      label: key === "forum" ? forumName : TAB_META[key].label,
+      icon: TAB_META[key].icon,
+    };
+    // 「抽一本」是独立的一次抽取流程（整屏，有自己的返回），放在书城之后
+    return key === "store" ? [item, { key: "draw", label: "抽一本", icon: Shuffle }] : [item];
+  });
 
   return (
     <section className="sr-app">
@@ -172,7 +223,7 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
       </header>
 
       <div className="sr-body" key={tab}>
-        <div className="sr-tab-pane">
+        <div className="sr-tab-pane sr-tab-pane--dock">
           {!ready ? (
             <div className="sr-empty">
               <p>正在打开书房…</p>
@@ -187,10 +238,19 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
               onOpenMessages={() => setView({ kind: "messages" })}
             />
           ) : tab === "store" ? (
-            <StudyRoomStore />
+            <StudyRoomStore
+              onRead={(book) => {
+                lastOpenedBookRef.current = book.id;
+                setView({ kind: "reader", book });
+              }}
+            />
           ) : tab === "forum" ? (
             <StudyRoomForum
               onOpenNpcPanel={() => setView({ kind: "npcPanel" })}
+              onOpenMine={() => {
+                setView({ kind: "tabs" });
+                setTab("mine");
+              }}
               onOpenBook={(book) => {
                 lastOpenedBookRef.current = book.id;
                 setView({ kind: "reader", book });
@@ -206,31 +266,27 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
               onOpenBackup={() => setView({ kind: "backup" })}
               onOpenReadingMemory={() => setView({ kind: "readingMemory" })}
               onOpenGifts={() => setView({ kind: "gifts" })}
+              onOpenUpdateLog={() => setView({ kind: "updateLog" })}
+              onOpenWishlist={() => setView({ kind: "wishlist" })}
             />
           )}
         </div>
       </div>
 
-      <nav className="sr-tabbar" aria-label="书房导航">
-        {TAB_ORDER.map((key) => {
-          const meta = TAB_META[key];
-          const Icon = meta.icon;
-          return (
-            <button
-              key={key}
-              type="button"
-              className="sr-tab"
-              data-active={tab === key ? "true" : undefined}
-              onClick={() => setTab(key)}
-              aria-label={meta.label}
-              aria-current={tab === key ? "page" : undefined}
-            >
-              <Icon size={20} strokeWidth={tab === key ? 2 : 1.6} />
-              <span className="sr-tab-label">{key === "forum" ? forumName : meta.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+      <StudyRoomDock
+        items={dockItems}
+        active={tab}
+        onSelect={(key) => {
+          if (key === "draw") {
+            setView({ kind: "draw" });
+            return;
+          }
+          setTab(key as StudyRoomTab);
+        }}
+      />
+
+      {/* 书房自己的更新便签：启动画面结束后才出现，只跟书房版本有关 */}
+      <StudyRoomUpdateNotice enabled={splashDone} onOpenLog={() => setView({ kind: "updateLog" })} />
     </section>
   );
 }
