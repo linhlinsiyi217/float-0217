@@ -3396,3 +3396,45 @@ html[data-theme="dark"] .sr3-tag { background: #34322e; color: #cfc8bb; }
 @media (prefers-reduced-motion: reduce) {
   .sr-para[data-speaking="true"] { transition: none; }
 }
+
+/* ── 我的：个人主页卡片 ── */
+.sr-profile-card {
+  padding: 14px;
+  border-radius: var(--sr-card-radius, 16px);
+  background: var(--sr-card-bg, #fff);
+  border: 0.5px solid var(--c-card-border);
+}
+.sr-profile-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--c-text);
+}
+.sr-profile-stats strong { font-size: 16px; color: var(--c-text-title); margin-right: 4px; }
+.sr-profile-stats--muted { font-size: 12px; opacity: 0.85; }
+
+/* ── 侧栏底部插画与书城骨架屏 ── */
+.sr-drawer-art {
+  margin-top: auto;
+  padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  color: var(--c-text-title);
+  opacity: 0.5;
+}
+.sr-drawer-art svg { width: 100%; height: auto; display: block; }
+.sr-skeleton {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--c-text) 8%, transparent), color-mix(in srgb, var(--c-text) 4%, transparent), color-mix(in srgb, var(--c-text) 8%, transparent));
+  background-size: 200% 100%;
+  animation: sr-skeleton-shimmer 1.3s ease-in-out infinite;
+  border-radius: 6px;
+}
+.sr-skeleton-line { height: 12px; }
+.sr-skeleton-card .sr-res-cover { background-image: none; background-color: color-mix(in srgb, var(--c-text) 6%, transparent); }
+@keyframes sr-skeleton-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sr-skeleton { animation: none; }
+}

@@ -168,7 +168,7 @@ export function StudyRoomForumCompose({
 
       <div className="sr-forum-sub-body">
         <div className="sr-chip-row">
-          {(["post", "review", "recommend"] as const).map((key) => (
+          {(["post", "review", "recommend", "creation"] as const).map((key) => (
             <button
               key={key}
               type="button"
