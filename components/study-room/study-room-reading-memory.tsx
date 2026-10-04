@@ -6,6 +6,7 @@ import { ChevronLeft, Trash2, ChevronDown, ChevronRight, BookOpenText, Timer } f
 import { loadCharacters } from "@/lib/character-storage";
 import { loadBooks } from "@/lib/reading-storage";
 import type { Book } from "@/lib/reading-types";
+import { HelpTip } from "./help-tip";
 import {
   DEFAULT_STAGE_CONFIG,
   loadStageConfig,
@@ -154,6 +155,10 @@ export function StudyRoomReadingMemory({ onBack, onOpenBook }: StudyRoomReadingM
           )}
           <p className="sr-note-meta" style={{ margin: "6px 2px 14px", lineHeight: 1.8 }}>
             不会每翻一页就调用一次：只有到达上面的间隔才会在后台总结一次，用设置里绑定的辅助 API，失败不会打断阅读。
+            <HelpTip id="reading-memory" label="阅读记忆说明">
+              到达间隔后，书房会把「你已经读到的那部分原文」发给辅助 API，生成一段精简小结写进这个角色的记忆库；
+              角色聊天时按原有记忆规则被想起。只写已读范围，不会把整本书发出去。
+            </HelpTip>
           </p>
 
           <div className="sr-section-label">哪些角色记录</div>

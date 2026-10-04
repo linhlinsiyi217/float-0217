@@ -247,6 +247,10 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
           ) : tab === "forum" ? (
             <StudyRoomForum
               onOpenNpcPanel={() => setView({ kind: "npcPanel" })}
+              onOpenMine={() => {
+                setView({ kind: "tabs" });
+                setTab("mine");
+              }}
               onOpenBook={(book) => {
                 lastOpenedBookRef.current = book.id;
                 setView({ kind: "reader", book });

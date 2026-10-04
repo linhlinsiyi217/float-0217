@@ -10,6 +10,7 @@ import { loadCharacters } from "@/lib/character-storage";
 import { StudyRoomStageSummary } from "./study-room-stage-summary";
 import { GiftSheet } from "./gift-sheet";
 import { StudyRoomReview } from "./study-room-review";
+import { HelpTip } from "./help-tip";
 import { exportBookAsEpub, safeFileName } from "@/lib/study-room/export-epub";
 
 type StudyRoomBookDetailProps = {
@@ -322,6 +323,10 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
               {exporting ? <Loader2 size={16} className="sr-spin" /> : <FileDown size={16} strokeWidth={1.8} />}
               导出 EPUB
             </button>
+            <HelpTip id="export-epub" label="导出说明">
+              导出会用书房保存的正文重建一本 EPUB，带上封面与批注（批注以高亮加末尾附录呈现），
+              文件直接下载到你的设备，不上传。原书里内嵌的插图不在书房正文数据里，导出文件里不会出现。
+            </HelpTip>
             <button type="button" className="sr-btn sr-btn-danger" onClick={() => onRemove(book)}>
               <Trash2 size={16} strokeWidth={1.8} /> 移出书架
             </button>

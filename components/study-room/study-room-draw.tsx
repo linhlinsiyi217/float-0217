@@ -6,7 +6,6 @@ import { ChevronLeft, Loader2, RefreshCw, Sparkles, BookOpen, Download, Compass,
 import { importBookFromBlob } from "@/lib/study-room/import";
 import {
   DRAW_CATEGORIES,
-  categoryById,
   drawBooks,
   drawCategory,
   type DrawCandidate,
@@ -15,6 +14,7 @@ import {
 import type { Book } from "@/lib/reading-types";
 import type { BookSearchResult } from "@/lib/study-room/book-source";
 import { StudyRoomSourceDetail } from "./study-room-source-detail";
+import { HelpTip } from "./help-tip";
 
 type StudyRoomDrawProps = {
   onBack: () => void;
@@ -42,7 +42,6 @@ export function StudyRoomDraw({ onBack, onRead, onImported }: StudyRoomDrawProps
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [importingId, setImportingId] = useState<string | null>(null);
-  const [flipKey, setFlipKey] = useState(0);
   const [detail, setDetail] = useState<BookSearchResult | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -61,7 +60,6 @@ export function StudyRoomDraw({ onBack, onRead, onImported }: StudyRoomDrawProps
       const result = await drawBooks(target, 3, controller.signal);
       if (controller.signal.aborted) return;
       setCandidates(result);
-      setFlipKey((key) => key + 1);
       if (result.length === 0) {
         setNotice(`「${target.label}」这一类暂时抽不到能读的书：书架里没有相关的，公共来源这次也没返回可导入的版本。`);
       }
@@ -143,6 +141,10 @@ export function StudyRoomDraw({ onBack, onRead, onImported }: StudyRoomDrawProps
               <p className="sr-note-meta" style={{ marginTop: 12, lineHeight: 1.8 }}>
                 只会抽出书房里真的能读的书：你已导入的书，或者公开来源里能导入 / 能预览的版本。
                 没有付费、代币与稀有度。
+                <HelpTip id="draw" label="抽一本怎么工作">
+                  抽一本只帮你从「书架 + 公开书源」里随机挑一本来读：先随机一个分类，再随机几本候选。
+                  抽到的书不会自动进书架，需要你自己点「加入书架」；这些记录只留在本机。
+                </HelpTip>
               </p>
             </>
           ) : (

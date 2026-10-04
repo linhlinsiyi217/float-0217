@@ -19,6 +19,7 @@ import { groupVersions, type ResultGroup } from "@/lib/study-room/search-rank";
 import { addToWishlist, loadWishlist, removeFromWishlist } from "@/lib/study-room/wishlist";
 import type { Book } from "@/lib/reading-types";
 import { StudyRoomSourceDetail } from "./study-room-source-detail";
+import { HelpTip } from "./help-tip";
 
 type KindFilter = BookKind | "all";
 
@@ -416,6 +417,11 @@ export function StudyRoomStore({ onRead }: StudyRoomStoreProps) {
         <p className="sr-note-meta" style={{ marginTop: 16, textAlign: "center", lineHeight: 1.8 }}>
           可读状态按来源实际上架情况标注：全文可读可以直接导入书房，可预览在应用内看预览，
           需自行导入的书房拿不到正文。不会把只有封面的条目说成能读。
+          <HelpTip id="readability" label="可读状态说明">
+            全文可读 = 来源提供可下载正文（公共领域文本或公版书），导入后能在书房里读；
+            可预览 = 来源提供在线预览；需自行导入 = 只有书目，读不读得到取决于你自己有没有文件；
+            仅资料 = 公告、判决这类没有正文阅读的条目。
+          </HelpTip>
         </p>
       )}
 
