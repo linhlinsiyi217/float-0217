@@ -6,6 +6,7 @@ import { ChevronLeft, Library, Store, NotebookPen, User, Users, Shuffle } from "
 import { hydrateReadingStorage } from "@/lib/reading-storage";
 import { applyAppearance, loadAppearance } from "@/lib/study-room/appearance";
 import { loadForum } from "@/lib/study-room/forum";
+import { STUDYROOM_SEARCH_EVENT } from "@/lib/study-room/events";
 import type { Book } from "@/lib/reading-types";
 import { StudyRoomShelf } from "./study-room-shelf";
 import { StudyRoomStore } from "./study-room-store";
@@ -78,6 +79,21 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
     const timer = window.setTimeout(() => setReturnFromBookId(null), 1400);
     return () => window.clearTimeout(timer);
   }, [returnFromBookId]);
+
+  // 阅读时选词点「搜索」：跳到书城并把关键词带过去
+  const [storeQuery, setStoreQuery] = useState<string | null>(null);
+  useEffect(() => {
+    const onSearch = (event: Event) => {
+      const detail = (event as CustomEvent<{ query?: string }>).detail;
+      const value = detail?.query?.trim();
+      if (!value) return;
+      setView({ kind: "tabs" });
+      setTab("store");
+      setStoreQuery(value);
+    };
+    window.addEventListener(STUDYROOM_SEARCH_EVENT, onSearch);
+    return () => window.removeEventListener(STUDYROOM_SEARCH_EVENT, onSearch);
+  }, []);
 
   // 论坛名可以在书友管理里改，这里跟着刷新
   const [forumName, setForumName] = useState<string>(() => loadForum().name);
@@ -215,7 +231,8 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
             <ChevronLeft size={22} strokeWidth={1.6} />
           </button>
           <div>
-            <div className="sr-header-title">书房</div>
+            {/* 标题就是当前页面的名字；「书房」只留给书架首页（应用根级页面） */}
+            <div className="sr-header-title">{tab === "shelf" ? "书房" : tab === "forum" ? forumName : active.label}</div>
             <span className="sr-header-sub">{active.subtitle}</span>
           </div>
           <span style={{ width: 40 }} />
@@ -239,6 +256,7 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
             />
           ) : tab === "store" ? (
             <StudyRoomStore
+              initialQuery={storeQuery ?? undefined}
               onRead={(book) => {
                 lastOpenedBookRef.current = book.id;
                 setView({ kind: "reader", book });
@@ -257,7 +275,11 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
               }}
             />
           ) : tab === "desk" ? (
-            <StudyRoomDesk onOpenDraft={(draftId) => setView({ kind: "creative", draftId })} />
+            <StudyRoomDesk
+              onOpenDraft={(draftId) => setView({ kind: "creative", draftId })}
+              onOpenNotes={() => setView({ kind: "notes" })}
+              onOpenWishlist={() => setView({ kind: "wishlist" })}
+            />
           ) : (
             <StudyRoomMine
               onOpenNotes={() => setView({ kind: "notes" })}

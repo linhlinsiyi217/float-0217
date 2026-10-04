@@ -11,9 +11,12 @@ import type { Book, ReadingBookmark } from "@/lib/reading-types";
 type StudyRoomDeskProps = {
   /** 打开某个创作草稿（写作界面在独立页面） */
   onOpenDraft: (draftId: string) => void;
+  /** 资料盒里的两个入口 */
+  onOpenNotes: () => void;
+  onOpenWishlist: () => void;
 };
 
-export function StudyRoomDesk({ onOpenDraft }: StudyRoomDeskProps) {
+export function StudyRoomDesk({ onOpenDraft, onOpenNotes, onOpenWishlist }: StudyRoomDeskProps) {
   const [bookmarks, setBookmarks] = useState<ReadingBookmark[] | null>(null);
   const [noteCount, setNoteCount] = useState(0);
   const [books, setBooks] = useState<Record<string, Book>>({});
@@ -38,7 +41,7 @@ export function StudyRoomDesk({ onOpenDraft }: StudyRoomDeskProps) {
 
   return (
     <div>
-      <CreativePanel onOpenDraft={onOpenDraft} />
+      <CreativePanel onOpenDraft={onOpenDraft} onOpenNotes={onOpenNotes} onOpenWishlist={onOpenWishlist} />
 
       <div className="sr-section-label" style={{ marginTop: 18 }}>阅读留下的东西</div>
 

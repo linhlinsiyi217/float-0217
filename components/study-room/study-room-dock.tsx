@@ -104,14 +104,15 @@ export function StudyRoomDock({ items, active, onSelect }: StudyRoomDockProps) {
 
   return (
     <nav className="sr-dock" aria-label="书房导航" ref={barRef}>
-      <span
-        ref={capsuleRef}
-        className="sr-dock-capsule"
-        aria-hidden
-        data-ready={capsule.ready ? "true" : undefined}
-        style={{ transform: `translate3d(${capsule.x}px, 0, 0)`, width: `${capsule.w}px` }}
-      />
       <div className="sr-dock-row" style={{ width: `${Math.max(totalWidth, 0)}px` }}>
+        {/* 选中胶囊放在 row 内部：row 是定位父级，胶囊与选中项完全对齐（包住图标与文字） */}
+        <span
+          ref={capsuleRef}
+          className="sr-dock-capsule"
+          aria-hidden
+          data-ready={capsule.ready ? "true" : undefined}
+          style={{ transform: `translate3d(${capsule.x}px, 0, 0)`, width: `${capsule.w}px` }}
+        />
         {items.map((item) => {
           const Icon = item.icon;
           const isActive = item.key === active;
