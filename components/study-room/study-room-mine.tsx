@@ -3,12 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Brain,
-  BookOpenText,
   ChevronRight,
   Database,
   Gift,
   Heart,
-  Library,
   MessagesSquare,
   Palette,
   PenLine,
@@ -111,7 +109,6 @@ export function StudyRoomMine({
   const mySaves = forum.posts.filter((post) => (post.collectedBy ?? []).includes("user"));
   const followers = forum.npcs.filter((npc) => (npc.followers ?? []).includes("user")).length;
   const following = forum.following.length;
-  const publishedWorks = drafts.filter((draft) => draft.publishedBookId);
 
   const avatarSrc = profile.useHostAvatar && identityAvatar ? identityAvatar : avatarDataUrl(profile.avatar);
   const name = displayName(profile, hostName);
