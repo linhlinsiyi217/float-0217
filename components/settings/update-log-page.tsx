@@ -27,6 +27,18 @@ export function UpdateLogPage() {
         </div>
       </div>
 
+      <div className="g-card">
+        <div className="flex items-start gap-3">
+          <CheckCircle2 size={20} className="shrink-0 mt-0.5 text-[var(--c-icon-active)]" />
+          <div className="flex flex-col gap-2">
+            <span className="menu-label font-semibold">当前版本 {RELEASES[0]?.version}</span>
+            <span className="menu-desc ts-13 leading-relaxed !mt-0">
+              正式网址：https://float-0217.vercel.app （正式版直接发布，不另出预览版）
+            </span>
+          </div>
+        </div>
+      </div>
+
       {RELEASES.map((release) => (
         <ReleaseCard key={release.releaseId} release={release} seen={Boolean(seen[release.releaseId])} latest={release === RELEASES[0]} />
       ))}
