@@ -158,6 +158,10 @@ export function StudyRoomShelf({ onOpenBook, onOpenMessages, returnFromBookId }:
             <br />
             联网找书在「书城」中提供。
           </p>
+          <button type="button" className="sr-btn sr-btn-primary" onClick={() => fileInputRef.current?.click()}>
+            <BookPlus size={16} strokeWidth={1.8} />
+            导入书籍
+          </button>
         </div>
       ) : (
         <StudyRoomShelf3D

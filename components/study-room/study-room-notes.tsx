@@ -25,6 +25,7 @@ import {
   saveNote,
 } from "@/lib/reading-storage";
 import type { Book, ReadingAnnotation, ReadingNote } from "@/lib/reading-types";
+import { bookVersionOf } from "@/lib/study-room/annotations";
 
 type StudyRoomNotesProps = {
   onBack: () => void;
@@ -129,6 +130,15 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
     return Array.from(map.entries());
   }, [visibleNotes]);
 
+  /** 跳回原文前先确认版本：换过文件/重新导入过就提示定位可能不准。 */
+  const jumpToSource = (book: Book, chapterIndex: number, paragraphIndex: number, version?: string) => {
+    if (version && version !== bookVersionOf(book)) {
+      const ok = confirm("这本书换过版本（重新导入或文件有变化），定位可能不准。仍要跳过去吗？");
+      if (!ok) return;
+    }
+    onOpenSource(book, chapterIndex, paragraphIndex);
+  };
+
   const handleDelete = async (note: ReadingNote) => {
     if (!confirm("删除这条笔记？原文上的标记也会一并移除。")) return;
     await deleteNote(note.id);
@@ -194,7 +204,7 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
               className="sr-note-tool"
               title="回到我读到的地方"
               disabled={!book}
-              onClick={() => book && onOpenSource(book, item.chapterIndex, item.paragraphIndex)}
+              onClick={() => book && jumpToSource(book, item.chapterIndex, item.paragraphIndex, undefined)}
             >
               <Quote size={15} strokeWidth={1.7} />
             </button>
@@ -233,7 +243,7 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
               className="sr-note-tool"
               title="回到原文"
               disabled={!book}
-              onClick={() => book && onOpenSource(book, note.chapterIndex, note.paragraphIndex)}
+              onClick={() => book && jumpToSource(book, note.chapterIndex, note.paragraphIndex, note.bookVersion)}
             >
               <Quote size={15} strokeWidth={1.7} />
             </button>

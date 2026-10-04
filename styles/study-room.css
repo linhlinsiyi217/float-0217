@@ -110,9 +110,9 @@
 }
 .sr-dock-capsule {
   position: absolute;
-  left: 5px;
-  top: 5px;
-  bottom: 5px;
+  left: 0;
+  top: 0;
+  bottom: 0;
   border-radius: 999px;
   background: color-mix(in srgb, var(--sr-accent) 12%, rgba(255, 255, 255, 0.7));
   box-shadow: 0 4px 14px rgba(20, 28, 45, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.6);
@@ -3011,4 +3011,218 @@
 @media (prefers-reduced-motion: reduce) {
   .sr-drawer, .sr-drawer-mask { animation: none; }
   .sr-forum-fab { transition: none; }
+}
+
+/* ── 书架 V2：书型分级、生成封面、书立与纸签、统一光影、按设计稿的抽书动效 ── */
+
+/* 正面封面：与书脊同一朝向的面，抽出时与书脊交叉淡入淡出 */
+.sr3-cover-front {
+  width: var(--d);
+  height: var(--h);
+  margin-left: calc(var(--d) / -2);
+  margin-top: calc(var(--h) / -2);
+  transform: translateZ(calc(var(--d) / 2 + 1px));
+  border-radius: 2px 3px 3px 2px;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset;
+}
+.sr3-cover-front .sr3-cover-art { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* 生成封面：没有真实封面时的「朴素但认真设计过」的书封，不是系统占位图 */
+.sr3-cover-generated {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  padding: 14% 12% 12%;
+  background: var(--gen-bg, #e7e3da);
+  color: var(--gen-ink, #3b3a36);
+}
+.sr3-cover-rule {
+  /* 一条极细的配色线，作为封面上的设计元素（统一出现在左上，符合统一光源） */
+  display: block;
+  width: 34%;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--gen-accent, #9aa88f);
+  opacity: 0.9;
+}
+.sr3-cover-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.sr3-cover-author {
+  font-size: 10.5px;
+  opacity: 0.62;
+}
+.sr3-cover-front .sr3-cover-title { font-size: 14px; }
+.sr3-cover-front .sr3-cover-author { position: absolute; left: 12%; bottom: 10%; }
+
+/* 书型：薄册更矮更窄，大开本更高更厚重（视觉锚点） */
+.sr3-book[data-variant="booklet"] .sr3-spine { border-radius: 1px; }
+.sr3-book[data-variant="artbook"] .sr3-spine {
+  border-radius: 3px 3px 2px 2px;
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.4), inset -1px 0 0 rgba(0, 0, 0, 0.12);
+}
+
+/* 书立：极简线性几何，只做层的收尾 */
+.sr3-bookend {
+  position: relative;
+  flex: 0 0 auto;
+  align-self: flex-end;
+  border-left: 2px solid color-mix(in srgb, var(--c-text-title) 22%, transparent);
+  border-bottom: 2px solid color-mix(in srgb, var(--c-text-title) 22%, transparent);
+  border-radius: 1px 0 0 1px;
+  opacity: 0.7;
+  margin-bottom: 0;
+}
+/* 纸签：藏书少时的策展说明（纸材质，不是玻璃） */
+.sr3-tag {
+  flex: 0 0 auto;
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: #f4f0e8;
+  color: #6b6257;
+  font-size: 10px;
+  letter-spacing: 0.3px;
+  box-shadow: 0 1px 2px rgba(20, 28, 45, 0.1);
+  transform-origin: 50% 100%;
+  margin-bottom: 10px;
+}
+html[data-theme="dark"] .sr3-tag { background: #34322e; color: #cfc8bb; }
+
+/* 空间纵深：书脊背面与背板之间的极弱投影（统一朝右上，即背板方向） */
+.sr3-book::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -2px;
+  height: 2px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.05), transparent);
+  pointer-events: none;
+}
+/* 静止态：左右两侧不产生阴影（相邻书是紧靠关系），只在底部接触层板处有影 */
+.sr3-book { filter: drop-shadow(0 1px 0 rgba(20, 28, 45, 0.05)); }
+.sr3-book[data-variant="artbook"] { filter: drop-shadow(0 2px 2px rgba(20, 28, 45, 0.09)); }
+
+/* 抽书动效（按设计稿）：轻转 ≤18° + 抬起 + 交叉淡入淡出；等比缩放，不拉伸 */
+.sr3-book[data-phase="pulling"],
+.sr3-book[data-phase="out"] {
+  z-index: 20;
+  translate: var(--shift, 0px) -30px 0;
+  rotate: x 0deg y 14deg;
+  transform: scale(1.06);
+  filter: drop-shadow(0 10px 18px rgba(20, 28, 45, 0.16));
+  transition:
+    translate 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    rotate 0.34s cubic-bezier(0.22, 1, 0.36, 1) 0.05s,
+    transform 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 0.3s ease;
+}
+.sr3-book[data-phase="pulling"] .sr3-spine,
+.sr3-book[data-phase="out"] .sr3-spine { opacity: 0; }
+.sr3-book[data-phase="pulling"] .sr3-cover-front,
+.sr3-book[data-phase="out"] .sr3-cover-front { opacity: 1; transition-delay: 0.12s; }
+.sr3-book[data-phase="returning"] { transition: translate 0.3s cubic-bezier(0.4, 0, 0.2, 1), rotate 0.3s ease, transform 0.3s ease; }
+
+/* 层与层之间：上层阴影延伸覆盖到下层书本顶部，制造轻微进深 */
+.sr3-board-edge { box-shadow: 0 6px 10px -2px rgba(20, 28, 45, 0.05); }
+
+@media (prefers-reduced-motion: reduce) {
+  /* 只保留一次 160ms 的书脊/封面交叉淡入淡出，不做位移与旋转 */
+  .sr3-book[data-phase="pulling"],
+  .sr3-book[data-phase="out"] {
+    translate: var(--shift, 0px) -30px 0;
+    rotate: none;
+    transform: none;
+    transition: none;
+  }
+  .sr3-book[data-phase="pulling"] .sr3-cover-front,
+  .sr3-book[data-phase="out"] .sr3-cover-front { transition-delay: 0s; }
+  .sr3-spine, .sr3-cover-front { transition: opacity 0.16s ease; }
+}
+
+/* ── 阅读器：行内标记与完整选词工具条 ── */
+.sr-inline-mark {
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 1px;
+  border-radius: 2px;
+  transition: background 0.15s ease;
+}
+.sr-inline-mark[data-mark="highlight"] {
+  background: color-mix(in srgb, var(--mark-color, #F2E3A0) 72%, transparent);
+  box-shadow: inset 0 -0.5em 0 color-mix(in srgb, var(--mark-color, #F2E3A0) 80%, transparent);
+}
+.sr-inline-mark[data-mark="underline"] {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--mark-color, #F2E3A0) 92%, #6b6257);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+.sr-inline-mark[data-has-note="true"]::after {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-left: 3px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--sr-accent) 70%, transparent);
+  vertical-align: middle;
+}
+
+/* 选词工具条：紧凑、可横向滚动，不遮住正文 */
+.sr-selbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: calc(100% - 16px);
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 4px 6px;
+}
+.sr-selbar::-webkit-scrollbar { display: none; }
+.sr-selbar-btn[data-active="true"] { background: color-mix(in srgb, var(--sr-accent) 12%, transparent); }
+.sr-selbar-colors {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  margin-left: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c-panel) 60%, transparent);
+}
+.sr-selbar-color {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 1px 2px rgba(20, 28, 45, 0.18);
+  cursor: pointer;
+  padding: 0;
+}
+.sr-selbar-color[data-active="true"] { outline: 2px solid color-mix(in srgb, var(--sr-accent) 70%, transparent); outline-offset: 1px; }
+.sr-selbar-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 2px;
+  margin-left: 2px;
+  border-left: 0.5px solid var(--c-card-border);
 }

@@ -109,6 +109,10 @@ export type ReadingNote = {
     tags?: string[];
     /** 收藏（重点标记） */
     starred?: boolean;
+    /** 行内标记：高亮或下划线（不动正文时留空） */
+    mark?: "highlight" | "underline";
+    /** 标记配色 key（见 MARK_COLORS） */
+    color?: string;
     createdAt: string;
     updatedAt: string;
 };

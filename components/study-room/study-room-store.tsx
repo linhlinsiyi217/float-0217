@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, Loader2, Compass, RotateCw, Heart, BookOpen, Eye, Upload, Info, ChevronDown } from "lucide-react";
 
 import {
@@ -47,9 +47,11 @@ const ERA_OPTIONS: Array<{ key: string; label: string; test: (year?: string) => 
 type StudyRoomStoreProps = {
   /** 导入或打开书架里的书 */
   onRead: (book: Book) => void;
+  /** 从阅读器「搜索选中的文字」跳进来时带的关键词 */
+  initialQuery?: string;
 };
 
-export function StudyRoomStore({ onRead }: StudyRoomStoreProps) {
+export function StudyRoomStore({ onRead, initialQuery }: StudyRoomStoreProps) {
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<KindFilter>("all");
   const [category, setCategory] = useState<BookCategory | "all">("all");
@@ -76,9 +78,9 @@ export function StudyRoomStore({ onRead }: StudyRoomStoreProps) {
     window.setTimeout(() => setNotice((current) => (current === message ? null : current)), ms);
   };
 
-  const runSearch = async (event?: React.FormEvent) => {
+  const runSearch = async (event?: React.FormEvent, overrideQuery?: string) => {
     event?.preventDefault();
-    const q = query.trim();
+    const q = (overrideQuery ?? query).trim();
     if (!q || loading) return;
 
     abortRef.current?.abort();
@@ -110,6 +112,15 @@ export function StudyRoomStore({ onRead }: StudyRoomStoreProps) {
       if (!controller.signal.aborted) setLoading(false);
     }
   };
+
+  // 从阅读器带着关键词跳进来：自动填词并搜索一次
+  useEffect(() => {
+    const value = initialQuery?.trim();
+    if (!value) return;
+    setQuery(value);
+    void runSearch(undefined, value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuery]);
 
   const toggleWish = (item: BookSearchResult) => {
     const next = new Set(wished);

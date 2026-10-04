@@ -9,7 +9,9 @@ import {
   ROW_PADDING_LEFT,
   ROW_PADDING_RIGHT,
   clampCoverRatio,
+  generatedCover,
   layoutShelf,
+  spineToneFromCover,
 } from "@/lib/study-room/shelf-layout";
 
 /**
@@ -17,6 +19,9 @@ import {
  *   shelf ──点击──▶ pulling ──transitionend(rotate)──▶ out
  *   out ──关闭详情/点另一本──▶ returning ──transitionend(translate)──▶ shelf
  * pulling 中再次点击同一本书被忽略；点另一本则当前书立即开始归位、新书开始抽出。
+ *
+ * 抽出动效按设计稿：轻转（rotateY ≤18°）+ 抬起 + 书脊面与正面封面交叉淡入淡出，
+ * 不做 90° 翻牌，也不做橡皮拉伸（缩放始终等比）。
  */
 type Phase = "pulling" | "out" | "returning";
 
@@ -61,8 +66,10 @@ export function StudyRoomShelf3D({ books, activeId, onSelect, onPulled, restoreO
   const timersRef = useRef<Map<string, number>>(new Map());
   // 封面源图比例（宽/高），读到后用于实体书正面比例
   const [ratios, setRatios] = useState<Record<string, number>>({});
-  // 真实封面加载失败的书：退回备用样式，不留破图
+  // 真实封面加载失败的书：退回「生成封面」（不是系统占位图）
   const [failedCovers, setFailedCovers] = useState<Set<string>>(new Set());
+  // 从封面边缘取到的书脊色（取不到就用内置配色）
+  const [spineTones, setSpineTones] = useState<Record<string, { tone: string; ink: string }>>({});
 
   const onPulledRef = useRef(onPulled);
   onPulledRef.current = onPulled;
@@ -153,7 +160,7 @@ export function StudyRoomShelf3D({ books, activeId, onSelect, onPulled, restoreO
   const coverOf = (book: Book): string | undefined =>
     book.cover && !failedCovers.has(book.id) ? book.cover : undefined;
 
-  const rowMinHeight = Math.round((BASE_BOOK_HEIGHT + 14) * scale);
+  const rowMinHeight = Math.round((BASE_BOOK_HEIGHT + 46) * scale);
 
   return (
     <div className="sr3-stage" ref={stageRef}>
@@ -161,23 +168,58 @@ export function StudyRoomShelf3D({ books, activeId, onSelect, onPulled, restoreO
         {rows.map((row, rowIndex) => {
           // 计算每本书在本层的中心位置，抽出时把封面往层内拉，避免贴边被裁
           let cursor = ROW_PADDING_LEFT;
+          const rowTotal = rowWidth + ROW_PADDING_LEFT + ROW_PADDING_RIGHT;
           return (
             <div className="sr3-shelf" key={rowIndex} data-empty={row.length === 0 ? "true" : undefined}>
-              <div className="sr3-row" style={{ minHeight: rowMinHeight, paddingLeft: ROW_PADDING_LEFT, paddingRight: ROW_PADDING_RIGHT }}>
-                {row.map(({ book, spine, height, tilt, lean, tone, ink }) => {
+              <div
+                className="sr3-row"
+                style={{ minHeight: rowMinHeight, paddingLeft: ROW_PADDING_LEFT, paddingRight: ROW_PADDING_RIGHT }}
+              >
+                {row.map((item, itemIndex) => {
+                  // 书立：纯装饰，不承载功能
+                  if (item.kind === "bookend") {
+                    return (
+                      <span
+                        key={`bookend-${rowIndex}-${itemIndex}`}
+                        className="sr3-bookend"
+                        aria-hidden
+                        style={{ width: item.width * scale, height: item.height * scale }}
+                      />
+                    );
+                  }
+                  // 纸签：藏书少时的「策展说明」
+                  if (item.kind === "tag") {
+                    return (
+                      <span
+                        key={`tag-${rowIndex}-${itemIndex}`}
+                        className="sr3-tag"
+                        aria-hidden
+                        style={{
+                          width: item.width * scale,
+                          height: item.height * scale,
+                          transform: `rotate(-5deg) translateY(${item.offsetY * scale}px)`,
+                        }}
+                      >
+                        {item.text}
+                      </span>
+                    );
+                  }
+
+                  const { book, spine, height, tilt, lean, variant } = item;
                   const phase = phases[book.id];
                   const w = Math.round(spine * scale);
                   const h = Math.round(height * scale);
                   const ratio = clampCoverRatio(ratios[book.id]);
                   const d = Math.round(h * ratio);
-                  const center = cursor + w / 2;
-                  cursor += w + BOOK_GAP * scale;
-                  const rowTotal = rowWidth + ROW_PADDING_LEFT + ROW_PADDING_RIGHT;
+                  const center = cursor + (item.gapBefore * scale) + w / 2;
+                  cursor += (item.gapBefore + spine + BOOK_GAP) * scale;
                   // 抽出后封面宽 ≈ d；让封面完整落在层内
                   const minCenter = d / 2 + 8;
                   const maxCenter = rowTotal - d / 2 - 8;
                   const shift = Math.round(Math.min(Math.max(center, minCenter), maxCenter) - center);
                   const coverUrl = coverOf(book);
+                  const spineTone = spineTones[book.id] ?? { tone: item.tone, ink: item.ink };
+                  const generated = generatedCover(book);
                   const style: CssVars = {
                     "--w": `${w}px`,
                     "--h": `${h}px`,
@@ -185,8 +227,11 @@ export function StudyRoomShelf3D({ books, activeId, onSelect, onPulled, restoreO
                     "--tilt": `${tilt}deg`,
                     "--lean": `${lean}deg`,
                     "--shift": `${shift}px`,
-                    "--tone": tone,
-                    "--ink": ink,
+                    "--tone": spineTone.tone,
+                    "--ink": spineTone.ink,
+                    "--gen-bg": generated.bg,
+                    "--gen-ink": generated.ink,
+                    "--gen-accent": generated.accent,
                     marginRight: `${BOOK_GAP * scale}px`,
                   };
                   return (
@@ -197,6 +242,7 @@ export function StudyRoomShelf3D({ books, activeId, onSelect, onPulled, restoreO
                       data-phase={phase}
                       data-lean={lean ? "true" : undefined}
                       data-narrow={w < 30 ? "true" : undefined}
+                      data-variant={variant}
                       style={style}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -212,14 +258,16 @@ export function StudyRoomShelf3D({ books, activeId, onSelect, onPulled, restoreO
                       aria-label={`${book.title}${book.author ? `，${book.author}` : ""}`}
                       aria-pressed={phase === "out" || phase === "pulling"}
                     >
+                      {/* 书脊：书名与作者小字；底色来自封面取色或内置配色 */}
                       <span className="sr3-face sr3-spine">
                         <span className="sr3-spine-title">{book.title}</span>
                         {book.author && <span className="sr3-spine-author">{book.author}</span>}
                       </span>
                       <span className="sr3-face sr3-fore" />
-                      <span className="sr3-face sr3-cover sr3-cover-right" data-fallback={coverUrl ? undefined : "true"}>
+                      {/* 正面封面：有真实封面用原图；没有则用生成封面（不是系统占位图） */}
+                      <span className="sr3-face sr3-cover-front">
                         {coverUrl ? (
-                          // 需要 onError 退回备用样式、onLoad 读取源图比例；next/image 不便用于 3D 面
+                          // 需要 onError 退回生成封面、onLoad 读比例与取书脊色；next/image 不便用于 3D 面
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
                             className="sr3-cover-art"
@@ -232,19 +280,34 @@ export function StudyRoomShelf3D({ books, activeId, onSelect, onPulled, restoreO
                                 const r = img.naturalWidth / img.naturalHeight;
                                 setRatios((prev) => (prev[book.id] === r ? prev : { ...prev, [book.id]: r }));
                               }
+                              const tone = spineToneFromCover(img);
+                              if (tone) {
+                                setSpineTones((prev) => (prev[book.id]?.tone === tone.tone ? prev : { ...prev, [book.id]: tone }));
+                              }
                             }}
                             onError={() => setFailedCovers((prev) => (prev.has(book.id) ? prev : new Set(prev).add(book.id)))}
                           />
                         ) : (
-                          <>
-                            <span className="sr3-cover-band" aria-hidden />
+                          <span className="sr3-cover-generated">
+                            <span className="sr3-cover-rule" aria-hidden />
                             <span className="sr3-cover-title">{book.title}</span>
                             {book.author && <span className="sr3-cover-author">{book.author}</span>}
-                            <span className="sr3-cover-fallback-tag">暂无封面</span>
-                          </>
+                          </span>
                         )}
                       </span>
-                      <span className="sr3-face sr3-cover sr3-cover-left" />
+                      <span className="sr3-face sr3-cover-left" />
+                      <span className="sr3-face sr3-cover sr3-cover-right">
+                        {coverUrl ? (
+                          // 侧面同时保留封面，转向时视觉连贯
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img className="sr3-cover-art" src={coverUrl} alt="" decoding="async" />
+                        ) : (
+                          <span className="sr3-cover-generated" aria-hidden>
+                            <span className="sr3-cover-rule" />
+                            <span className="sr3-cover-title">{book.title}</span>
+                          </span>
+                        )}
+                      </span>
                       <span className="sr3-face sr3-top" />
                       <span className="sr3-face sr3-bottom" />
                     </button>

@@ -12,6 +12,12 @@ import {
   MessagesSquare,
   Loader2,
   Trash2,
+  Highlighter,
+  Underline,
+  MoreHorizontal,
+  Share2,
+  Search,
+  Sparkles,
 } from "lucide-react";
 
 import {
@@ -37,6 +43,15 @@ import {
   shortText,
   unseenAnnotations,
 } from "@/lib/study-room/annotations";
+import {
+  MARK_COLORS,
+  quoteStillPresent,
+  segmentParagraph,
+  type InlineMark,
+} from "@/lib/study-room/annotation-marks";
+import { requestSearchInStore } from "@/lib/study-room/events";
+import { resolveForumApiConfig } from "@/lib/study-room/forum";
+import { simpleLLMCall } from "@/lib/api-helpers";
 import { generateAnnotationBatch } from "@/lib/reading-engine";
 import { HelpTip } from "./help-tip";
 import {
@@ -101,6 +116,11 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   const [annotating, setAnnotating] = useState(false);
   const [markSheet, setMarkSheet] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState<{ id: string; text: string } | null>(null);
+  // 选词工具条：高亮配色 / 更多动作 / AI 起草
+  const [markColorKey, setMarkColorKey] = useState(MARK_COLORS[0].key);
+  const [showMarkColors, setShowMarkColors] = useState(false);
+  const [showMore, setShowMore] = useState(false);
+  const [aiDrafting, setAiDrafting] = useState(false);
   const [bookmarks, setBookmarks] = useState<ReadingBookmark[]>([]);
   const [selection, setSelection] = useState<SelectionState | null>(null);
   const [annotate, setAnnotate] = useState<AnnotateState | null>(null);
@@ -419,6 +439,125 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
     clearSelection();
   };
 
+  /** 给选中的原文加行内标记（高亮 / 下划线）；再点一次同样的标记表示取消。 */
+  const applyMark = async (mark: InlineMark) => {
+    if (!selection) return;
+    const existing = chapterNotes.find(
+      (note) => note.quote === selection.text && note.mark && note.paragraphIndex === selection.paragraphIndex,
+    );
+    if (existing) {
+      if (existing.mark === mark) {
+        await deleteNote(existing.id);
+        showFlash(mark === "highlight" ? "已取消高亮" : "已取消下划线");
+      } else {
+        await saveNote({ ...existing, mark, color: markColorKey, updatedAt: new Date().toISOString() });
+        showFlash(mark === "highlight" ? "已改为高亮" : "已改为下划线");
+      }
+    } else {
+      await saveNote(
+        buildNote({
+          book,
+          chapterIndex,
+          paragraphIndex: selection.paragraphIndex,
+          quote: selection.text,
+          emoji: undefined,
+          content: undefined,
+        }) as never,
+      );
+      // buildNote 不带标记字段，这里补上（保持同一套定位模型）
+      const list = await loadChapterNotes(book.id, chapterIndex);
+      const created = list.find(
+        (note) => note.quote === selection.text && note.paragraphIndex === selection.paragraphIndex && !note.mark,
+      );
+      if (created) {
+        await saveNote({ ...created, mark, color: markColorKey, updatedAt: new Date().toISOString() });
+      }
+      showFlash(mark === "highlight" ? "已高亮" : "已加下划线");
+    }
+    await refreshChapterNotes();
+    clearSelection();
+    setShowMarkColors(false);
+  };
+
+  /** 分享选中的原文：系统分享面板可用就用它，不可用就复制到剪贴板（如实提示）。 */
+  const handleShare = async () => {
+    if (!selection) return;
+    const text = selection.text;
+    try {
+      if (navigator.share) {
+        await navigator.share({ text, title: book.title });
+        showFlash("已分享");
+      } else {
+        await navigator.clipboard.writeText(text);
+        showFlash("当前环境不支持分享，已复制原文");
+      }
+    } catch {
+      showFlash("分享已取消");
+    }
+    clearSelection();
+    setShowMore(false);
+  };
+
+  /** 用选中的原文去书城搜一搜（跳到书城并带上关键词）。 */
+  const handleSearchText = () => {
+    if (!selection) return;
+    requestSearchInStore(selection.text);
+    clearSelection();
+    setShowMore(false);
+  };
+
+  /** 就这段原文去问角色（打开共读侧栏，带着选中文字）。 */
+  const handleAskCharacter = () => {
+    setCoreadAnchor(selection?.paragraphIndex ?? visibleParagraphIndex());
+    setCoreadOpen(true);
+    clearSelection();
+    setShowMore(false);
+  };
+
+  /** AI 辅助写作：让模型就这段原文写一句批注，填进批注草稿（可以再改）。 */
+  const handleAiDraft = async () => {
+    // 从批注面板里点「AI 写一句」时，selection 可能已经清掉，用面板里的原文
+    const source = selection?.text ?? annotate?.quote ?? "";
+    const sourceParagraph = selection?.paragraphIndex ?? annotate?.paragraphIndex ?? 0;
+    if (!source) return;
+    const apiConfig = resolveForumApiConfig();
+    if (!apiConfig) {
+      showFlash("还没有配置 API：先在设置里绑定模型");
+      return;
+    }
+    setAiDrafting(true);
+    try {
+      const result = await simpleLLMCall(
+        apiConfig,
+        [
+          {
+            role: "user",
+            content: [
+              "你是读者的读书助手。请就下面这段原文写一句批注，一到两句，具体、不空泛，不要复述原文。",
+              "只输出批注本身。",
+              "",
+              source,
+            ].join("\n"),
+          },
+        ],
+        { temperature: 0.8, max_tokens: 300, label: "studyroom-annotation-draft" },
+      );
+      if (result.error || !result.content) throw new Error(result.error || "没有返回内容");
+      const draft = result.content.trim().slice(0, 300);
+      setAnnotate((prev) =>
+        prev
+          ? { ...prev, draft: prev.draft ? `${prev.draft}\n${draft}` : draft }
+          : { quote: source, paragraphIndex: sourceParagraph, draft },
+      );
+      setShowMore(false);
+      showFlash("已写进批注草稿，可以再改");
+    } catch {
+      showFlash("AI 起草失败，可以自己写或稍后再试");
+    } finally {
+      setAiDrafting(false);
+    }
+  };
+
   const handleExcerpt = async () => {
     if (!selection) return;
     await saveNote(
@@ -661,7 +800,30 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
               return (
                 <div key={index} className="sr-para-block">
                   <p className={paraMarks ? "sr-para sr-para--marked" : "sr-para"} data-pi={index}>
-                    {para}
+                    {(() => {
+                      const segs = segmentParagraph(para, chapterNotes.filter((n) => n.paragraphIndex === index));
+                      if (!segs) return para;
+                      return segs.map((seg, segIndex) =>
+                        seg.kind === "plain" ? (
+                          <span key={segIndex}>{seg.text}</span>
+                        ) : (
+                          <mark
+                            key={segIndex}
+                            className="sr-inline-mark"
+                            data-mark={seg.mark}
+                            data-has-note={seg.hasNote ? "true" : undefined}
+                            style={{ "--mark-color": seg.color } as React.CSSProperties}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setMarkSheet(index);
+                              setEditDraft(null);
+                            }}
+                          >
+                            {seg.text}
+                          </mark>
+                        ),
+                      );
+                    })()}
                   </p>
                   {paraMarks && (
                     <div className="sr-para-marks">
@@ -711,8 +873,17 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
           <button type="button" className="sr-selbar-btn" onClick={handleCopy}>
             <Copy size={16} strokeWidth={1.7} /> 复制
           </button>
-          <button type="button" className="sr-selbar-btn" onClick={handleExcerpt}>
-            <Quote size={16} strokeWidth={1.7} /> 书摘
+          <button
+            type="button"
+            className="sr-selbar-btn"
+            data-active={showMarkColors ? "true" : undefined}
+            onClick={() => setShowMarkColors((value) => !value)}
+            aria-expanded={showMarkColors}
+          >
+            <Highlighter size={16} strokeWidth={1.7} /> 高亮
+          </button>
+          <button type="button" className="sr-selbar-btn" onClick={() => void applyMark("underline")}>
+            <Underline size={16} strokeWidth={1.7} /> 下划线
           </button>
           <button
             type="button"
@@ -721,6 +892,52 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
           >
             <PenLine size={16} strokeWidth={1.7} /> 批注
           </button>
+          <button type="button" className="sr-selbar-btn" onClick={handleExcerpt}>
+            <Quote size={16} strokeWidth={1.7} /> 摘录
+          </button>
+          <button
+            type="button"
+            className="sr-selbar-btn"
+            data-active={showMore ? "true" : undefined}
+            onClick={() => setShowMore((value) => !value)}
+            aria-expanded={showMore}
+          >
+            <MoreHorizontal size={16} strokeWidth={1.7} /> 更多
+          </button>
+          {showMarkColors && (
+            <span className="sr-selbar-colors" role="group" aria-label="高亮颜色">
+              {MARK_COLORS.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className="sr-selbar-color"
+                  data-active={markColorKey === item.key ? "true" : undefined}
+                  style={{ background: item.color }}
+                  aria-label={item.label}
+                  onClick={async () => {
+                    setMarkColorKey(item.key);
+                    await applyMark("highlight");
+                  }}
+                />
+              ))}
+            </span>
+          )}
+          {showMore && (
+            <span className="sr-selbar-more" role="menu">
+              <button type="button" className="sr-selbar-btn" onClick={() => void handleShare()}>
+                <Share2 size={16} strokeWidth={1.7} /> 分享
+              </button>
+              <button type="button" className="sr-selbar-btn" onClick={handleSearchText}>
+                <Search size={16} strokeWidth={1.7} /> 搜索
+              </button>
+              <button type="button" className="sr-selbar-btn" onClick={handleAskCharacter} disabled={isPdf}>
+                <MessagesSquare size={16} strokeWidth={1.7} /> 询问角色
+              </button>
+              <button type="button" className="sr-selbar-btn" onClick={() => void handleAiDraft()} disabled={aiDrafting}>
+                {aiDrafting ? <Loader2 size={16} className="sr-spin" /> : <Sparkles size={16} strokeWidth={1.7} />} AI 写作
+              </button>
+            </span>
+          )}
         </div>
       )}
 
@@ -728,6 +945,11 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
         <div className="sr-sheet-mask" onClick={() => setAnnotate(null)}>
           <div className="sr-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="sr-sheet-quote">{annotate.quote}</div>
+            {!quoteStillPresent(paragraphs[annotate.paragraphIndex], annotate.quote) && (
+              <p className="sr-note-meta" style={{ marginBottom: 8 }}>
+                这段原文在当前版本的第 {annotate.paragraphIndex + 1} 段里没有找到：可能是换过版本或译本，位置仅供参考。
+              </p>
+            )}
             <div className="sr-sheet-label">表情批注（可以只选表情，也可以表情＋文字）</div>
             <div className="sr-emoji-grid">
               {NOTE_EMOJIS.map((emoji) => (
@@ -755,6 +977,15 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
               onChange={(e) => setAnnotate((prev) => (prev ? { ...prev, draft: e.target.value } : prev))}
             />
             <div className="sr-sheet-actions">
+              <button
+                type="button"
+                className="sr-btn"
+                onClick={() => void handleAiDraft()}
+                disabled={aiDrafting}
+              >
+                {aiDrafting ? <Loader2 size={15} className="sr-spin" /> : <Sparkles size={15} strokeWidth={1.7} />}
+                AI 写一句
+              </button>
               <button type="button" className="sr-btn" onClick={() => setAnnotate(null)}>
                 取消
               </button>
@@ -781,6 +1012,11 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
         >
           <div className="sr-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="sr-sheet-quote">{paragraphs[markSheet]}</div>
+            {(marks.get(markSheet) ?? []).some((mark) => !quoteStillPresent(paragraphs[markSheet], mark.note?.quote)) && (
+              <p className="sr-note-meta" style={{ marginBottom: 8 }}>
+                有批注的原文在当前版本里对不上（可能换过版本或译本），跳回位置可能不准。
+              </p>
+            )}
             <ul className="sr-mark-list">
               {(marks.get(markSheet) ?? []).map((mark) => {
                 const editing = editDraft !== null && mark.note !== undefined && editDraft.id === mark.note.id;
