@@ -77,7 +77,7 @@ async function loadCover(url: string | undefined): Promise<CoverAsset | null> {
   }
 }
 
-function xhtml(title: string, body: string): string {
+export function xhtml(title: string, body: string): string {
   return `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="zh" lang="zh">
@@ -275,4 +275,152 @@ ${spineItems.join("\n")}
 /** 文件名里不能出现的字符统一换掉。 */
 export function safeFileName(name: string): string {
   return (name || "book").replace(/[\\/:*?"<>|]/g, "_").slice(0, 60);
+}
+
+/**
+ * 把创作草稿导出成 EPUB：正文按章、封面带上，章末记忆作为附录（写作参考，不混进正文）。
+ * 与「书详情导出」共用同一套 EPUB 结构与样式。
+ */
+export async function exportDraftAsEpub(draft: {
+  title?: string;
+  author?: string;
+  synopsis?: string;
+  tags?: string[];
+  cover?: string;
+  chapters: Array<{ id: string; title: string; content: string; memory?: Record<string, string> }>;
+}): Promise<{ chapters: number; memories: number }> {
+  const { default: JSZipLocal } = await import("jszip");
+  const zip = new JSZipLocal();
+  zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+  zip.folder("META-INF")!.file(
+    "container.xml",
+    `<?xml version="1.0" encoding="utf-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/package.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`,
+  );
+
+  const oebps = zip.folder("OEBPS")!;
+  oebps.file(
+    "style.css",
+    `body { font-family: serif; line-height: 1.8; margin: 0 1em; }
+h1, h2 { font-family: sans-serif; font-weight: 600; margin: 1.4em 0 0.8em; }
+h1 { font-size: 1.4em; }
+p { margin: 0 0 1em; text-indent: 2em; }
+.memo { font-size: 0.92em; color: #444; }
+.memo-title { font-weight: 600; margin-top: 1.4em; }
+.cover { text-align: center; margin: 0; padding: 0; }
+.cover img { max-width: 100%; max-height: 100vh; }`,
+  );
+
+  const cover = await loadCover(draft.cover);
+  if (cover) {
+    oebps.folder("images")!.file(`cover.${cover.ext}`, cover.data);
+    oebps.file("cover.xhtml", xhtml("封面", `  <div class="cover"><img src="images/cover.${cover.ext}" alt="封面"/></div>`));
+  }
+
+  const chapters = draft.chapters.filter((chapter) => chapter.content.trim());
+  chapters.forEach((chapter, index) => {
+    const paragraphs = chapter.content
+      .split(/\n{2,}/)
+      .map((block) => block.trim())
+      .filter(Boolean)
+      .map((block) => `  <p>${escapeHtml(block).replace(/\n/g, "<br/>")}</p>`)
+      .join("\n");
+    oebps.file(
+      `ch-${String(index + 1).padStart(3, "0")}.xhtml`,
+      xhtml(chapter.title || `第 ${index + 1} 章`, `  <h1>${escapeHtml(chapter.title || `第 ${index + 1} 章`)}</h1>\n${paragraphs}`),
+    );
+  });
+
+  const memories = chapters.filter((chapter) => chapter.memory);
+  if (memories.length > 0) {
+    const body = memories
+      .map((chapter) => {
+        const memo = chapter.memory ?? {};
+        const lines = Object.entries(memo)
+          .filter(([key, value]) => key !== "createdAt" && typeof value === "string" && value.trim())
+          .map(([key, value]) => {
+            const label =
+              key === "summary" ? "情节" :
+              key === "characters" ? "人物状态" :
+              key === "relations" ? "关系变化" :
+              key === "whenWhere" ? "时间地点" :
+              key === "threads" ? "伏笔" :
+              key === "openConflicts" ? "未解决冲突" : "必须保持";
+            return `    <p class="memo"><strong>${label}：</strong>${escapeHtml(String(value))}</p>`;
+          })
+          .join("\n");
+        return `  <div class="memo-title">${escapeHtml(chapter.title || "未命名章节")}</div>\n${lines}`;
+      })
+      .join("\n");
+    oebps.file("memory.xhtml", xhtml("写作记忆", `  <h1>写作记忆</h1>\n  <p class="memo">这些是写作时的章末记忆，供回顾与续写参考，不是正文内容。</p>\n${body}`));
+  }
+
+  const navItems = [
+    ...chapters.map((chapter, index) => ({
+      href: `ch-${String(index + 1).padStart(3, "0")}.xhtml`,
+      title: chapter.title || `第 ${index + 1} 章`,
+    })),
+    ...(memories.length > 0 ? [{ href: "memory.xhtml", title: "写作记忆" }] : []),
+  ];
+  oebps.file(
+    "nav.xhtml",
+    xhtml(
+      "目录",
+      `  <nav epub:type="toc" id="toc">\n    <h1>目录</h1>\n    <ol>\n${navItems
+        .map((item) => `      <li><a href="${item.href}">${escapeHtml(item.title)}</a></li>`)
+        .join("\n")}\n    </ol>\n  </nav>`,
+    ),
+  );
+
+  const manifestItems = [
+    `    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>`,
+    `    <item id="css" href="style.css" media-type="text/css"/>`,
+    ...chapters.map((_, index) => `    <item id="ch${index + 1}" href="ch-${String(index + 1).padStart(3, "0")}.xhtml" media-type="application/xhtml+xml"/>`),
+    ...(memories.length > 0 ? [`    <item id="memory" href="memory.xhtml" media-type="application/xhtml+xml"/>`] : []),
+    ...(cover
+      ? [
+          `    <item id="cover-image" href="images/cover.${cover.ext}" media-type="${cover.mime}" properties="cover-image"/>`,
+          `    <item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>`,
+        ]
+      : []),
+  ];
+  const spineItems = [
+    ...(cover ? [`    <itemref idref="cover"/>`] : []),
+    ...chapters.map((_, index) => `    <itemref idref="ch${index + 1}"/>`),
+    ...(memories.length > 0 ? [`    <itemref idref="memory"/>`] : []),
+  ];
+  oebps.file(
+    "package.opf",
+    `<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="zh">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="bookid">urn:uuid:${crypto.randomUUID()}</dc:identifier>
+    <dc:title>${escapeXml(draft.title?.trim() || "未命名作品")}</dc:title>
+    <dc:creator>${escapeXml(draft.author?.trim() || "佚名")}</dc:creator>
+    <dc:language>zh</dc:language>
+    <dc:description>${escapeXml(draft.synopsis?.trim() || "")}</dc:description>
+    <meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d+Z$/, "Z")}</meta>
+    ${cover ? `<meta name="cover" content="cover-image"/>` : ""}
+  </metadata>
+  <manifest>
+${manifestItems.join("\n")}
+  </manifest>
+  <spine>
+${spineItems.join("\n")}
+  </spine>
+</package>`,
+  );
+
+  const blob = await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${safeFileName(draft.title?.trim() || "未命名作品")}.epub`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  return { chapters: chapters.length, memories: memories.length };
 }

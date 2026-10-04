@@ -20,6 +20,32 @@ export type CreativeChapter = {
   content: string;
   createdAt: string;
   updatedAt: string;
+  /** 章末结构化记忆：下一章只加载需要的那部分，防长篇失忆 */
+  memory?: ChapterMemory;
+};
+
+/** 章末结构化记忆（按 TXT 要求：摘要/人物状态/关系变化/地点时间/伏笔/未解决冲突/必须保持设定） */
+export type ChapterMemory = {
+  summary: string;
+  characters: string;
+  relations: string;
+  whenWhere: string;
+  threads: string;
+  openConflicts: string;
+  mustKeep: string;
+  createdAt: string;
+};
+
+/** 作品形态：长篇 / 短篇 / 剧本 / 散文 / 合集 / 自定义 */
+export type WorkKind = "novel" | "short" | "script" | "essay" | "collection" | "custom";
+
+export const WORK_KIND_LABEL: Record<WorkKind, string> = {
+  novel: "长篇小说",
+  short: "短篇",
+  script: "剧本",
+  essay: "散文",
+  collection: "合集",
+  custom: "自定义",
 };
 
 /** 写作身份：写作助手（模型）或用一张已有角色卡来写。 */
@@ -53,6 +79,15 @@ export type CreativeDraft = {
   cover?: string;
   extra?: string;
   writer: CreativeWriter;
+  /** 作品形态（决定模板与写作建议，不强制） */
+  kind?: WorkKind;
+  /** 写作模式：AI 协作或纯手写（手写时不会自动调用模型） */
+  writeMode?: "ai" | "hand";
+  /** 选中的文风：内置文风只存 id 与强度，完整规则在服务端 */
+  styleId?: string;
+  styleStrength?: "light" | "standard" | "dense";
+  /** 用户自建文风 id（规则存本机） */
+  userStyleId?: string;
   chapters: CreativeChapter[];
   /** 已发布到书架时的书籍 id */
   publishedBookId?: string;
@@ -64,14 +99,52 @@ export type CreativeTemplate = {
   id: string;
   name: string;
   desc: string;
-  fields: Partial<Pick<CreativeDraft, "genre" | "style" | "world" | "cast" | "targetWords" | "tags" | "serialization">>;
+  /** 这个模板对应的作品形态 */
+  kind: WorkKind;
+  fields: Partial<Pick<CreativeDraft, "genre" | "style" | "world" | "cast" | "targetWords" | "tags" | "serialization" | "kind">>;
 };
 
 /** 参考模板：只是把常见的写法填进设定里，任何字段都可以改，也可以全不填。 */
 export const CREATIVE_TEMPLATES: CreativeTemplate[] = [
-  { id: "blank", name: "空白开始", desc: "什么模板都不用，想到哪写到哪", fields: {} },
+  { id: "blank", name: "空白开始", desc: "什么模板都不用，想到哪写到哪", kind: "custom", fields: { kind: "custom" } },
+  {
+    id: "longform",
+    name: "长篇小说",
+    desc: "多章推进，人物与伏笔可以慢慢铺",
+    kind: "novel",
+    fields: { kind: "novel", targetWords: 2500, serialization: "serial" },
+  },
+  {
+    id: "shortstory",
+    name: "短篇",
+    desc: "一次写完，收在一个点上",
+    kind: "short",
+    fields: { kind: "short", targetWords: 3000, serialization: "finished" },
+  },
+  {
+    id: "script",
+    name: "剧本",
+    desc: "以场次与对白推进",
+    kind: "script",
+    fields: { kind: "script", style: "以对白与动作提示为主，少旁白", targetWords: 2200, serialization: "serial" },
+  },
+  {
+    id: "essay",
+    name: "散文",
+    desc: "以观察与思绪为主，不追求情节",
+    kind: "essay",
+    fields: { kind: "essay", style: "第一人称，细节具体，克制抒情", targetWords: 1500, serialization: "finished" },
+  },
+  {
+    id: "collection",
+    name: "合集",
+    desc: "若干独立篇目放在一起",
+    kind: "collection",
+    fields: { kind: "collection", targetWords: 2000, serialization: "serial" },
+  },
   {
     id: "urban",
+    kind: "novel",
     name: "都市日常",
     desc: "现代都市、生活流、节奏舒缓",
     fields: {
@@ -84,6 +157,7 @@ export const CREATIVE_TEMPLATES: CreativeTemplate[] = [
   },
   {
     id: "mystery",
+    kind: "novel",
     name: "悬疑推理",
     desc: "案件推进、线索与反转",
     fields: {
@@ -96,6 +170,7 @@ export const CREATIVE_TEMPLATES: CreativeTemplate[] = [
   },
   {
     id: "fantasy",
+    kind: "novel",
     name: "奇幻冒险",
     desc: "架空世界观、旅途与成长",
     fields: {
@@ -108,6 +183,7 @@ export const CREATIVE_TEMPLATES: CreativeTemplate[] = [
   },
   {
     id: "romance",
+    kind: "novel",
     name: "言情",
     desc: "人物关系与情绪推进",
     fields: {
@@ -120,6 +196,7 @@ export const CREATIVE_TEMPLATES: CreativeTemplate[] = [
   },
   {
     id: "scifi",
+    kind: "novel",
     name: "科幻",
     desc: "近未来设定、技术与人的关系",
     fields: {
@@ -170,6 +247,8 @@ export function createDraft(templateId = "blank"): CreativeDraft {
     title: "",
     tags: template.fields.tags ? [...template.fields.tags] : [],
     templateId: template.id,
+    kind: template.kind,
+    writeMode: "ai",
     genre: template.fields.genre,
     style: template.fields.style,
     world: template.fields.world,
@@ -258,6 +337,24 @@ export function buildOutlinePrompt(draft: CreativeDraft): string {
   ].join("\n");
 }
 
+/** 本章上下文：设定 + 前文片段 + 章末记忆（不含文风与任务指令，交给服务端组词）。 */
+export function buildChapterBrief(draft: CreativeDraft, chapterNumber: number): string {
+  return [
+    `正在写第 ${chapterNumber} 章。`,
+    draft.targetWords ? `每章目标字数约 ${draft.targetWords} 字。` : "",
+    "",
+    "【设定】",
+    draftBrief(draft),
+    "",
+    "【前文（结尾片段）】",
+    recentContext(draft),
+    recentMemories(draft) ? "\n【前几章的章末记忆（保持一致）】" : "",
+    recentMemories(draft),
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function buildChapterPrompt(draft: CreativeDraft, chapterNumber: number): string {
   return [
     identityInstruction(draft, "写作助手"),
@@ -272,6 +369,8 @@ export function buildChapterPrompt(draft: CreativeDraft, chapterNumber: number):
     "",
     "【前文（结尾片段）】",
     recentContext(draft),
+    recentMemories(draft) ? "\n【前几章的章末记忆（保持一致）】" : "",
+    recentMemories(draft),
   ]
     .filter(Boolean)
     .join("\n");
@@ -327,6 +426,88 @@ export async function generateChapter(
   const maxTokens = Math.min(Math.max((draft.targetWords ?? 2000) * 2, 800), 8000);
   const raw = await callWriter(draft, buildChapterPrompt(draft, chapterNumber), signal, maxTokens);
   return parseChapterOutput(raw, chapterNumber);
+}
+
+/** 章末记忆提示词：让模型按固定字段回一份结构化记忆（只发这一章，不发全书）。 */
+export function buildChapterMemoryPrompt(draft: CreativeDraft, chapter: CreativeChapter): string {
+  return [
+    "请为下面这一章写一份结构化的写作记忆，供后续章节保持一致。只输出 JSON 对象，字段固定：",
+    '{"summary":"本章发生了什么（100 字内）","characters":"人物当前状态","relations":"关系变化","whenWhere":"时间与地点","threads":"本章埋下的伏笔","openConflicts":"尚未解决的冲突","mustKeep":"后续必须保持的设定"}',
+    "",
+    `书名：${draft.title || "（未定）"}`,
+    `章节：${chapter.title}` ,
+    "正文：",
+    chapter.content.slice(0, 4000),
+  ].join("\n");
+}
+
+/** 解析模型返回的记忆 JSON；字段缺失就用空串，不编造。 */
+export function parseChapterMemory(raw: string): ChapterMemory | null {
+  try {
+    const text = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start < 0 || end <= start) return null;
+    const parsed = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
+    const pick = (key: string) => (typeof parsed[key] === "string" ? (parsed[key] as string).trim().slice(0, 600) : "");
+    return {
+      summary: pick("summary"),
+      characters: pick("characters"),
+      relations: pick("relations"),
+      whenWhere: pick("whenWhere"),
+      threads: pick("threads"),
+      openConflicts: pick("openConflicts"),
+      mustKeep: pick("mustKeep"),
+      createdAt: new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 今日写作：只统计真实数据（今天有编辑的项目、字数与完成的章节数）。 */
+export function todayWritingStats(drafts: CreativeDraft[]): {
+  words: number;
+  projects: number;
+  chapters: number;
+  hasData: boolean;
+} {
+  const today = new Date().toISOString().slice(0, 10);
+  let words = 0;
+  let chapters = 0;
+  let projects = 0;
+  for (const draft of drafts) {
+    const editedToday = draft.chapters.filter((chapter) => chapter.updatedAt.slice(0, 10) === today);
+    if (draft.updatedAt.slice(0, 10) === today) projects += 1;
+    for (const chapter of editedToday) {
+      words += wordCount(chapter.content);
+      if (chapter.content.trim()) chapters += 1;
+    }
+  }
+  return { words, projects, chapters, hasData: words > 0 || projects > 0 };
+}
+
+/** 生成下一章时要带的记忆：最近几章的章末记忆 + 大纲，只带需要的部分。 */
+export function recentMemories(draft: CreativeDraft, count = 3): string {
+  const withMemory = draft.chapters.filter((chapter) => chapter.memory);
+  if (withMemory.length === 0) return "";
+  return withMemory
+    .slice(-count)
+    .map((chapter) => {
+      const memory = chapter.memory!;
+      return [
+        `【${chapter.title}】`,
+        memory.summary && `情节：${memory.summary}`,
+        memory.characters && `人物：${memory.characters}`,
+        memory.relations && `关系：${memory.relations}`,
+        memory.whenWhere && `时间地点：${memory.whenWhere}`,
+        memory.openConflicts && `未解决：${memory.openConflicts}`,
+        memory.mustKeep && `必须保持：${memory.mustKeep}`,
+      ]
+        .filter(Boolean)
+        .join("；");
+    })
+    .join("\n");
 }
 
 export function makeChapter(title: string, content: string): CreativeChapter {

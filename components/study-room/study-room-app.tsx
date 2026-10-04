@@ -275,7 +275,11 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
               }}
             />
           ) : tab === "desk" ? (
-            <StudyRoomDesk onOpenDraft={(draftId) => setView({ kind: "creative", draftId })} />
+            <StudyRoomDesk
+              onOpenDraft={(draftId) => setView({ kind: "creative", draftId })}
+              onOpenNotes={() => setView({ kind: "notes" })}
+              onOpenWishlist={() => setView({ kind: "wishlist" })}
+            />
           ) : (
             <StudyRoomMine
               onOpenNotes={() => setView({ kind: "notes" })}
