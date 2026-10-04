@@ -3,6 +3,8 @@
    玻璃只用于导航、工具条、Dock、浮层；正文区域保持清晰纸感。 */
 
 .sr-app {
+  /* Dock（含安全区）+ 间距：页面底部留白都读它 */
+  --sr-dock-space: calc(80px + env(safe-area-inset-bottom, 0px));
   position: absolute;
   inset: 0;
   display: flex;
@@ -77,51 +79,89 @@
 .sr-tab-pane {
   min-height: 100%;
   padding: 14px 16px;
-  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+}
+/* 有底部 Dock 的页面：留出 Dock + 间距，最后一张卡片/按钮不会被遮住 */
+.sr-tab-pane--dock {
+  padding-bottom: var(--sr-dock-space, calc(80px + env(safe-area-inset-bottom, 0px)));
 }
 
-/* ── 底部四导航 ── */
-.sr-tabbar {
+/* ── 底部 Dock（入口数量自适应，选中项横向展开） ── */
+.sr-dock {
   position: absolute;
   left: 50%;
-  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   z-index: 30;
-  display: flex;
-  gap: 2px;
   padding: 5px;
-  max-width: calc(100% - 20px);
-  border-radius: var(--ui-radius-tab-bar, 32px);
-  background: color-mix(in srgb, var(--c-panel) 72%, transparent);
+  max-width: calc(100% - 16px);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c-panel) 74%, transparent);
   backdrop-filter: blur(var(--sr-glass-blur, var(--ui-blur))) saturate(var(--ui-saturate));
   -webkit-backdrop-filter: blur(var(--sr-glass-blur, var(--ui-blur))) saturate(var(--ui-saturate));
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
-.sr-tab {
+.sr-dock-row {
+  position: relative;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  z-index: 1;
+}
+.sr-dock-capsule {
+  position: absolute;
+  left: 5px;
+  top: 5px;
+  bottom: 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sr-accent) 12%, rgba(255, 255, 255, 0.7));
+  box-shadow: 0 4px 14px rgba(20, 28, 45, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  opacity: 0;
+  /* 只做 transform 与宽度过渡，不用 transition: all */
+  transition: transform 0.34s cubic-bezier(0.34, 1.3, 0.64, 1), width 0.34s cubic-bezier(0.34, 1.3, 0.64, 1), opacity 0.2s ease;
+  will-change: transform, width;
+}
+.sr-dock-capsule[data-ready="true"] { opacity: 1; }
+.sr-dock-tab {
+  position: relative;
+  z-index: 1;
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  /* 五个入口共用可用宽度：窄屏也不会挤 */
-  flex: 1 1 0;
-  min-width: 0;
-  padding: 7px 6px 6px;
+  gap: 6px;
+  height: 44px;
+  padding: 0 4px;
   border: 0;
+  border-radius: 999px;
   background: transparent;
-  border-radius: calc(var(--ui-radius-tab-bar, 32px) - 6px);
   color: var(--c-icon);
   cursor: pointer;
-  transition: color 0.18s ease, background 0.18s ease;
+  overflow: hidden;
+  transition: width 0.34s cubic-bezier(0.34, 1.3, 0.64, 1), color 0.18s ease;
 }
-.sr-tab-label {
-  font-size: 10.5px;
+.sr-dock-tab[data-active="true"] { color: var(--c-text-title); }
+.sr-dock-icon { display: inline-flex; flex: 0 0 auto; }
+.sr-dock-label {
+  /* 始终横向单行；未选中时收起为 0 宽，不会出现竖排文字 */
+  white-space: nowrap;
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-4px);
+  font-size: 11.5px;
   font-weight: 500;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.2px;
+  transition: max-width 0.3s cubic-bezier(0.34, 1.3, 0.64, 1), opacity 0.22s ease, transform 0.3s ease;
 }
-.sr-tab[data-active="true"] {
-  color: var(--c-icon-active);
-  background: color-mix(in srgb, var(--c-icon-active) 9%, transparent);
+.sr-dock-tab[data-active="true"] .sr-dock-label {
+  max-width: 88px;
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* 减少动态：只保留位置切换与淡入，不做压缩回弹 */
+  .sr-dock-capsule { transition: opacity 0.15s ease; will-change: auto; }
+  .sr-dock-tab { transition: color 0.15s ease; }
+  .sr-dock-label { transition: opacity 0.15s ease; }
 }
 
 /* ── 通用卡片 / 空态 ── */
@@ -424,7 +464,8 @@
 .sr-tab-pane:has(.sr3-stage) {
   display: flex;
   flex-direction: column;
-  padding-bottom: calc(82px + env(safe-area-inset-bottom, 0px));
+  /* 底部留白交给 --sr-dock-space，书架最后一层不会被 Dock 压住 */
+  padding-bottom: var(--sr-dock-space, calc(80px + env(safe-area-inset-bottom, 0px)));
 }
 .sr-shelf-root {
   flex: 1 1 auto;
@@ -2149,10 +2190,10 @@
   border: 0.5px solid var(--c-card-border);
 }
 
-/* 窄屏：五个入口仍不拥挤 */
+/* 窄屏：入口只显示图标时更紧凑，选中项文字也随之收窄 */
 @media (max-width: 360px) {
-  .sr-tab { padding: 6px 4px 5px; }
-  .sr-tab-label { font-size: 9.5px; letter-spacing: 0; }
+  .sr-dock-label { font-size: 10.5px; letter-spacing: 0; }
+  .sr-dock-tab[data-active="true"] .sr-dock-label { max-width: 68px; }
 }
 
 /* ── 书友圈：作者行、剧透、评论 ── */

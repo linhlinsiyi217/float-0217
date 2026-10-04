@@ -126,10 +126,19 @@ export function StudyRoomShelf3D({ books, activeId, onSelect, onPulled, restoreO
   // activeId 变化驱动：新书抽出，其余已抽出/抽出中的书归位
   useEffect(() => {
     const current = phasesRef.current;
+    const started = new Set<string>();
     for (const [id, phase] of Object.entries(current)) {
-      if (id !== activeId && (phase === "pulling" || phase === "out")) start(id, "returning");
+      if (id !== activeId && (phase === "pulling" || phase === "out")) {
+        start(id, "returning");
+        started.add(id);
+      }
     }
     if (activeId && current[activeId] !== "pulling" && current[activeId] !== "out") start(activeId, "pulling");
+    // 快速从 A 切到 B 时，B 可能已经走完抽出（out）却没轮到开详情：这里补一次
+    if (activeId && !started.has(activeId) && phasesRef.current[activeId] === "out") {
+      const book = booksRef.current.find((item) => item.id === activeId);
+      if (book) onPulledRef.current?.(book);
+    }
   }, [activeId, start]);
 
   // 卸载时清掉所有兜底定时器，不残留
@@ -191,8 +200,8 @@ export function StudyRoomShelf3D({ books, activeId, onSelect, onPulled, restoreO
                       style={style}
                       onClick={(e) => {
                         e.stopPropagation();
-                        // 抽出动画中重复点击同一本：忽略，不重复触发
-                        if (phase === "pulling") return;
+                        // 抽出动画中重复点击同一本：忽略。用 ref 判断，避免渲染间隔里漏判
+                        if (phasesRef.current[book.id] === "pulling") return;
                         onSelect(book);
                       }}
                       onTransitionEnd={(e) => {

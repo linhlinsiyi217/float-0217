@@ -19,6 +19,7 @@ import { StudyRoomBackup } from "./study-room-backup";
 import { StudyRoomReadingMemory } from "./study-room-reading-memory";
 import { StudyRoomCreativeEditor } from "./study-room-creative-editor";
 import { StudyRoomForum } from "./study-room-forum";
+import { StudyRoomDock, type DockItem } from "./study-room-dock";
 import { StudyRoomNpcPanel } from "./study-room-npc-panel";
 import { StudyRoomGifts } from "./study-room-gifts";
 
@@ -154,6 +155,11 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
   }
 
   const active = TAB_META[tab];
+  const dockItems: DockItem[] = TAB_ORDER.map((key) => ({
+    key,
+    label: key === "forum" ? forumName : TAB_META[key].label,
+    icon: TAB_META[key].icon,
+  }));
 
   return (
     <section className="sr-app">
@@ -172,7 +178,7 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
       </header>
 
       <div className="sr-body" key={tab}>
-        <div className="sr-tab-pane">
+        <div className="sr-tab-pane sr-tab-pane--dock">
           {!ready ? (
             <div className="sr-empty">
               <p>正在打开书房…</p>
@@ -211,26 +217,7 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
         </div>
       </div>
 
-      <nav className="sr-tabbar" aria-label="书房导航">
-        {TAB_ORDER.map((key) => {
-          const meta = TAB_META[key];
-          const Icon = meta.icon;
-          return (
-            <button
-              key={key}
-              type="button"
-              className="sr-tab"
-              data-active={tab === key ? "true" : undefined}
-              onClick={() => setTab(key)}
-              aria-label={meta.label}
-              aria-current={tab === key ? "page" : undefined}
-            >
-              <Icon size={20} strokeWidth={tab === key ? 2 : 1.6} />
-              <span className="sr-tab-label">{key === "forum" ? forumName : meta.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+      <StudyRoomDock items={dockItems} active={tab} onSelect={(key) => setTab(key as StudyRoomTab)} />
     </section>
   );
 }
