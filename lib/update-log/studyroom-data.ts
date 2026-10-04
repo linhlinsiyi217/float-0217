@@ -1,54 +1,18 @@
-// lib/update-log-data.ts — 更新日志的纯数据（不引入任何运行时依赖）。
+// lib/update-log/studyroom-data.ts — 书房应用自己的更新记录（纯数据，无运行时依赖）。
 //
-// 单独放一个文件，是为了让发布检查脚本（scripts/check-update-log.mjs）能直接读这份数据，
-// 不用把浏览器端的存储模块也拖进来。字段约定见 CLAUDE.md「发布与更新日志」。
+// 只记录书房相关的变化：书架、阅读器、书城与搜索、书桌与创作、共读与批注、
+// 书友圈与 NPC、抽一本、送书与赠礼、书房外观与数据。
+// 小手机整体项目的变化写在 lib/update-log/system-data.ts，两份互不覆盖。
 
-export type UpdateCategory = "feat" | "fix" | "tweak" | "perf" | "docs";
+import type { Release } from "./types";
 
-export const CATEGORY_LABEL: Record<UpdateCategory, string> = {
-  feat: "新增",
-  fix: "修复",
-  tweak: "调整",
-  perf: "性能",
-  docs: "文档",
-};
-
-export type UpdateEntry = {
-  /** 稳定 id：同一条记录不要改 id */
-  id: string;
-  category: UpdateCategory;
-  /** 涉及的应用或模块，例如「书房」「书城」 */
-  app: string;
-  /** 一句话说明这次改了什么 */
-  title: string;
-  /** 具体内容 */
-  items: string[];
-};
-
-export type Release = {
-  /** 对外看到的版本号；只在真正发布时改 */
-  version: string;
-  /** 唯一发布 id：换版本号时必须换它 */
-  releaseId: string;
-  /** 发布日期（YYYY-MM-DD） */
-  date: string;
-  /** 版本名，例如「书房 v2」 */
-  name?: string;
-  entries: UpdateEntry[];
-  /** 这版还没完成或还没实测的事，如实写出来 */
-  pending?: string[];
-};
-
-/**
- * 全部版本记录（新的在前）。
- * 0.1.x 的条目来自此前已经发生过的工作，按实际内容整理，不编造。
- */
-export const RELEASES: Release[] = [
+export const STUDYROOM_RELEASES: Release[] = [
   {
     version: "0.2.0",
     releaseId: "studyroom-v2-2026-10-04",
     date: "2026-10-04",
     name: "书房 v2：书架、阅读、创作、书友圈",
+    summary: "书架抽书、阅读顶底栏、书城搜索、创作、阅读记忆、书友圈、赠礼、备份与导出",
     entries: [
       {
         id: "sr2-shelf",
@@ -189,8 +153,8 @@ export const RELEASES: Release[] = [
       },
     ],
     pending: [
-      "书架抽书动效的实机流畅度需要你在手机上确认（本轮只做了代码调整与类型/静态检查）",
-      "Open Library 与 Google Books 在本机网络下不可达，这两个来源的搜索链路没有实测；其余来源（中文维基文库、MangaDex、Project Gutenberg）已实测",
+      "书架抽书动效的实机流畅度需要你在手机上确认（这一轮只做了代码调整与类型/静态检查）",
+      "Open Library 与 Google Books 在本机网络下不可达，这两个来源的搜索链路没有实测",
       "漫画来源对少数中文书名支持有限，查不到时会提示换原名或切换分类",
     ],
   },
@@ -198,7 +162,8 @@ export const RELEASES: Release[] = [
     version: "0.1.0",
     releaseId: "studyroom-v1-2026-10-03",
     date: "2026-10-03",
-    name: "书房 v1 与真实卸载",
+    name: "书房 v1",
+    summary: "新建书房应用（书架 / 书城 / 书桌 / 我的）与首批阅读能力",
     entries: [
       {
         id: "sr1-app",
@@ -221,27 +186,6 @@ export const RELEASES: Release[] = [
         items: [
           "书脊、封面、厚度与页侧保留，倾斜书不再压住邻书",
           "聊天气泡尾巴只在每组最后一条显示",
-        ],
-      },
-      {
-        id: "sr1-uninstall",
-        category: "feat",
-        app: "桌面 · 应用管理",
-        title: "全局长按编辑与真实卸载",
-        items: [
-          "长按图标进入编辑模式，× 卸载会删除该应用及其专属数据",
-          "按用户确认调整卸载范围：保留摊主钥匙与经期记录，购物不删黑市草稿",
-          "补齐 29 个内置应用的卸载数据清理规则",
-        ],
-      },
-      {
-        id: "sr1-offline-push",
-        category: "tweak",
-        app: "推送服务",
-        title: "离线推送服务调整通知（由旧公告迁移而来）",
-        items: [
-          "原有的离线推送一次性公告已并入更新日志，不再单独弹窗，避免两个弹窗抢焦点",
-          "公告内容按原样保留在本条目里，没有改动其含义",
         ],
       },
     ],

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronRight, StickyNote, BookOpenText, MessagesSquare, Palette, Database, Brain, Gift } from "lucide-react";
+import { ChevronRight, StickyNote, BookOpenText, MessagesSquare, Palette, Database, Brain, Gift, ScrollText } from "lucide-react";
 
 import { loadBooks } from "@/lib/reading-storage";
 
@@ -12,6 +12,7 @@ type StudyRoomMineProps = {
   onOpenBackup: () => void;
   onOpenReadingMemory: () => void;
   onOpenGifts: () => void;
+  onOpenUpdateLog: () => void;
 };
 
 export function StudyRoomMine({
@@ -21,6 +22,7 @@ export function StudyRoomMine({
   onOpenBackup,
   onOpenReadingMemory,
   onOpenGifts,
+  onOpenUpdateLog,
 }: StudyRoomMineProps) {
   const [bookCount, setBookCount] = useState(0);
 
@@ -93,6 +95,19 @@ export function StudyRoomMine({
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
           <Brain size={18} strokeWidth={1.6} />
           阅读记忆
+        </span>
+        <ChevronRight size={18} strokeWidth={1.6} color="var(--c-icon)" />
+      </button>
+
+      <button
+        type="button"
+        className="sr-btn"
+        style={{ width: "100%", marginBottom: 12, justifyContent: "space-between" }}
+        onClick={onOpenUpdateLog}
+      >
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <ScrollText size={18} strokeWidth={1.6} />
+          更新日志
         </span>
         <ChevronRight size={18} strokeWidth={1.6} color="var(--c-icon)" />
       </button>
