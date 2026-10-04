@@ -52,7 +52,7 @@ export function StudyRoomForumProfile({
           </span>
           <div className="sr-profile-main">
             <h2 className="sr-profile-name">{npc.nickname}</h2>
-            <div className="sr-note-meta">{npc.occupation || "未填职业"}</div>
+            <div className="sr-note-meta">{[npc.occupation || "未填职业", npc.age, npc.region].filter(Boolean).join(" · ")}</div>
             <div className="sr-note-meta">
               粉丝 {followerCount(npc)} · 关注 {followingCount(npc)} · 发帖 {posts.length}
             </div>

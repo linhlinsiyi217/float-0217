@@ -378,9 +378,18 @@ export function StudyRoomStore({ onRead, initialQuery }: StudyRoomStoreProps) {
       )}
 
       {loading && (
-        <div className="sr-empty" style={{ paddingTop: 40 }}>
-          <Loader2 size={30} className="sr-spin" />
-          <p>正在联网搜索…</p>
+        <div className="sr-res-list">
+          {[0, 1, 2].map((index) => (
+            <div key={index} className="sr-res-card sr-skeleton-card" aria-hidden>
+              <div className="sr-res-cover sr-skeleton" />
+              <div className="sr-res-main">
+                <div className="sr-skeleton sr-skeleton-line" style={{ width: "58%" }} />
+                <div className="sr-skeleton sr-skeleton-line" style={{ width: "36%", marginTop: 8 }} />
+                <div className="sr-skeleton sr-skeleton-line" style={{ width: "84%", marginTop: 10 }} />
+              </div>
+            </div>
+          ))}
+          <p className="sr-note-meta" style={{ textAlign: "center" }}>正在联网搜索…</p>
         </div>
       )}
 

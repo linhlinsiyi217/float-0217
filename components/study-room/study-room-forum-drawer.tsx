@@ -88,6 +88,7 @@ export function StudyRoomForumDrawer({
         </header>
 
         <div className="sr-drawer-body">
+          <div className="sr-section-label">内容</div>
           {row("mine", "我的帖子", myPosts.length, <PenLine size={16} strokeWidth={1.7} />)}
           {open === "mine" &&
             (myPosts.length === 0 ? (
@@ -123,6 +124,7 @@ export function StudyRoomForumDrawer({
               ))
             ))}
 
+          <div className="sr-section-label">社交</div>
           <button type="button" className="sr-drawer-row" onClick={onOpenMine}>
             <MessageSquare size={16} strokeWidth={1.7} />
             <span className="sr-drawer-label">私信</span>
@@ -206,6 +208,7 @@ export function StudyRoomForumDrawer({
               ))
             ))}
 
+          <div className="sr-section-label">个人</div>
           <button type="button" className="sr-drawer-row" onClick={onOpenMine}>
             <Star size={16} strokeWidth={1.7} />
             <span className="sr-drawer-label">进入我的主页</span>
@@ -216,6 +219,18 @@ export function StudyRoomForumDrawer({
             <span className="sr-drawer-label">论坛生成规则</span>
             <ChevronRight size={15} strokeWidth={1.8} />
           </button>
+          {/* 底部小插画：让侧栏下半段不空落 */}
+          <div className="sr-drawer-art" aria-hidden>
+            <svg viewBox="0 0 120 44" role="img">
+              <rect x="6" y="30" width="108" height="4" rx="2" fill="currentColor" opacity="0.25" />
+              <rect x="14" y="12" width="9" height="18" rx="2" fill="currentColor" opacity="0.35" />
+              <rect x="25" y="8" width="11" height="22" rx="2" fill="currentColor" opacity="0.28" />
+              <rect x="38" y="14" width="8" height="16" rx="2" fill="currentColor" opacity="0.32" />
+              <rect x="48" y="10" width="12" height="20" rx="2" fill="currentColor" opacity="0.26" />
+              <rect x="62" y="16" width="9" height="14" rx="2" fill="currentColor" opacity="0.3" />
+              <path d="M78 30 q10 -14 22 -2 v2 z" fill="currentColor" opacity="0.22" />
+            </svg>
+          </div>
         </div>
       </aside>
     </div>

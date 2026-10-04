@@ -96,13 +96,16 @@ function generateSeededNpc(seed: number, usedNames: Set<string>): ForumNpc | nul
 
 // ── 频道 ──
 
-export type ForumChannel = "recommend" | "following" | "latest" | "review";
+export type ForumChannel = "recommend" | "following" | "latest" | "hot" | "review" | "discussion" | "creation";
 
 export const CHANNEL_LABEL: Record<ForumChannel, string> = {
   recommend: "推荐",
   following: "关注",
   latest: "最新",
+  hot: "热门",
   review: "书评",
+  discussion: "讨论",
+  creation: "创作",
 };
 
 /** 各频道的内容口径：推荐看互动与新鲜度，关注只看关注的作者，最新按时间，书评只看书评。 */
@@ -124,6 +127,13 @@ export function channelPosts(state: ForumState, channel: ForumChannel): ForumPos
       return [...visible].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
     case "review":
       return visible.filter((post) => post.kind === "review").sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    case "discussion":
+      return visible.filter((post) => post.kind === "post").sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    case "creation":
+      return visible.filter((post) => post.kind === "creation").sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    case "hot":
+      // 热门只看互动（点赞 + 评论），不看新旧
+      return [...visible].sort((a, b) => b.likedBy.length * 2 + b.comments.length - (a.likedBy.length * 2 + a.comments.length));
     default:
       return [...visible].sort((a, b) => score(b) - score(a));
   }
@@ -267,6 +277,8 @@ export function buildCommentPrompt(post: ForumPost, npc: ForumNpc, rules: ForumR
     `正文：${post.body.slice(0, 600)}`,
     "",
     `评论要求：${rules.commentLength}；${rules.commentTone}；${rules.commentRelation}。`,
+    "写法：像真人在论坛回帖——可以只回一句，也可以问一句；不要客服腔、不要说教、不要每次都用同一种句式。",
+    "不要把用户的书架、阅读进度或现实生活当成已知事实；不知道就别装作知道。",
     rules.commentFollowUp ? "如果有想问的，可以顺着追问一句。" : "不要反问，直接回应就好。",
     "允许剧透，但不要辱骂、不要攻击现实中的群体。",
     "只输出评论本身，不要加引号、不要写自己的昵称。",

@@ -290,6 +290,7 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
               onOpenGifts={() => setView({ kind: "gifts" })}
               onOpenUpdateLog={() => setView({ kind: "updateLog" })}
               onOpenWishlist={() => setView({ kind: "wishlist" })}
+              onOpenDraft={(draftId) => setView({ kind: "creative", draftId })}
             />
           )}
         </div>

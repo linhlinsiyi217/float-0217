@@ -38,6 +38,10 @@ export type ForumNpc = {
   speechStyle: string;
   /** 与其他书友/用户的关系 */
   relations: string;
+  /** 年龄感：只写「二十几岁」这类模糊描述，不写具体生日 */
+  age?: string;
+  /** 地区：笼统的地域描述，不写具体住址 */
+  region?: string;
   /** 公开书架上的几本书（人设的一部分，不是真实用户数据） */
   shelfTitles?: string[];
   /** 关注了哪些书友（npc id） */
@@ -69,7 +73,7 @@ export type ForumPost = {
   authorId: string;
   authorName: string;
   authorKind: ForumAuthorKind;
-  kind: "post" | "review" | "recommend";
+  kind: "post" | "review" | "recommend" | "creation";
   title?: string;
   body: string;
   /** 关联的书：可以不在用户书架上 */
@@ -295,6 +299,9 @@ const SHELF_TITLES: string[][] = [
   ["傲慢与偏见", "简·爱", "呼啸山庄"],
 ];
 
+const AGES = ["二十出头", "二十几岁", "三十上下", "三十多岁", "四十出头", "五十来岁", "快退休的年纪"];
+const REGIONS = ["北方小城", "南方沿海", "西南山区", "西北边陲", "中部省会", "沿海大城市", "岛上"];
+
 const RELATIONS = [
   "和几位书友在同一个读书群认识", "常年在论坛潜水，最近才开始发言", "和某位书友常就同一本书争论",
   "刚搬来这座城市，靠论坛认识人", "是论坛早期的常客", "只对少数几个话题感兴趣",
@@ -358,6 +365,8 @@ export function generateNpc(options: NpcGenerateOptions = {}): ForumNpc {
     readingTaste: pick(READING_TASTES, random),
     speechStyle: pick(SPEECH_STYLES, random),
     relations: pick(RELATIONS, random),
+    age: pick(AGES, random),
+    region: pick(REGIONS, random),
     shelfTitles: SHELF_TITLES[Math.floor(random() * SHELF_TITLES.length)] ?? [],
     following: [],
     followers: [],
@@ -541,6 +550,11 @@ export function buildForumPrompt(topic: ForumTopic, participants: ForumNpc[]): s
     "",
     "要求：",
     "- 每人 1–2 条发言，观点要真的不一样：可以推荐、吐槽、抬杠、补充资料，不要一片夸奖；",
+    "- 像真人在论坛打字：长短不一，有人只回一句，有人多说两句；不要每条都排比、不要每次都总结；",
+    "- 不要用客服腔与说教腔（「我理解你」「希望对你有帮助」「记得注意休息」这类一律不要）；",
+    "- 别复读上一条：同一个人不要重复同一个句式或同一个观点；",
+    "- 不要把用户的书架情况、阅读进度或现实生活当成已知事实；不知道就说不知道；",
+    "- 允许温和反驳与追问，但禁止辱骂、骚扰与现实群体攻击；",
     "- 允许剧透（论坛不限制进度），但含剧透的发言要在 spoiler 里标 true；",
     "- 不辱骂、不攻击现实中的群体，不涉及政治敏感内容；",
     "- 发言像真人打字：有长有短，别都用排比句；",
@@ -690,6 +704,7 @@ export function unmuteNpc(state: ForumState, npcId: string): ForumState {
 }
 
 export const KIND_TEXT: Record<ForumPost["kind"], string> = {
+  creation: "创作",
   post: "帖子",
   review: "书评",
   recommend: "推荐",

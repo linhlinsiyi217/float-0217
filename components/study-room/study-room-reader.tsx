@@ -18,6 +18,15 @@ import {
   Share2,
   Search,
   Sparkles,
+  Volume2,
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Timer,
+  Waves,
+  Music2,
+  X,
 } from "lucide-react";
 
 import {
@@ -50,6 +59,21 @@ import {
   type InlineMark,
 } from "@/lib/study-room/annotation-marks";
 import { requestSearchInStore } from "@/lib/study-room/events";
+import {
+  loadTtsProgress,
+  pickDefaultVoice,
+  saveTtsProgress,
+  setNoiseVolume,
+  speakParagraph,
+  startNoise,
+  stopNoise,
+  stopSpeaking,
+  whenVoicesReady,
+  type NoiseKind,
+  type ReaderVoice,
+  type SpeakHandle,
+} from "@/lib/study-room/tts";
+import { getReaderMusicController } from "@/lib/study-room/reader-music";
 import { resolveForumApiConfig } from "@/lib/study-room/forum";
 import { simpleLLMCall } from "@/lib/api-helpers";
 import { generateAnnotationBatch } from "@/lib/reading-engine";
@@ -121,6 +145,17 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   const [showMarkColors, setShowMarkColors] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [aiDrafting, setAiDrafting] = useState(false);
+  // 朗读：音色来自宿主角色卡或设备系统语音；断点续播按书记录
+  const [ttsOpen, setTtsOpen] = useState(false);
+  const [voices, setVoices] = useState<ReaderVoice[]>([]);
+  const [voiceId, setVoiceId] = useState<string>("");
+  const [rate, setRate] = useState(1);
+  const [playing, setPlaying] = useState(false);
+  const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
+  const [sleepUntil, setSleepUntil] = useState<number | null>(null);
+  const [noise, setNoise] = useState<NoiseKind>("off");
+  const [noiseLevel, setNoiseLevel] = useState(0.5);
+  const [ttsNotice, setTtsNotice] = useState<string | null>(null);
   const [bookmarks, setBookmarks] = useState<ReadingBookmark[]>([]);
   const [selection, setSelection] = useState<SelectionState | null>(null);
   const [annotate, setAnnotate] = useState<AnnotateState | null>(null);
@@ -138,8 +173,44 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   const preHeightRef = useRef<number | null>(null);
 
   const bodyRef = useRef<HTMLDivElement>(null);
+  const speakRef = useRef<SpeakHandle | null>(null);
+  const playingRef = useRef(false);
+  const rateRef = useRef(1);
+  const voiceRef = useRef<ReaderVoice | null>(null);
+  const sleepTimerRef = useRef<number | null>(null);
   const restoreRef = useRef<RestoreTarget | null>(null);
   const pendingAnchorRef = useRef<number | null>(initialParagraphIndex ?? null);
+
+  // 音色：先把宿主角色卡绑定的音色列出来，再补上设备自带语音
+  useEffect(() => {
+    const stop = whenVoicesReady((list) => {
+      setVoices(list);
+      setVoiceId((current) => {
+        if (current && list.some((voice) => voice.id === current)) return current;
+        return pickDefaultVoice(list)?.id ?? "";
+      });
+    });
+    return stop;
+  }, []);
+
+  useEffect(() => {
+    voiceRef.current = voices.find((voice) => voice.id === voiceId) ?? null;
+  }, [voices, voiceId]);
+
+  useEffect(() => {
+    rateRef.current = rate;
+  }, [rate]);
+
+  // 离开阅读器或关闭面板时停掉朗读与白噪音
+  useEffect(() => {
+    return () => {
+      playingRef.current = false;
+      speakRef.current?.abort();
+      stopSpeaking();
+      stopNoise();
+      if (sleepTimerRef.current !== null) window.clearTimeout(sleepTimerRef.current);
+    };
+  }, []);
 
   const isPdf = book.format === "pdf";
   const chapter = chapters && chapters.length > 0 ? chapters[Math.min(chapterIndex, chapters.length - 1)] : null;
@@ -687,6 +758,113 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
     return {};
   }
 
+  /** 朗读一段，读完自动进入下一段；播放位置按书保存，下次可从断点继续。 */
+  const speakAt = useCallback(
+    async (index: number) => {
+      const total = paragraphs.length;
+      if (index < 0 || index >= total) {
+        playingRef.current = false;
+        setPlaying(false);
+        setSpeakingIndex(null);
+        return;
+      }
+      const voice = voiceRef.current;
+      if (!voice) {
+        setTtsNotice("这台设备没有可用的语音，且没有绑定角色音色：朗读尚未配置。");
+        playingRef.current = false;
+        setPlaying(false);
+        return;
+      }
+      setSpeakingIndex(index);
+      saveTtsProgress(book.id, chapterIndex, index);
+      speakRef.current?.abort();
+      try {
+        const handle = await speakParagraph({ text: paragraphs[index] ?? "", voice, rate: rateRef.current });
+        if (!handle) {
+          setTtsNotice(unavailableNotice());
+          playingRef.current = false;
+          setPlaying(false);
+          return;
+        }
+        speakRef.current = handle;
+        await handle.promise;
+      } catch {
+        // 单段失败就跳过，不打断整篇朗读
+      }
+      if (!playingRef.current) return;
+      if (index + 1 >= total) {
+        // 本章读完：如果还有下一章就自动续读
+        if (chapters && chapterIndex + 1 < chapters.length) {
+          setChapterIndex(chapterIndex + 1);
+        } else {
+          playingRef.current = false;
+          setPlaying(false);
+          setSpeakingIndex(null);
+        }
+        return;
+      }
+      void speakAt(index + 1);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [paragraphs, book.id, chapterIndex, chapters],
+  );
+
+  const unavailableNotice = () =>
+    "朗读尚未配置：这台设备没有系统语音，且没有可用语音配置的角色卡。可以在设置 → 绑定配置里给角色绑定语音。";
+
+  const handlePlayPause = () => {
+    if (playing) {
+      playingRef.current = false;
+      setPlaying(false);
+      speakRef.current?.abort();
+      stopSpeaking();
+      return;
+    }
+    if (voices.length === 0) {
+      setTtsNotice(unavailableNotice());
+      return;
+    }
+    const base = speakingIndex ?? loadTtsProgress(book.id)?.paragraphIndex ?? visibleParagraphIndex();
+    const index = loadTtsProgress(book.id)?.chapterIndex === chapterIndex ? base : visibleParagraphIndex();
+    playingRef.current = true;
+    setPlaying(true);
+    setTtsNotice(null);
+    void speakAt(index);
+  };
+
+  const jumpSpeech = (delta: -1 | 1) => {
+    const base = speakingIndex ?? visibleParagraphIndex();
+    speakRef.current?.abort();
+    stopSpeaking();
+    void speakAt(base + delta);
+  };
+
+  /** 定时关闭：到点停止朗读与白噪音。 */
+  const setSleepTimer = (minutes: number | null) => {
+    if (sleepTimerRef.current !== null) window.clearTimeout(sleepTimerRef.current);
+    if (minutes === null) {
+      setSleepUntil(null);
+      return;
+    }
+    setSleepUntil(Date.now() + minutes * 60_000);
+    sleepTimerRef.current = window.setTimeout(() => {
+      playingRef.current = false;
+      setPlaying(false);
+      setSpeakingIndex(null);
+      stopSpeaking();
+      stopNoise();
+      setNoise("off");
+      setSleepUntil(null);
+      setTtsNotice("定时时间到，已停止朗读。");
+    }, minutes * 60_000);
+  };
+
+  const handleNoise = (kind: NoiseKind) => {
+    setNoise(kind);
+    if (kind === "off") stopNoise();
+    else startNoise(kind, noiseLevel);
+  };
+
   // 点正文切换顶/底栏；选中文字、点按钮或链接时不切换
   const handleBodyClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest("button, a, input, textarea")) return;
@@ -751,6 +929,17 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
           <button
             type="button"
             className="sr-icon-btn"
+            data-active={playing || ttsOpen ? "true" : undefined}
+            onClick={() => setTtsOpen((value) => !value)}
+            aria-label="朗读"
+            title="AI 朗读"
+            disabled={isPdf}
+          >
+            <Volume2 size={20} strokeWidth={1.6} />
+          </button>
+          <button
+            type="button"
+            className="sr-icon-btn"
             data-active={currentBookmark ? "true" : undefined}
             onClick={handleToggleBookmark}
             aria-label={currentBookmark ? "取消本章书签" : "为本章加书签"}
@@ -799,7 +988,11 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
               const paraMarks = marks.get(index);
               return (
                 <div key={index} className="sr-para-block">
-                  <p className={paraMarks ? "sr-para sr-para--marked" : "sr-para"} data-pi={index}>
+                  <p
+                    className={paraMarks ? "sr-para sr-para--marked" : "sr-para"}
+                    data-pi={index}
+                    data-speaking={speakingIndex === index ? "true" : undefined}
+                  >
                     {(() => {
                       const segs = segmentParagraph(para, chapterNotes.filter((n) => n.paragraphIndex === index));
                       if (!segs) return para;
@@ -862,6 +1055,12 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
       </div>
 
       {flash && <div className="sr-flash">{flash}</div>}
+      {ttsNotice && (
+        <div className="sr-note-card" style={{ position: "absolute", left: 16, right: 16, bottom: 96, zIndex: 45 }}>
+          <div className="sr-note-meta" style={{ lineHeight: 1.7 }}>{ttsNotice}</div>
+          <button type="button" className="sr-chip" onClick={() => setTtsNotice(null)}>知道了</button>
+        </div>
+      )}
       {barsHidden && showHint && <div className="sr-reader-hint">轻点正文显示工具栏</div>}
 
       {selection && !annotate && (
@@ -1128,6 +1327,140 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
                 回来的批注存在本机，和你的批注一起显示在这一段下面，可以随时删掉。
               </HelpTip>
             </p>
+          </div>
+        </div>
+      )}
+
+      {ttsOpen && (
+        <div className="sr-sheet-mask" onClick={() => setTtsOpen(false)}>
+          <div className="sr-sheet" onClick={(event) => event.stopPropagation()}>
+            <div className="sr-gift-head">
+              <span className="sr-sheet-label" style={{ margin: 0 }}>AI 朗读</span>
+              <button type="button" className="sr-icon-btn" onClick={() => setTtsOpen(false)} aria-label="关闭">
+                <X size={18} strokeWidth={1.7} />
+              </button>
+            </div>
+
+            {voices.length === 0 ? (
+              <p className="sr-note-meta" style={{ lineHeight: 1.8 }}>朗读尚未配置：这台设备没有系统语音，且没有可用语音配置的角色卡。</p>
+            ) : (
+              <>
+                <div className="sr-appear-row">
+                  <span className="sr-appear-label">音色</span>
+                  <select className="sr-appear-select" value={voiceId} onChange={(event) => setVoiceId(event.target.value)} aria-label="朗读音色">
+                    {voices.map((voice) => (
+                      <option key={voice.id} value={voice.id}>
+                        {voice.label}（{voice.note}）
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="sr-css-actions" style={{ justifyContent: "center", gap: 10, marginTop: 6 }}>
+                  <button type="button" className="sr-icon-btn" onClick={() => jumpSpeech(-1)} aria-label="上一段">
+                    <SkipBack size={20} strokeWidth={1.7} />
+                  </button>
+                  <button type="button" className="sr-btn sr-btn-primary" onClick={handlePlayPause}>
+                    {playing ? <Pause size={16} strokeWidth={1.9} /> : <Play size={16} strokeWidth={1.9} />}
+                    {playing ? "暂停" : "朗读"}
+                  </button>
+                  <button type="button" className="sr-icon-btn" onClick={() => jumpSpeech(1)} aria-label="下一段">
+                    <SkipForward size={20} strokeWidth={1.7} />
+                  </button>
+                </div>
+                {speakingIndex !== null && (
+                  <p className="sr-note-meta" style={{ textAlign: "center" }}>正在读第 {speakingIndex + 1} 段</p>
+                )}
+
+                <div className="sr-appear-row sr-appear-row--slider">
+                  <span className="sr-appear-label">倍速</span>
+                  <input
+                    type="range"
+                    min={0.6}
+                    max={2}
+                    step={0.1}
+                    value={rate}
+                    onChange={(event) => setRate(Number(event.target.value))}
+                    className="sr-slider"
+                    aria-label="朗读倍速"
+                  />
+                  <span className="sr-appear-value">{rate.toFixed(1)}×</span>
+                </div>
+
+                <div className="sr-appear-row">
+                  <span className="sr-appear-label">
+                    <Timer size={13} strokeWidth={1.8} style={{ verticalAlign: -2, marginRight: 4 }} />
+                    定时关闭
+                  </span>
+                  <div className="sr-chip-row">
+                    {[null, 5, 15, 30].map((minutes) => (
+                      <button
+                        key={String(minutes)}
+                        type="button"
+                        className="sr-chip"
+                        data-active={
+                          minutes === null ? (sleepUntil === null ? "true" : undefined) : undefined
+                        }
+                        onClick={() => setSleepTimer(minutes)}
+                      >
+                        {minutes === null ? "不设" : `${minutes} 分钟`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {sleepUntil !== null && (
+                  <p className="sr-note-meta">将在 {new Date(sleepUntil).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} 停止朗读。</p>
+                )}
+
+                <div className="sr-appear-row">
+                  <span className="sr-appear-label">
+                    <Waves size={13} strokeWidth={1.8} style={{ verticalAlign: -2, marginRight: 4 }} />
+                    白噪音（本地生成）
+                  </span>
+                  <div className="sr-chip-row">
+                    {(["off", "rain", "room"] as NoiseKind[]).map((kind) => (
+                      <button
+                        key={kind}
+                        type="button"
+                        className="sr-chip"
+                        data-active={noise === kind ? "true" : undefined}
+                        onClick={() => handleNoise(kind)}
+                      >
+                        {kind === "off" ? "关" : kind === "rain" ? "雨声" : "室内"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {noise !== "off" && (
+                  <div className="sr-appear-row sr-appear-row--slider">
+                    <span className="sr-appear-label">白噪音音量</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={noiseLevel}
+                      onChange={(event) => {
+                        const value = Number(event.target.value);
+                        setNoiseLevel(value);
+                        setNoiseVolume(value);
+                      }}
+                      className="sr-slider"
+                      aria-label="白噪音音量"
+                    />
+                    <span className="sr-appear-value">{Math.round(noiseLevel * 100)}%</span>
+                  </div>
+                )}
+
+                <div className="sr-appear-row">
+                  <span className="sr-appear-label">
+                    <Music2 size={13} strokeWidth={1.8} style={{ verticalAlign: -2, marginRight: 4 }} />
+                    背景音乐
+                  </span>
+                  <span className="sr-note-meta">{getReaderMusicController().unavailableReason}</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
