@@ -3297,3 +3297,102 @@ html[data-theme="dark"] .sr3-tag { background: #34322e; color: #cfc8bb; }
   border-radius: 12px;
   background: var(--c-input);
 }
+
+/* ── 抽一本：钱包条、卡组、分类揭晓、翻牌 ── */
+.sr-draw-wallet {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 10px 12px;
+  border-radius: var(--sr-card-radius, 14px);
+  background: var(--c-input);
+  font-size: 13px;
+  color: var(--c-text-title);
+  margin-bottom: 10px;
+}
+.sr-draw-wallet > span:first-child { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
+
+.sr-draw-deck {
+  display: flex;
+  gap: 6px;
+  padding: 10px 4px;
+  overflow: hidden;
+}
+.sr-draw-back {
+  flex: 1 1 0;
+  min-width: 0;
+  aspect-ratio: 0.68;
+  max-width: 46px;
+  border-radius: 8px;
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--accent, #5C6B8A) 78%, #fff), color-mix(in srgb, var(--accent, #5C6B8A) 92%, #000));
+  box-shadow: 0 4px 10px rgba(20, 28, 45, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  position: relative;
+  animation: sr-draw-shuffle 0.5s ease-out both;
+}
+.sr-draw-back::after {
+  content: "";
+  position: absolute;
+  inset: 22% 18%;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+.sr-draw-back[data-flipping="true"] { animation: sr-draw-flip 0.42s cubic-bezier(0.34, 1.25, 0.64, 1); }
+@keyframes sr-draw-shuffle {
+  from { opacity: 0; transform: translateY(6px) rotate(-3deg); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes sr-draw-flip {
+  from { transform: rotateY(0deg) translateY(0); }
+  55% { transform: rotateY(84deg) translateY(-6px); }
+  to { transform: rotateY(0deg) translateY(0); }
+}
+
+.sr-draw-category {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 12px;
+  border-radius: var(--sr-card-radius, 14px);
+  background: var(--sr-card-bg, #fff);
+  border: 0.5px solid var(--c-card-border);
+  font-size: 14px;
+  color: var(--c-text-title);
+  margin-bottom: 10px;
+}
+.sr-draw-category-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--sr-accent) 12%, transparent);
+  color: var(--c-text-title);
+}
+
+.sr-draw-card[data-flipping="true"] { animation: sr-draw-card-in 0.42s cubic-bezier(0.34, 1.2, 0.64, 1) both; }
+@keyframes sr-draw-card-in {
+  from { opacity: 0; transform: rotateY(52deg) translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.sr-draw-badge[data-kind="duplicate"] {
+  background: color-mix(in srgb, var(--c-text) 10%, transparent);
+  border-color: transparent;
+  color: var(--c-text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sr-draw-back, .sr-draw-card, .sr-draw-back[data-flipping="true"] { animation: none; }
+}
+
+/* ── AI 朗读：正在朗读的段落高亮 ── */
+.sr-para[data-speaking="true"] {
+  background: color-mix(in srgb, var(--sr-accent) 8%, transparent);
+  box-shadow: -3px 0 0 0 color-mix(in srgb, var(--sr-accent) 55%, transparent);
+  border-radius: 3px;
+  transition: background 0.2s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sr-para[data-speaking="true"] { transition: none; }
+}
