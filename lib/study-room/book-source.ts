@@ -142,14 +142,62 @@ const CATEGORY_WORDS: Array<{ category: BookCategory; words: string[] }> = [
   { category: "novel", words: ["小说", "fiction", "novel", "story", "romance", "mystery", "fantasy", "science fiction"] },
 ];
 
+function hasWord(lower: string, word: string): boolean {
+  // 中文按包含判断；英文按整词，避免 display 命中 play、flaw 命中 law
+  if (hasCJK(word)) return lower.includes(word);
+  return new RegExp(`(^|[^a-z])${word.replace(/ /g, "\\s+")}($|[^a-z])`).test(lower);
+}
+
 /** 细分类型判断：拿不准就用来源给的兜底类型，不硬猜。 */
 export function classifyCategory(text: string | undefined | null, fallback: BookCategory = "novel"): BookCategory {
   if (!text) return fallback;
-  const lower = text.toLowerCase();
+  // 「科幻小说」「历史小说」是小说，不能因为含 science / historical 被分进科普或历史
+  const lower = text
+    .toLowerCase()
+    .replace(/(science|historical|detective|crime|romantic)\s+fiction/g, "fiction")
+    .replace(/科幻小说|历史小说|推理小说|言情小说/g, "小说");
+  // 同样按整词计票；平票时按 CATEGORY_WORDS 的先后顺序
+  let best: BookCategory | null = null;
+  let bestCount = 0;
   for (const entry of CATEGORY_WORDS) {
-    if (entry.words.some((word) => lower.includes(word))) return entry.category;
+    const hits = entry.words.filter((word) => hasWord(lower, word)).length;
+    if (hits > bestCount) {
+      best = entry.category;
+      bestCount = hits;
+    }
   }
-  return fallback;
+  return best ?? fallback;
+}
+
+// 语言代码 → 中文名：各来源有的给 ISO 639-1（en），有的给 639-2（eng），统一成一个键
+const LANGUAGE_ALIASES: Record<string, string> = {
+  eng: "en", chi: "zh", zho: "zh", jpn: "ja", kor: "ko", fre: "fr", fra: "fr", ger: "de", deu: "de",
+  spa: "es", ita: "it", rus: "ru", por: "pt", dut: "nl", nld: "nl", lat: "la", gre: "el", ell: "el",
+  grc: "grc", swe: "sv", dan: "da", nor: "no", fin: "fi", pol: "pl", cze: "cs", ces: "cs", hun: "hu",
+  ara: "ar", heb: "he", hin: "hi", tur: "tr", vie: "vi", tha: "th", ind: "id", ukr: "uk",
+  "zh-cn": "zh", "zh-tw": "zh-hant", "zh-hk": "zh-hant", "zh-hans": "zh", "ja-ro": "ja", "ko-ro": "ko",
+};
+
+const LANGUAGE_LABEL: Record<string, string> = {
+  zh: "中文", "zh-hant": "繁体中文", en: "英文", ja: "日文", ko: "韩文", fr: "法文", de: "德文",
+  es: "西班牙文", it: "意大利文", ru: "俄文", pt: "葡萄牙文", nl: "荷兰文", la: "拉丁文", el: "希腊文",
+  grc: "古希腊文", sv: "瑞典文", da: "丹麦文", no: "挪威文", fi: "芬兰文", pl: "波兰文", cs: "捷克文",
+  hu: "匈牙利文", ar: "阿拉伯文", he: "希伯来文", hi: "印地文", tr: "土耳其文", vi: "越南文",
+  th: "泰文", id: "印尼文", uk: "乌克兰文",
+};
+
+/** 统一语言代码（en / eng / EN 都归成 en），用于筛选分组。 */
+export function normalizeLanguage(code: string | undefined | null): string | undefined {
+  const key = code?.trim().toLowerCase();
+  if (!key) return undefined;
+  return LANGUAGE_ALIASES[key] ?? key;
+}
+
+/** 语言的中文名；不认识的代码标「其他语言」，不把原始代码直接给用户看。 */
+export function languageLabel(code: string | undefined | null): string {
+  const key = normalizeLanguage(code);
+  if (!key) return "未知语言";
+  return LANGUAGE_LABEL[key] ?? LANGUAGE_LABEL[key.split("-")[0]] ?? "其他语言";
 }
 
 /** 由「小说/漫画/资料」这类粗分类推细分类型（兜底用） */
@@ -219,16 +267,20 @@ const NOVEL_WORDS = [
 ];
 
 /** 依据题材/分类文本判断作品类型；判断不出返回 null（由来源默认值决定）。 */
+// 来源常把几十个主题词拼在一起（《简爱》的 Courtship、改编漫画版的 Comic books 都在里面）：
+// 按整词计票，票多的类型胜出，平票时漫画 > 资料 > 小说；不再因为一个子串就整本判错。
 export function classifyKind(text: string | undefined | null): BookKind | null {
   if (!text) return null;
   const lower = text.toLowerCase();
-  const comic = COMIC_WORDS.some((w) => lower.includes(w));
-  if (comic) return "comic";
-  const material = MATERIAL_WORDS.some((w) => lower.includes(w));
-  if (material) return "material";
-  const novel = NOVEL_WORDS.some((w) => lower.includes(w));
-  if (novel) return "novel";
-  return null;
+  const count = (words: string[]) => words.filter((w) => hasWord(lower, w)).length;
+  const comic = count(COMIC_WORDS);
+  const material = count(MATERIAL_WORDS);
+  const novel = count(NOVEL_WORDS);
+  const best = Math.max(comic, material, novel);
+  if (best === 0) return null;
+  if (comic === best) return "comic";
+  if (material === best) return "material";
+  return "novel";
 }
 
 /** 判断文本自身是否为中文（用于挑选面向中文的来源）。 */

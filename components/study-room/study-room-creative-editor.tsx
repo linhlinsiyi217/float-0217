@@ -369,19 +369,8 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
     try {
       const name = file.name.replace(/\.[^.]+$/, "").slice(0, 24);
       if (/\.docx$/i.test(file.name)) {
-        const JSZip = (await import("jszip")).default;
-        const zip = await JSZip.loadAsync(await file.arrayBuffer());
-        const doc = zip.file("word/document.xml");
-        if (!doc) throw new Error("这个 docx 里没有正文");
-        const xml = await doc.async("string");
-        const text = xml
-          .replace(/<w:p[^>]*>/g, "\n")
-          .replace(/<[^>]+>/g, "")
-          .replace(/&amp;/g, "&")
-          .replace(/&lt;/g, "<")
-          .replace(/&gt;/g, ">")
-          .trim();
-        if (!text) throw new Error("这个 docx 里没有可用的文字");
+        const { readDocxText } = await import("@/lib/study-room/docx");
+        const text = await readDocxText(await file.arrayBuffer());
         setUserStyles(addUserStyle({ name, rules: text }));
       } else {
         const text = await file.text();

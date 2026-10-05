@@ -1,12 +1,30 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, MessagesSquare, Quote, PenLine, Bookmark, Trash2, X, FileDown, Loader2, Gift } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  BookOpen,
+  Bookmark,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  FileDown,
+  Gift,
+  Headphones,
+  ImagePlus,
+  Loader2,
+  MessagesSquare,
+  PenLine,
+  Quote,
+  RotateCcw,
+  Trash2,
+  X,
+} from "lucide-react";
 
-import { loadAllAnnotations, loadBookmarks, loadChapters, loadNotes, loadProgress } from "@/lib/reading-storage";
+import { loadAllAnnotations, loadBookmarks, loadChapters, loadNotes, loadProgress, updateBook } from "@/lib/reading-storage";
 import type { Book, ReadingAnnotation, ReadingBookmark, ReadingNote, ReadingProgress } from "@/lib/reading-types";
 import { loadCoreadRefs, type CoreadRef } from "@/lib/study-room-coread";
 import { loadCharacters } from "@/lib/character-storage";
+import { fileToCoverImage, UnsupportedBackgroundError } from "@/lib/study-room/background-image";
 import { StudyRoomStageSummary } from "./study-room-stage-summary";
 import { GiftSheet } from "./gift-sheet";
 import { StudyRoomReview } from "./study-room-review";
@@ -18,6 +36,10 @@ type StudyRoomBookDetailProps = {
   onClose: () => void;
   /** 开始/继续阅读；带章节/段落时跳到原文位置 */
   onRead: (book: Book, chapterIndex?: number, paragraphIndex?: number) => void;
+  /** 打开阅读器并直接弹出朗读面板 */
+  onListen?: (book: Book) => void;
+  /** 书的资料（如封面）改了之后通知父组件刷新 */
+  onChanged?: (book: Book) => void;
   onOpenMessages: () => void;
   onRemove: (book: Book) => void;
   /** 手动排序时可左右移动 */
@@ -36,24 +58,45 @@ type DetailData = {
   coread: Array<CoreadRef & { name: string }>;
 };
 
+type DetailTab = "toc" | "notes" | "coread" | "tools";
+
+const TABS: Array<{ key: DetailTab; label: string }> = [
+  { key: "toc", label: "目录" },
+  { key: "notes", label: "笔记" },
+  { key: "coread", label: "共读" },
+  { key: "tools", label: "工具" },
+];
+
 const TOC_PREVIEW = 8;
 /** 长目录一次只多渲染这么多章，避免上千章全进 DOM */
 const TOC_STEP = 60;
 
-export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onRemove, onMove, extraActions }: StudyRoomBookDetailProps) {
+export function StudyRoomBookDetail({
+  book,
+  onClose,
+  onRead,
+  onListen,
+  onChanged,
+  onOpenMessages,
+  onRemove,
+  onMove,
+  extraActions,
+}: StudyRoomBookDetailProps) {
   const [data, setData] = useState<DetailData | null>(null);
+  const [tab, setTab] = useState<DetailTab>("toc");
   const [tocLimit, setTocLimit] = useState(TOC_PREVIEW);
   const [coverFailed, setCoverFailed] = useState(false);
+  const [coverBusy, setCoverBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [exportNote, setExportNote] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [gifting, setGifting] = useState(false);
   const [review, setReview] = useState<"quick" | "fine" | null>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
     setData(null);
     setTocLimit(TOC_PREVIEW);
-    setCoverFailed(false);
     void (async () => {
       const [chapters, progress, notes, bookmarks, allAnnotations] = await Promise.all([
         loadChapters(book.id).catch(() => []),
@@ -83,6 +126,17 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
     };
   }, [book.id]);
 
+  // 换了封面要重新尝试加载
+  useEffect(() => {
+    setCoverFailed(false);
+  }, [book.cover]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
   // Esc 关闭
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -100,10 +154,43 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
     return Math.min(100, Math.round(((progress.chapterIndex + inChapter) / total) * 100));
   }, [progress, total]);
 
+  const saveBook = async (next: Book, message: string) => {
+    try {
+      await updateBook(next);
+      onChanged?.(next);
+      setNotice(message);
+    } catch {
+      setNotice("保存失败，请稍后重试。");
+    }
+  };
+
+  /** 换封面：只压缩存在本机；第一次换时记下原封面，之后可以恢复 */
+  const handleCoverFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setCoverBusy(true);
+    setNotice(null);
+    try {
+      const cover = await fileToCoverImage(file);
+      await saveBook({ ...book, cover, originalCover: book.originalCover ?? book.cover ?? "" }, "封面已更换。");
+    } catch (error) {
+      setNotice(error instanceof UnsupportedBackgroundError ? error.message : "这张图片读不出来，换一张试试。");
+    } finally {
+      setCoverBusy(false);
+    }
+  };
+
+  const restoreCover = () => {
+    const next: Book = { ...book, cover: book.originalCover || undefined };
+    delete next.originalCover;
+    void saveBook(next, book.originalCover ? "已恢复原封面。" : "已改回文字封面。");
+  };
+
   /** 导出这本为 EPUB：正文按章重建，批注用高亮＋附录两种方式带上。 */
   const handleExportEpub = async () => {
     setExporting(true);
-    setExportNote(null);
+    setNotice(null);
     try {
       const result = await exportBookAsEpub(book);
       const url = URL.createObjectURL(result.blob);
@@ -112,13 +199,9 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
       anchor.download = safeFileName(book.title) + ".epub";
       anchor.click();
       URL.revokeObjectURL(url);
-      setExportNote(
-        `已导出 ${result.chapters} 章、${result.notes + result.annotations} 条批注` +
-          (result.cover ? "，含封面。" : "（这本书没有封面可不带）。") +
-          "原书内嵌的插图不在书房正文数据里，导出文件中不会出现。",
-      );
+      setNotice(`已导出 ${result.chapters} 章、${result.notes + result.annotations} 条批注${result.cover ? "，含封面" : ""}。`);
     } catch {
-      setExportNote("导出失败，请稍后重试。");
+      setNotice("导出失败，请稍后重试。");
     } finally {
       setExporting(false);
     }
@@ -126,6 +209,7 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
 
   const toc = data ? data.chapterTitles.slice(0, tocLimit) : [];
   const cover = book.cover && !coverFailed ? book.cover : undefined;
+  const noteCount = data ? data.notes.length + data.bookmarks.length + data.annotations.length : 0;
 
   return (
     <div className="sr-detail-mask" onClick={onClose}>
@@ -147,9 +231,10 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
               // eslint-disable-next-line @next/next/no-img-element
               <img src={cover} alt={`《${book.title}》封面`} onError={() => setCoverFailed(true)} />
             ) : (
+              // 没有封面：用书名和作者排一张文字封面
               <>
                 <span className="sr-detail-cover-title">{book.title}</span>
-                <span className="sr-detail-cover-tag">暂无封面</span>
+                {book.author && <span className="sr-detail-cover-tag">{book.author}</span>}
               </>
             )}
           </div>
@@ -173,164 +258,239 @@ export function StudyRoomBookDetail({ book, onClose, onRead, onOpenMessages, onR
         </div>
 
         <div className="sr-detail-actions">
-          <button
-            type="button"
-            className="sr-btn sr-btn-primary"
-            onClick={() => onRead(book)}
-          >
+          <button type="button" className="sr-btn sr-btn-primary" onClick={() => onRead(book)}>
             <BookOpen size={18} strokeWidth={1.7} />
             {started ? `继续阅读${progress ? ` · 第 ${progress.chapterIndex + 1} 章` : ""}` : "开始阅读"}
           </button>
+          {onListen && (
+            <button type="button" className="sr-btn" onClick={() => onListen(book)}>
+              <Headphones size={17} strokeWidth={1.7} />
+              朗读
+            </button>
+          )}
         </div>
         {extraActions && <div className="sr-detail-extra">{extraActions}</div>}
-        {exportNote && <p className="sr-note-meta" style={{ margin: "8px 2px 0", lineHeight: 1.7 }}>{exportNote}</p>}
-
-        <div className="sr-detail-scroll">
-          <h3 className="sr-detail-h">简介</h3>
-          <p className="sr-detail-desc">
-            {book.description?.trim() || "来源没有提供简介。"}
+        {notice && (
+          <p className="sr-detail-notice" role="status">
+            {notice}
           </p>
+        )}
 
-          <h3 className="sr-detail-h">目录</h3>
-          {data === null ? (
-            <p className="sr-detail-muted">正在读取目录…</p>
-          ) : data.chapterTitles.length === 0 ? (
-            <p className="sr-detail-muted">这本书没有可识别的章节。</p>
-          ) : (
-            <ol className="sr-detail-toc">
-              {toc.map((title, index) => (
-                <li key={index}>
-                  <button type="button" onClick={() => onRead(book, index, 0)} data-current={progress?.chapterIndex === index ? "true" : undefined}>
-                    <span className="sr-detail-toc-no">{index + 1}</span>
-                    <span className="sr-detail-toc-title">{title || `第 ${index + 1} 章`}</span>
-                  </button>
-                </li>
-              ))}
-              {data.chapterTitles.length > TOC_PREVIEW && (
-                <li>
-                  {tocLimit < data.chapterTitles.length ? (
-                    <button
-                      type="button"
-                      className="sr-detail-more"
-                      onClick={() =>
-                        setTocLimit((limit) => Math.min(limit + TOC_STEP, data.chapterTitles.length))
-                      }
-                    >
-                      再看 {Math.min(TOC_STEP, data.chapterTitles.length - tocLimit)} 章（共 {data.chapterTitles.length} 章）
-                    </button>
-                  ) : (
-                    <button type="button" className="sr-detail-more" onClick={() => setTocLimit(TOC_PREVIEW)}>
-                      收起目录
-                    </button>
-                  )}
-                </li>
-              )}
-            </ol>
-          )}
+        <div className="sr-sort sr-detail-tabs" role="tablist" aria-label="书籍详情分区">
+          {TABS.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              role="tab"
+              aria-selected={tab === item.key}
+              data-active={tab === item.key ? "true" : undefined}
+              onClick={() => setTab(item.key)}
+            >
+              {item.label}
+              {item.key === "notes" && noteCount > 0 ? ` ${noteCount}` : ""}
+            </button>
+          ))}
+        </div>
 
-          <h3 className="sr-detail-h">我的笔记与划线</h3>
-          {data === null ? null : data.notes.length === 0 && data.bookmarks.length === 0 ? (
-            <p className="sr-detail-muted">还没有笔记。阅读时选中文字即可书摘或批注。</p>
-          ) : (
-            <ul className="sr-detail-notes">
-              {data.bookmarks.map((mark) => (
-                <li key={mark.id}>
-                  <button type="button" onClick={() => onRead(book, mark.chapterIndex, mark.paragraphIndex)}>
-                    <Bookmark size={14} strokeWidth={1.8} />
-                    <span className="sr-detail-note-text">书签 · {data.chapterTitles[mark.chapterIndex] || `第 ${mark.chapterIndex + 1} 章`}</span>
-                  </button>
-                </li>
-              ))}
-              {data.notes.map((note) => (
-                <li key={note.id}>
-                  <button type="button" onClick={() => onRead(book, note.chapterIndex, note.paragraphIndex)}>
-                    {note.kind === "note" ? <PenLine size={14} strokeWidth={1.8} /> : <Quote size={14} strokeWidth={1.8} />}
-                    <span className="sr-detail-note-text">
-                      {note.emoji ? `${note.emoji} ` : null}
-                      「{note.quote.length > 40 ? `${note.quote.slice(0, 40)}…` : note.quote}」
-                      {note.content ? <em> {note.content}</em> : null}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {data !== null && data.annotations.length > 0 && (
+        <div className="sr-detail-scroll" role="tabpanel">
+          {tab === "toc" && (
             <>
-              <h3 className="sr-detail-h">角色批注</h3>
-              <ul className="sr-detail-notes">
-                {data.annotations.map((item) => (
-                  <li key={item.id}>
-                    <button type="button" onClick={() => onRead(book, item.chapterIndex, item.paragraphIndex)}>
-                      <MessagesSquare size={14} strokeWidth={1.8} />
-                      <span className="sr-detail-note-text">
-                        {item.emoji ? `${item.emoji} ` : null}
-                        <strong>{item.characterName}</strong>：{item.content.length > 46 ? `${item.content.slice(0, 46)}…` : item.content}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              {book.description?.trim() && (
+                <>
+                  <h3 className="sr-detail-h">简介</h3>
+                  <p className="sr-detail-desc">{book.description.trim()}</p>
+                </>
+              )}
+
+              <h3 className="sr-detail-h">目录</h3>
+              {data === null ? (
+                <div aria-label="正在读取目录">
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} className="sr-skeleton sr-skeleton-line" style={{ margin: "12px 0", width: `${86 - i * 14}%` }} />
+                  ))}
+                </div>
+              ) : data.chapterTitles.length === 0 ? (
+                <p className="sr-detail-muted">这本书没有可识别的章节。</p>
+              ) : (
+                <ol className="sr-detail-toc">
+                  {toc.map((title, index) => (
+                    <li key={index}>
+                      <button type="button" onClick={() => onRead(book, index, 0)} data-current={progress?.chapterIndex === index ? "true" : undefined}>
+                        <span className="sr-detail-toc-no">{index + 1}</span>
+                        <span className="sr-detail-toc-title">{title || `第 ${index + 1} 章`}</span>
+                      </button>
+                    </li>
+                  ))}
+                  {data.chapterTitles.length > TOC_PREVIEW && (
+                    <li>
+                      {tocLimit < data.chapterTitles.length ? (
+                        <button
+                          type="button"
+                          className="sr-detail-more"
+                          onClick={() => setTocLimit((limit) => Math.min(limit + TOC_STEP, data.chapterTitles.length))}
+                        >
+                          再看 {Math.min(TOC_STEP, data.chapterTitles.length - tocLimit)} 章（共 {data.chapterTitles.length} 章）
+                        </button>
+                      ) : (
+                        <button type="button" className="sr-detail-more" onClick={() => setTocLimit(TOC_PREVIEW)}>
+                          收起目录
+                        </button>
+                      )}
+                    </li>
+                  )}
+                </ol>
+              )}
             </>
           )}
 
-          <StudyRoomStageSummary book={book} onOpenChapter={(chapterIndex) => onRead(book, chapterIndex, 0)} />
+          {tab === "notes" && (
+            <>
+              <h3 className="sr-detail-h">
+                我的笔记与划线
+                <HelpTip id="detail-notes" label="怎么记笔记">
+                  阅读时选中文字，就能划线、书摘或写批注；点这里的条目会跳回原文位置。
+                </HelpTip>
+              </h3>
+              {data === null ? null : data.notes.length === 0 && data.bookmarks.length === 0 ? (
+                <p className="sr-detail-muted">还没有笔记。</p>
+              ) : (
+                <ul className="sr-detail-notes">
+                  {data.bookmarks.map((mark) => (
+                    <li key={mark.id}>
+                      <button type="button" onClick={() => onRead(book, mark.chapterIndex, mark.paragraphIndex)}>
+                        <Bookmark size={14} strokeWidth={1.8} />
+                        <span className="sr-detail-note-text">书签 · {data.chapterTitles[mark.chapterIndex] || `第 ${mark.chapterIndex + 1} 章`}</span>
+                      </button>
+                    </li>
+                  ))}
+                  {data.notes.map((note) => (
+                    <li key={note.id}>
+                      <button type="button" onClick={() => onRead(book, note.chapterIndex, note.paragraphIndex)}>
+                        {note.kind === "note" ? <PenLine size={14} strokeWidth={1.8} /> : <Quote size={14} strokeWidth={1.8} />}
+                        <span className="sr-detail-note-text">
+                          {note.emoji ? `${note.emoji} ` : null}
+                          「{note.quote.length > 40 ? `${note.quote.slice(0, 40)}…` : note.quote}」
+                          {note.content ? <em> {note.content}</em> : null}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
 
-          <h3 className="sr-detail-h">共读记录</h3>
-          {data === null ? null : data.coread.length === 0 ? (
-            <p className="sr-detail-muted">还没有和角色共读这本书。阅读时点右上角共读按钮开始。</p>
-          ) : (
-            <ul className="sr-detail-notes">
-              {data.coread.map((ref) => (
-                <li key={ref.sessionId}>
-                  <button type="button" onClick={onOpenMessages}>
-                    <MessagesSquare size={14} strokeWidth={1.8} />
-                    <span className="sr-detail-note-text">与 {ref.name} 共读 · {new Date(ref.updatedAt).toLocaleDateString()}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+              {data !== null && data.annotations.length > 0 && (
+                <>
+                  <h3 className="sr-detail-h">角色批注</h3>
+                  <ul className="sr-detail-notes">
+                    {data.annotations.map((item) => (
+                      <li key={item.id}>
+                        <button type="button" onClick={() => onRead(book, item.chapterIndex, item.paragraphIndex)}>
+                          <MessagesSquare size={14} strokeWidth={1.8} />
+                          <span className="sr-detail-note-text">
+                            {item.emoji ? `${item.emoji} ` : null}
+                            <strong>{item.characterName}</strong>：{item.content.length > 46 ? `${item.content.slice(0, 46)}…` : item.content}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </>
           )}
 
-          <div className="sr-detail-footer">
-            {onMove && (
-              <>
-                <button type="button" className="sr-btn" onClick={() => onMove(-1)} aria-label="在书架上左移一格">
-                  <ChevronLeft size={16} strokeWidth={1.8} /> 左移
+          {tab === "coread" && (
+            <>
+              <h3 className="sr-detail-h">
+                共读记录
+                <HelpTip id="detail-coread" label="怎么共读">
+                  阅读时点右上角的共读按钮，选一位角色一起读；记录会出现在这里。
+                </HelpTip>
+              </h3>
+              {data === null ? null : data.coread.length === 0 ? (
+                <p className="sr-detail-muted">还没有和角色共读这本书。</p>
+              ) : (
+                <ul className="sr-detail-notes">
+                  {data.coread.map((ref) => (
+                    <li key={ref.sessionId}>
+                      <button type="button" onClick={onOpenMessages}>
+                        <MessagesSquare size={14} strokeWidth={1.8} />
+                        <span className="sr-detail-note-text">与 {ref.name} 共读 · {new Date(ref.updatedAt).toLocaleDateString()}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <StudyRoomStageSummary book={book} onOpenChapter={(chapterIndex) => onRead(book, chapterIndex, 0)} />
+
+              <div className="sr-detail-footer">
+                <button type="button" className="sr-btn" onClick={() => setReview("quick")}>
+                  快速回顾
                 </button>
-                <button type="button" className="sr-btn" onClick={() => onMove(1)} aria-label="在书架上右移一格">
-                  右移 <ChevronRight size={16} strokeWidth={1.8} />
+                <button type="button" className="sr-btn" onClick={() => setReview("fine")}>
+                  精细回顾
                 </button>
-              </>
-            )}
-            {book.sourceUrl && (
-              <a className="sr-btn" href={book.sourceUrl} target="_blank" rel="noopener noreferrer">
-                <ExternalLink size={16} strokeWidth={1.8} /> 来源页
-              </a>
-            )}
-            <button type="button" className="sr-btn" onClick={() => setReview("quick")}>
-              快速回顾
-            </button>
-            <button type="button" className="sr-btn" onClick={() => setReview("fine")}>
-              精细回顾
-            </button>
-            <button type="button" className="sr-btn" onClick={() => setGifting(true)}>
-              <Gift size={16} strokeWidth={1.7} />
-              赠书 / 送礼
-            </button>
-            <button type="button" className="sr-btn" onClick={() => void handleExportEpub()} disabled={exporting}>
-              {exporting ? <Loader2 size={16} className="sr-spin" /> : <FileDown size={16} strokeWidth={1.8} />}
-              导出 EPUB
-            </button>
-            <HelpTip id="export-epub" label="导出说明">
-              导出会用书房保存的正文重建一本 EPUB，带上封面与批注（批注以高亮加末尾附录呈现），
-              文件直接下载到你的设备，不上传。原书里内嵌的插图不在书房正文数据里，导出文件里不会出现。
-            </HelpTip>
-            <button type="button" className="sr-btn sr-btn-danger" onClick={() => onRemove(book)}>
-              <Trash2 size={16} strokeWidth={1.8} /> 移出书架
-            </button>
-          </div>
+              </div>
+            </>
+          )}
+
+          {tab === "tools" && (
+            <>
+              <h3 className="sr-detail-h">封面</h3>
+              <div className="sr-detail-footer" style={{ marginTop: 0 }}>
+                <button type="button" className="sr-btn" onClick={() => coverInputRef.current?.click()} disabled={coverBusy}>
+                  {coverBusy ? <Loader2 size={16} className="sr-spin" /> : <ImagePlus size={16} strokeWidth={1.8} />}
+                  {book.cover ? "更换封面" : "上传封面"}
+                </button>
+                {book.originalCover !== undefined && (
+                  <button type="button" className="sr-btn" onClick={restoreCover}>
+                    <RotateCcw size={16} strokeWidth={1.8} />
+                    {book.originalCover ? "恢复原封面" : "改回文字封面"}
+                  </button>
+                )}
+                <input ref={coverInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,.gif" hidden onChange={handleCoverFile} />
+              </div>
+
+              <h3 className="sr-detail-h">分享与导出</h3>
+              <div className="sr-detail-footer" style={{ marginTop: 0 }}>
+                <button type="button" className="sr-btn" onClick={() => setGifting(true)}>
+                  <Gift size={16} strokeWidth={1.7} />
+                  赠书 / 送礼
+                </button>
+                <button type="button" className="sr-btn" onClick={() => void handleExportEpub()} disabled={exporting}>
+                  {exporting ? <Loader2 size={16} className="sr-spin" /> : <FileDown size={16} strokeWidth={1.8} />}
+                  导出 EPUB
+                </button>
+                <HelpTip id="export-epub" label="导出说明">
+                  导出会用书房保存的正文重建一本 EPUB，带上封面与批注（批注以高亮加末尾附录呈现），
+                  文件直接下载到你的设备，不上传。原书里内嵌的插图不在书房正文数据里，导出文件里不会出现。
+                </HelpTip>
+                {book.sourceUrl && (
+                  <a className="sr-btn" href={book.sourceUrl} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink size={16} strokeWidth={1.8} /> 来源页
+                  </a>
+                )}
+              </div>
+
+              <h3 className="sr-detail-h">书架</h3>
+              <div className="sr-detail-footer" style={{ marginTop: 0 }}>
+                {onMove && (
+                  <>
+                    <button type="button" className="sr-btn" onClick={() => onMove(-1)} aria-label="在书架上左移一格">
+                      <ChevronLeft size={16} strokeWidth={1.8} /> 左移
+                    </button>
+                    <button type="button" className="sr-btn" onClick={() => onMove(1)} aria-label="在书架上右移一格">
+                      右移 <ChevronRight size={16} strokeWidth={1.8} />
+                    </button>
+                  </>
+                )}
+                <button type="button" className="sr-btn sr-btn-danger" onClick={() => onRemove(book)}>
+                  <Trash2 size={16} strokeWidth={1.8} /> 移出书架
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         {review && (

@@ -301,6 +301,7 @@ const wikisource: Provider = {
         title,
         // 维基文库页面没有结构化作者字段，不做猜测（宁可显示「佚名」）
         authors: [],
+        language: "zh",
         kind,
         category: classifyCategory(`${title} ${categories.join(" ")}`, "classic"),
         readability: isMaterial ? "material" : "readable",
@@ -324,6 +325,7 @@ type MangaDexManga = {
     altTitles?: Array<Record<string, string>>;
     year?: number;
     status?: string;
+    originalLanguage?: string;
   };
   relationships?: Array<{ type?: string; attributes?: { fileName?: string; name?: string } }>;
 };
@@ -360,7 +362,8 @@ const mangadex: Provider = {
         authors,
         cover: cover && item.id ? `https://uploads.mangadex.org/covers/${item.id}/${cover}.256.jpg` : undefined,
         year: attrs.year ? String(attrs.year) : undefined,
-        language: "zh",
+        // 原作语言以来源字段为准，不再一律标成中文
+        language: attrs.originalLanguage,
         kind: "comic",
         category: "comic",
         // 该站为粉丝翻译转载，不承诺正文可合法获取：只提供书目与原站跳转

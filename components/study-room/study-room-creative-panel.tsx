@@ -14,7 +14,6 @@ import {
   Sparkles,
   Trash2,
   Upload,
-  Users,
 } from "lucide-react";
 
 import { loadCharacters } from "@/lib/character-storage";
@@ -91,7 +90,15 @@ export function CreativePanel({ onOpenDraft, onOpenNotes, onOpenWishlist }: Crea
     onOpenDraft(draft.id);
   };
 
-  const handleDelete = (draft: CreativeDraft) => {
+  /** 模式 A：用宿主角色当作者（保留角色口吻），进编辑页后再定题材、字数等 */
+  const createWithCharacter = (characterId: string) => {
+    const base = createDraft("longform");
+    const draft: CreativeDraft = { ...base, writeMode: "ai", writer: { ...base.writer, mode: "character", characterId } };
+    setDrafts(upsertDraft(drafts, draft));
+    onOpenDraft(draft.id);
+  };
+
+  const handleDelete =(draft: CreativeDraft) => {
     if (!confirm(`删除草稿「${draft.title.trim() || "未命名作品"}」？已发布到书架的书不会被删掉。`)) return;
     const next = removeDraft(drafts, draft.id);
     saveDrafts(next);
@@ -140,14 +147,17 @@ export function CreativePanel({ onOpenDraft, onOpenNotes, onOpenWishlist }: Crea
             导入
             <input
               type="file"
-              accept=".txt,.md,text/plain"
+              accept=".txt,.md,.docx,text/plain"
               hidden
               onChange={async (event) => {
                 const file = event.target.files?.[0];
                 event.target.value = "";
                 if (!file) return;
                 try {
-                  const text = await file.text();
+                  const text = /\.docx$/i.test(file.name)
+                    ? await (await import("@/lib/study-room/docx")).readDocxText(await file.arrayBuffer())
+                    : await file.text();
+                  if (!text.trim()) throw new Error("empty");
                   const draft = { ...createDraft("blank"), writeMode: "hand" as const };
                   draft.title = file.name.replace(/\.[^.]+$/, "");
                   draft.chapters = [
@@ -162,13 +172,41 @@ export function CreativePanel({ onOpenDraft, onOpenNotes, onOpenWishlist }: Crea
                   setDrafts(upsertDraft(drafts, draft));
                   onOpenDraft(draft.id);
                 } catch {
-                  flash("这个文件读不出来，换一个 txt / md 试试", 3000);
+                  flash("这个文件读不出来，换一个 txt / md / docx 试试", 3000);
                 }
               }}
             />
           </label>
         </div>
       </div>
+
+      {/* 角色作者：只显示小手机同源头像与名字，点一下用这位角色开一个新作品 */}
+      {characters.length > 0 && (
+        <>
+          <div className="sr-section-label">角色写作</div>
+          <div className="sr-desk-cast">
+            {characters.map((character) => (
+              <button
+                key={character.id}
+                type="button"
+                className="sr-desk-cast-item"
+                onClick={() => createWithCharacter(character.id)}
+                aria-label={`让${character.name}来写`}
+              >
+                <span className="sr-desk-cast-avatar" aria-hidden>
+                  {character.avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={character.avatar} alt="" />
+                  ) : (
+                    character.name.slice(0, 1)
+                  )}
+                </span>
+                <span className="sr-desk-cast-name">{character.name}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       {/* 模板区 */}
       {pickingTemplate && (
@@ -305,26 +343,6 @@ export function CreativePanel({ onOpenDraft, onOpenNotes, onOpenWishlist }: Crea
           </div>
         )}
 
-        {drawerRow("cast", "人物卡", `宿主里已有 ${characters.length} 位角色（只读引用）`, <Users size={16} strokeWidth={1.7} />)}
-        {drawer === "cast" && (
-          <div style={{ padding: "0 4px 12px 26px" }}>
-            {characters.length === 0 ? (
-              <p className="sr-note-meta">宿主里还没有角色卡，可以去设置里的角色卷宗创建。</p>
-            ) : (
-              characters.slice(0, 12).map((character) => (
-                <div key={character.id} className="sr-note-card" style={{ marginBottom: 6 }}>
-                  <div className="sr-note-meta" style={{ fontWeight: 600, color: "var(--c-text-title)" }}>{character.name}</div>
-                  <div className="sr-note-meta" style={{ lineHeight: 1.7 }}>
-                    {(character.persona || "（没有填写人设）").slice(0, 90)}
-                    {(character.persona?.length ?? 0) > 90 ? "…" : ""}
-                  </div>
-                </div>
-              ))
-            )}
-            <p className="sr-note-meta">角色卡在宿主「设置 → 角色卷宗」里编辑；这里只引用，不复制一份。</p>
-          </div>
-        )}
-
         {drawerRow("world", "世界设定", `宿主里已有 ${worldBooks.length} 本世界书`, <LayoutTemplate size={16} strokeWidth={1.7} />)}
         {drawer === "world" && (
           <div style={{ padding: "0 4px 12px 26px" }}>
@@ -338,7 +356,6 @@ export function CreativePanel({ onOpenDraft, onOpenNotes, onOpenWishlist }: Crea
                 </div>
               ))
             )}
-            <p className="sr-note-meta">世界书同样来自宿主，编辑入口在设置里。</p>
           </div>
         )}
 
@@ -371,21 +388,10 @@ export function CreativePanel({ onOpenDraft, onOpenNotes, onOpenWishlist }: Crea
                 我的笔记
               </button>
             </div>
-            <p className="sr-note-meta" style={{ marginTop: 6 }}>
-              资料盒只是把书架、想读与笔记放在一起的入口，内容仍在原处，不复制一份。
-            </p>
           </div>
         )}
       </div>
 
-      {/* ⑤ 制书工具（进项目后可用） */}
-      <div className="sr-section-label">制书工具</div>
-      <div className="sr-note-card">
-        <div className="sr-note-meta" style={{ lineHeight: 1.9 }}>
-          进入任一项目后可用：总览（进度与字数）、大纲、写作（分章生成与手写）、设定（世界观与人物）、
-          素材（灵感与引用）、校对（一致性检查）、排版（封面与预览）、导出（EPUB）。
-        </div>
-      </div>
     </>
   );
 }

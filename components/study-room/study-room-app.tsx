@@ -37,7 +37,7 @@ type StudyRoomTab = "shelf" | "store" | "desk" | "forum" | "mine";
 
 type StudyRoomView =
   | { kind: "tabs" }
-  | { kind: "reader"; book: Book; chapterIndex?: number; paragraphIndex?: number }
+  | { kind: "reader"; book: Book; chapterIndex?: number; paragraphIndex?: number; tts?: boolean }
   | { kind: "notes" }
   | { kind: "messages" }
   | { kind: "appearance" }
@@ -96,6 +96,9 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
     return () => window.removeEventListener(STUDYROOM_SEARCH_EVENT, onSearch);
   }, []);
 
+  // 从「我的主页」点动态卡：切到书友圈并直接打开原帖（只用一次）
+  const [forumPostId, setForumPostId] = useState<string | null>(null);
+
   // 论坛名可以在书友管理里改，这里跟着刷新
   const [forumName, setForumName] = useState<string>(() => loadForum().name);
   useEffect(() => {
@@ -129,6 +132,7 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
         book={view.book}
         initialChapterIndex={view.chapterIndex}
         initialParagraphIndex={view.paragraphIndex}
+        openTts={view.tts}
         onBack={() => {
           setReturnFromBookId(lastOpenedBookRef.current);
           setView({ kind: "tabs" });
@@ -247,9 +251,9 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
           ) : tab === "shelf" ? (
             <StudyRoomShelf
               returnFromBookId={returnFromBookId}
-              onOpenBook={(book, chapterIndex, paragraphIndex) => {
+              onOpenBook={(book, chapterIndex, paragraphIndex, options) => {
                 lastOpenedBookRef.current = book.id;
-                setView({ kind: "reader", book, chapterIndex, paragraphIndex });
+                setView({ kind: "reader", book, chapterIndex, paragraphIndex, tts: options?.tts });
               }}
               onOpenMessages={() => setView({ kind: "messages" })}
             />
@@ -263,6 +267,7 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
             />
           ) : tab === "forum" ? (
             <StudyRoomForum
+              initialPostId={forumPostId ?? undefined}
               onOpenNpcPanel={() => setView({ kind: "npcPanel" })}
               onOpenMine={() => {
                 setView({ kind: "tabs" });
@@ -290,6 +295,10 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
               onOpenUpdateLog={() => setView({ kind: "updateLog" })}
               onOpenWishlist={() => setView({ kind: "wishlist" })}
               onOpenDraft={(draftId) => setView({ kind: "creative", draftId })}
+              onOpenPost={(postId) => {
+                setForumPostId(postId);
+                setTab("forum");
+              }}
             />
           )}
         </div>
@@ -299,6 +308,7 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
         items={dockItems}
         active={tab}
         onSelect={(key) => {
+          setForumPostId(null);
           if (key === "draw") {
             setView({ kind: "draw" });
             return;

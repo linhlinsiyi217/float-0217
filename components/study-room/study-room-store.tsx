@@ -9,6 +9,8 @@ import {
   KIND_LABEL,
   READABILITY_LABEL,
   hasCJK,
+  languageLabel,
+  normalizeLanguage,
   type BookCategory,
   type BookKind,
   type BookSearchResult,
@@ -144,7 +146,10 @@ export function StudyRoomStore({ onRead, initialQuery }: StudyRoomStoreProps) {
 
   const languages = useMemo(() => {
     const set = new Set<string>();
-    for (const item of results ?? []) if (item.language) set.add(item.language);
+    for (const item of results ?? []) {
+      const code = normalizeLanguage(item.language);
+      if (code) set.add(code);
+    }
     return Array.from(set).slice(0, 8);
   }, [results]);
 
@@ -154,7 +159,7 @@ export function StudyRoomStore({ onRead, initialQuery }: StudyRoomStoreProps) {
       if (category !== "all" && item.category !== category) return false;
       if (readability !== "all" && item.readability !== readability) return false;
       if (source !== "all" && item.sourceLabel !== source) return false;
-      if (language !== "all" && item.language !== language) return false;
+      if (language !== "all" && normalizeLanguage(item.language) !== language) return false;
       if (!eraTest(item.year)) return false;
       return true;
     });
@@ -225,6 +230,7 @@ export function StudyRoomStore({ onRead, initialQuery }: StudyRoomStoreProps) {
             <span className="sr-res-source">{book.sourceLabel}</span>
             {book.category && <span className="sr-res-kind">{CATEGORY_LABEL[book.category]}</span>}
             {!book.category && <span className="sr-res-kind">{KIND_LABEL[book.kind]}</span>}
+            {book.language && <span className="sr-res-kind">{languageLabel(book.language)}</span>}
             <span className={`sr-res-read sr-res-read--${book.readability}`}>{READABILITY_LABEL[book.readability]}</span>
             {group.versions.length > 0 && (
               <button
@@ -341,7 +347,7 @@ export function StudyRoomStore({ onRead, initialQuery }: StudyRoomStoreProps) {
               data-active={language === item ? "true" : undefined}
               onClick={() => setLanguage(language === item ? "all" : item)}
             >
-              {item}
+              {languageLabel(item)}
             </button>
           ))}
         </div>
@@ -398,17 +404,15 @@ export function StudyRoomStore({ onRead, initialQuery }: StudyRoomStoreProps) {
           <Compass size={42} strokeWidth={1} />
           <p>
             {searched ? "没有找到匹配的书。" : "输入书名或作者开始搜索。"}
-            <br />
-            可以试试书名片段或作者名；标点和繁简体都可以（「简爱」「简·爱」「Jane Eyre」都行）。
+            <HelpTip id="store-search" label="搜索小提示">
+              可以搜书名片段或作者名，标点和繁简体都不影响（「简爱」「简·爱」「Jane Eyre」都行）。
+              漫画来源以日文原名与英文名为主，中文名查不到时试试原作名。
+              也可以放宽筛选，或在书架页导入自己的 TXT / EPUB / PDF / DOCX。
+            </HelpTip>
           </p>
-          {kind === "comic" && hasCJK(query) && (
-            <p style={{ marginTop: 8 }}>
-              漫画来源以日文原名与英文名为主，中文名可能查不到：试试原作名（如 ONE PIECE），或切到「全部」看看其他来源。
-            </p>
+          {kind === "comic" && hasCJK(query) && searched && (
+            <p style={{ marginTop: 8 }}>漫画试试原作名（如 ONE PIECE）。</p>
           )}
-          <p style={{ marginTop: 8 }}>
-            也可以放宽上面的筛选条件，或在「书架」页用「导入本地书」直接导入自己的 TXT / EPUB。
-          </p>
         </div>
       )}
 
@@ -435,8 +439,7 @@ export function StudyRoomStore({ onRead, initialQuery }: StudyRoomStoreProps) {
 
       {!loading && !error && (readableGroups.length > 0 || materialGroups.length > 0) && (
         <p className="sr-note-meta" style={{ marginTop: 16, textAlign: "center", lineHeight: 1.8 }}>
-          可读状态按来源实际上架情况标注：全文可读可以直接导入书房，可预览在应用内看预览，
-          需自行导入的书房拿不到正文。不会把只有封面的条目说成能读。
+          可读状态按来源实际情况标注
           <HelpTip id="readability" label="可读状态说明">
             全文可读 = 来源提供可下载正文（公共领域文本或公版书），导入后能在书房里读；
             可预览 = 来源提供在线预览；需自行导入 = 只有书目，读不读得到取决于你自己有没有文件；

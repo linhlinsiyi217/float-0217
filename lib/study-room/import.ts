@@ -17,7 +17,7 @@ import type { Book, BookChapter } from "@/lib/reading-types";
 
 export class UnsupportedBookFormatError extends Error {
   constructor() {
-    super("暂只支持 TXT / EPUB / PDF 文件");
+    super("暂只支持 TXT / EPUB / PDF / DOCX 文件");
   }
 }
 
@@ -45,6 +45,13 @@ export async function importBookFromBlob(
     const config = loadReadingInteractionConfig();
     const { text } = decodeTxtArrayBuffer(await blob.arrayBuffer(), config.txtEncoding);
     parsed = parseTxtContent(text, fileName, config.paragraphMode);
+    format = "txt";
+  } else if (ext === "docx") {
+    // DOCX 取出正文段落后按 TXT 的规则分章，阅读器里当文本书处理
+    onProgress?.("正在解析 DOCX…");
+    const { readDocxText } = await import("./docx");
+    const config = loadReadingInteractionConfig();
+    parsed = parseTxtContent(await readDocxText(await blob.arrayBuffer()), fileName.replace(/\.docx$/i, ".txt"), config.paragraphMode);
     format = "txt";
   } else if (ext === "epub") {
     onProgress?.("正在解析 EPUB…");

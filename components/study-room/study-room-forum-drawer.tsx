@@ -1,11 +1,26 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, ChevronRight, Heart, MessageSquare, PenLine, Star, UserPlus, Users, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Heart,
+  MessageSquare,
+  NotebookPen,
+  PenLine,
+  Settings2,
+  Star,
+  UserPlus,
+  UserRound,
+  Users,
+  X,
+} from "lucide-react";
 
 import { avatarDataUrl } from "@/lib/study-room/npc-avatar";
 import type { ForumState } from "@/lib/study-room/forum";
 import { deleteDraft, markNotificationsRead } from "@/lib/study-room/forum-social";
+import { displayName, loadProfile } from "@/lib/study-room/profile";
+import { loadUserIdentities } from "@/lib/settings-storage";
 
 type StudyRoomForumDrawerProps = {
   state: ForumState;
@@ -16,6 +31,10 @@ type StudyRoomForumDrawerProps = {
   onOpenPost: (postId: string) => void;
   onOpenMine: () => void;
   onOpenSettings: () => void;
+  /** 私信：打开宿主的聊天应用 */
+  onOpenChat: () => void;
+  /** 打开某位书友的主页 */
+  onOpenProfile: (npcId: string) => void;
 };
 
 type Section = "mine" | "drafts" | "comments" | "likes" | "friends" | "following";
@@ -24,7 +43,7 @@ const ME = "user";
 
 /**
  * 点头像打开的左侧菜单（不做屏幕边缘滑动，避免和手机的返回手势打架）。
- * 每一项都展开成真实的列表：我的帖子、草稿箱、私信、评论与回复、获赞与提及、好友申请、关注的书友。
+ * 分四组：用户（主页、关注、好友申请）/ 内容（帖子、草稿）/ 互动（评论、获赞、私信）/ 个人（设置）。
  */
 export function StudyRoomForumDrawer({
   state,
@@ -35,8 +54,19 @@ export function StudyRoomForumDrawer({
   onOpenPost,
   onOpenMine,
   onOpenSettings,
+  onOpenChat,
+  onOpenProfile,
 }: StudyRoomForumDrawerProps) {
-  const [open, setOpen] = useState<Section | null>("mine");
+  const [open, setOpen] = useState<Section | null>(null);
+  const me = useMemo(() => {
+    const profile = loadProfile();
+    const identity = loadUserIdentities()[0];
+    return {
+      name: displayName(profile, identity?.name),
+      avatar: profile.useHostAvatar && identity?.avatarUrl ? identity.avatarUrl : avatarDataUrl(profile.avatar),
+      status: profile.status.trim(),
+    };
+  }, []);
 
   const myPosts = state.posts.filter((post) => post.authorId === ME);
   const myComments = state.posts.flatMap((post) =>
@@ -44,7 +74,10 @@ export function StudyRoomForumDrawer({
   );
   const likedNotices = unread.filter((item) => item.kind === "like" || item.kind === "mention");
   const friendRequests = unread.filter((item) => item.kind === "friend");
-  const followedNpcs = state.npcs.filter((npc) => state.following.includes(npc.id));
+  // 特别关注排在前面
+  const followedNpcs = state.npcs
+    .filter((npc) => state.following.includes(npc.id))
+    .sort((a, b) => Number(state.starred.includes(b.id)) - Number(state.starred.includes(a.id)));
 
   const toggle = (section: Section) => {
     setOpen((current) => (current === section ? null : section));
@@ -61,11 +94,15 @@ export function StudyRoomForumDrawer({
       {icon}
       <span className="sr-drawer-label">{label}</span>
       {count > 0 && <span className="sr-drawer-count">{count}</span>}
-      <ChevronDown
-        size={15}
-        strokeWidth={1.8}
-        style={{ transform: open === section ? "rotate(180deg)" : undefined, transition: "transform .2s" }}
-      />
+      <ChevronDown size={15} strokeWidth={1.8} className="sr-drawer-caret" data-open={open === section ? "true" : undefined} />
+    </button>
+  );
+
+  const link = (label: string, icon: React.ReactNode, onClick: () => void) => (
+    <button type="button" className="sr-drawer-row" onClick={onClick}>
+      {icon}
+      <span className="sr-drawer-label">{label}</span>
+      <ChevronRight size={15} strokeWidth={1.8} />
     </button>
   );
 
@@ -74,13 +111,12 @@ export function StudyRoomForumDrawer({
       <aside className="sr-drawer" onClick={(event) => event.stopPropagation()} aria-label="个人菜单">
         <header className="sr-drawer-head">
           <span className="sr-forum-avatar" aria-hidden>
-            <span>我</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={me.avatar} alt="" />
           </span>
           <span className="sr-forum-author-main">
-            <span className="sr-forum-name">我</span>
-            <span className="sr-note-meta">
-              发布 {myPosts.length} 条 · 评论 {myComments.length} 条
-            </span>
+            <span className="sr-forum-name">{me.name}</span>
+            <span className="sr-note-meta">{me.status || `发布 ${myPosts.length} · 评论 ${myComments.length}`}</span>
           </span>
           <button type="button" className="sr-icon-btn" onClick={onClose} aria-label="关闭菜单">
             <X size={18} strokeWidth={1.7} />
@@ -88,8 +124,43 @@ export function StudyRoomForumDrawer({
         </header>
 
         <div className="sr-drawer-body">
+          <div className="sr-section-label">用户</div>
+          {link("我的主页", <UserRound size={16} strokeWidth={1.7} />, onOpenMine)}
+
+          {row("following", "关注的书友", followedNpcs.length, <Users size={16} strokeWidth={1.7} />)}
+          {open === "following" &&
+            (followedNpcs.length === 0 ? (
+              <p className="sr-note-meta sr-drawer-empty">还没有关注谁。</p>
+            ) : (
+              followedNpcs.map((npc) => (
+                <button key={npc.id} type="button" className="sr-drawer-item sr-drawer-item--row" onClick={() => onOpenProfile(npc.id)}>
+                  <span className="sr-drawer-avatar" aria-hidden>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={npc.avatarUrl ?? avatarDataUrl(npc.avatar)} alt="" />
+                  </span>
+                  <span>{npc.nickname}</span>
+                  {state.starred.includes(npc.id) && <Star size={13} strokeWidth={1.8} className="sr-pf-star" aria-label="特别关注" />}
+                </button>
+              ))
+            ))}
+
+          {row("friends", "好友申请", friendRequests.length, <UserPlus size={16} strokeWidth={1.7} />)}
+          {open === "friends" &&
+            (friendRequests.length === 0 ? (
+              <p className="sr-note-meta sr-drawer-empty">没有待处理的好友申请。</p>
+            ) : (
+              friendRequests.map((notice) => (
+                <span key={notice.id} className="sr-drawer-item sr-drawer-item--row">
+                  <span>{notice.fromName} 想加你为好友</span>
+                  <button type="button" className="sr-btn" onClick={onOpenSettings}>
+                    去确认
+                  </button>
+                </span>
+              ))
+            ))}
+
           <div className="sr-section-label">内容</div>
-          {row("mine", "我的帖子", myPosts.length, <PenLine size={16} strokeWidth={1.7} />)}
+          {row("mine", "我的帖子", myPosts.length, <NotebookPen size={16} strokeWidth={1.7} />)}
           {open === "mine" &&
             (myPosts.length === 0 ? (
               <p className="sr-note-meta sr-drawer-empty">还没发过帖子。</p>
@@ -105,7 +176,7 @@ export function StudyRoomForumDrawer({
           {row("drafts", "草稿箱", state.drafts.length, <PenLine size={16} strokeWidth={1.7} />)}
           {open === "drafts" &&
             (state.drafts.length === 0 ? (
-              <p className="sr-note-meta sr-drawer-empty">没有草稿。写帖子时点「存草稿」会存在这里。</p>
+              <p className="sr-note-meta sr-drawer-empty">没有草稿。</p>
             ) : (
               state.drafts.map((draft) => (
                 <span key={draft.id} className="sr-drawer-item sr-drawer-item--row">
@@ -115,7 +186,7 @@ export function StudyRoomForumDrawer({
                   <button
                     type="button"
                     className="sr-note-tool"
-                    title="删除草稿"
+                    aria-label="删除草稿"
                     onClick={() => onMutate((prev) => deleteDraft(prev, draft.id))}
                   >
                     <X size={14} strokeWidth={1.8} />
@@ -124,17 +195,7 @@ export function StudyRoomForumDrawer({
               ))
             ))}
 
-          <div className="sr-section-label">社交</div>
-          <button type="button" className="sr-drawer-row" onClick={onOpenMine}>
-            <MessageSquare size={16} strokeWidth={1.7} />
-            <span className="sr-drawer-label">私信</span>
-            <span className="sr-note-meta">在聊天应用里</span>
-            <ChevronRight size={15} strokeWidth={1.8} />
-          </button>
-          <p className="sr-note-meta sr-drawer-empty">
-            私信沿用宿主的聊天应用：加为好友后会在聊天里出现，未读消息也在那里看，这里不另造一套。
-          </p>
-
+          <div className="sr-section-label">互动</div>
           {row("comments", "评论与回复", myComments.length, <MessageSquare size={16} strokeWidth={1.7} />)}
           {open === "comments" &&
             (myComments.length === 0 ? (
@@ -167,58 +228,11 @@ export function StudyRoomForumDrawer({
               ))
             ))}
 
-          {row("friends", "好友申请", friendRequests.length, <UserPlus size={16} strokeWidth={1.7} />)}
-          {open === "friends" &&
-            (friendRequests.length === 0 ? (
-              <p className="sr-note-meta sr-drawer-empty">没有待处理的好友申请。</p>
-            ) : (
-              friendRequests.map((notice) => (
-                <span key={notice.id} className="sr-drawer-item sr-drawer-item--row">
-                  <span>{notice.fromName} 想加你为好友</span>
-                  <button
-                    type="button"
-                    className="sr-chip"
-                    onClick={onOpenSettings}
-                    title="到书友管理里确认"
-                  >
-                    去确认
-                  </button>
-                </span>
-              ))
-            ))}
-
-          {row("following", "关注的书友", followedNpcs.length, <Users size={16} strokeWidth={1.7} />)}
-          {open === "following" &&
-            (followedNpcs.length === 0 ? (
-              <p className="sr-note-meta sr-drawer-empty">还没有关注谁。在书友主页点「关注」就会出现在这里。</p>
-            ) : (
-              followedNpcs.map((npc) => (
-                <span key={npc.id} className="sr-drawer-item sr-drawer-item--row">
-                  <span className="sr-drawer-avatar" aria-hidden>
-                    {npc.avatarUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={npc.avatarUrl} alt="" />
-                    ) : (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={avatarDataUrl(npc.avatar)} alt="" />
-                    )}
-                  </span>
-                  <span>{npc.nickname}</span>
-                </span>
-              ))
-            ))}
+          {link("私信", <MessageSquare size={16} strokeWidth={1.7} />, onOpenChat)}
 
           <div className="sr-section-label">个人</div>
-          <button type="button" className="sr-drawer-row" onClick={onOpenMine}>
-            <Star size={16} strokeWidth={1.7} />
-            <span className="sr-drawer-label">进入我的主页</span>
-            <ChevronRight size={15} strokeWidth={1.8} />
-          </button>
-          <button type="button" className="sr-drawer-row" onClick={onOpenSettings}>
-            <PenLine size={16} strokeWidth={1.7} />
-            <span className="sr-drawer-label">论坛生成规则</span>
-            <ChevronRight size={15} strokeWidth={1.8} />
-          </button>
+          {link("论坛设置", <Settings2 size={16} strokeWidth={1.7} />, onOpenSettings)}
+
           {/* 底部小插画：让侧栏下半段不空落 */}
           <div className="sr-drawer-art" aria-hidden>
             <svg viewBox="0 0 120 44" role="img">

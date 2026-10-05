@@ -166,11 +166,26 @@ export function toggleFollowNpc(state: ForumState, npcId: string): ForumState {
       : followers.filter((id) => id !== USER_ID);
     return { ...npc, followers: nextFollowers };
   });
-  return { ...state, following, npcs };
+  // 取消关注时特别关注一起取消
+  const starred = following.includes(npcId) ? state.starred : state.starred.filter((id) => id !== npcId);
+  return { ...state, following, npcs, starred };
 }
 
 export function isFollowing(state: ForumState, npcId: string): boolean {
   return state.following.includes(npcId);
+}
+
+/** 特别关注（星标）：没关注的会顺带关注上。 */
+export function toggleStarNpc(state: ForumState, npcId: string): ForumState {
+  if (state.starred.includes(npcId)) {
+    return { ...state, starred: state.starred.filter((id) => id !== npcId) };
+  }
+  const followed = state.following.includes(npcId) ? state : toggleFollowNpc(state, npcId);
+  return { ...followed, starred: [...followed.starred, npcId] };
+}
+
+export function isStarred(state: ForumState, npcId: string): boolean {
+  return state.starred.includes(npcId);
 }
 
 export function followerCount(npc: ForumNpc): number {

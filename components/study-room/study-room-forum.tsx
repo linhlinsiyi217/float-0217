@@ -36,6 +36,8 @@ import {
   searchForum,
   toggleCollect,
   toggleFollowNpc,
+  toggleStarNpc,
+  isStarred,
   unreadNotifications,
   type ForumChannel,
 } from "@/lib/study-room/forum-social";
@@ -51,6 +53,8 @@ type StudyRoomForumProps = {
   onOpenBook: (book: Book) => void;
   /** 进入「我的」（用户主页复用书房既有的我的） */
   onOpenMine: () => void;
+  /** 从「我的主页」点动态卡进来时直接打开原帖 */
+  initialPostId?: string;
 };
 
 const ME = "user";
@@ -61,7 +65,7 @@ const REPLY_TICK_MS = 20_000;
  * 普通用户不需要先写话题或提示词：书友与内容会自己生成和维护；
  * 想看什么就搜、想说什么就发，其余交给书友按人设回应。
  */
-export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine }: StudyRoomForumProps) {
+export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initialPostId }: StudyRoomForumProps) {
   const [state, setState] = useState<ForumState>(() => loadForum());
   const [channel, setChannel] = useState<ForumChannel>("recommend");
   const [view, setView] = useState<
@@ -71,7 +75,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine }: Study
     | { kind: "profile"; npcId: string }
     | { kind: "search"; query: string }
     | { kind: "settings" }
-  >({ kind: "feed" });
+  >(() => (initialPostId ? { kind: "post", postId: initialPostId } : { kind: "feed" }));
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [giftTarget, setGiftTarget] = useState<{ postId: string; npcId?: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -354,6 +358,11 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine }: Study
         state={state}
         onBack={() => setView({ kind: "feed" })}
         onFollow={() => handleFollow(npc)}
+        onStar={() => {
+          const was = isStarred(state, npc.id);
+          mutate((prev) => toggleStarNpc(prev, npc.id));
+          flash(was ? `已取消特别关注 ${npc.nickname}` : `已特别关注 ${npc.nickname}`);
+        }}
         onAddFriend={() => void handleAddFriend(npc)}
         onChat={() => handleOpenChat(npc)}
         onOpenPost={(postId) => setView({ kind: "post", postId })}
@@ -601,6 +610,15 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine }: Study
             onOpenMine();
           }}
           onOpenSettings={() => setView({ kind: "settings" })}
+          onOpenProfile={(npcId) => {
+            setDrawerOpen(false);
+            setView({ kind: "profile", npcId });
+          }}
+          onOpenChat={() => {
+            // 私信沿用宿主的聊天应用，不在书房另造一套
+            setDrawerOpen(false);
+            window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: "chat" } }));
+          }}
         />
       )}
 

@@ -97,6 +97,8 @@ type StudyRoomReaderProps = {
   initialChapterIndex?: number;
   /** 从笔记「回跳原文」时指定段落 */
   initialParagraphIndex?: number;
+  /** 从书籍详情点「朗读」进来：打开后直接弹出朗读面板 */
+  openTts?: boolean;
   onBack: () => void;
 };
 
@@ -127,7 +129,7 @@ function makeId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
-export function StudyRoomReader({ book, initialChapterIndex, initialParagraphIndex, onBack }: StudyRoomReaderProps) {
+export function StudyRoomReader({ book, initialChapterIndex, initialParagraphIndex, openTts, onBack }: StudyRoomReaderProps) {
   const [chapters, setChapters] = useState<BookChapter[] | null>(null);
   const [chapterIndex, setChapterIndex] = useState(0);
   const [chapterNotes, setChapterNotes] = useState<ReadingNote[]>([]);
@@ -146,7 +148,7 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   const [showMore, setShowMore] = useState(false);
   const [aiDrafting, setAiDrafting] = useState(false);
   // 朗读：音色来自宿主角色卡或设备系统语音；断点续播按书记录
-  const [ttsOpen, setTtsOpen] = useState(false);
+  const [ttsOpen, setTtsOpen] = useState(Boolean(openTts));
   const [voices, setVoices] = useState<ReaderVoice[]>([]);
   const [voiceId, setVoiceId] = useState<string>("");
   const [rate, setRate] = useState(1);

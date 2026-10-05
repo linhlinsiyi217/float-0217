@@ -48,13 +48,7 @@ export function StudyRoomDesk({ onOpenDraft, onOpenNotes, onOpenWishlist }: Stud
       {!hasContent && (
         <div className="sr-empty" style={{ paddingTop: 24 }}>
           <NotebookPen size={42} strokeWidth={1} />
-          <p>
-            书桌整理阅读时留下的东西：
-            <br />
-            书签、书摘、批注与共读记录。
-            <br />
-            阅读中产生的内容会自动出现在这里。
-          </p>
+          <p>还没有书签和书摘。</p>
         </div>
       )}
 

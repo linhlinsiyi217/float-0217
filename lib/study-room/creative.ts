@@ -7,7 +7,7 @@
 import { simpleLLMCall } from "@/lib/api-helpers";
 import { loadCharacters } from "@/lib/character-storage";
 import { kvGet, kvSet, registerKvMigration } from "@/lib/kv-db";
-import { addBook, saveChapters } from "@/lib/reading-storage";
+import { addBook, loadBooks, saveChapters } from "@/lib/reading-storage";
 import type { Book, BookChapter } from "@/lib/reading-types";
 import { loadApiConfigs, loadBindingConfig, resolveBinding } from "@/lib/settings-storage";
 
@@ -536,14 +536,17 @@ export async function publishDraft(draft: CreativeDraft): Promise<Book> {
   const chapters = draft.chapters.filter((chapter) => chapter.content.trim());
   if (chapters.length === 0) throw new Error("还没有正文，写点内容再发布");
   const bookId = draft.publishedBookId ?? `book_creative_${draft.id}`;
+  // 再次发布是覆盖同一本：保留原来的加入时间与用户自己换过的封面，书架位置不跳
+  const existing = loadBooks().find((item) => item.id === bookId);
   const book: Book = {
     id: bookId,
     title: draft.title.trim() || "未命名作品",
     author: draft.author?.trim() || "佚名",
     format: "txt",
     totalChapters: chapters.length,
-    createdAt: new Date().toISOString(),
-    cover: draft.cover,
+    createdAt: existing?.createdAt ?? new Date().toISOString(),
+    cover: existing?.originalCover !== undefined ? existing.cover : draft.cover,
+    originalCover: existing?.originalCover,
     description: draft.synopsis?.trim() || undefined,
     tags: draft.tags,
     sourceLabel: "书房创作",

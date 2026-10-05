@@ -9,6 +9,8 @@ export type Book = {
     createdAt: string;
     /** 真实封面图地址（在线来源提供时才有）；没有则书架用备用样式 */
     cover?: string;
+    /** 用户自己换过封面时，记下换之前的原封面（可能为空字符串表示原来没有），用于「恢复原封面」 */
+    originalCover?: string;
     /** 来源提供的简介（EPUB 元数据或书目来源）；没有就不显示，不用正文首段冒充 */
     description?: string;
     /** 来源提供的主题/标签 */

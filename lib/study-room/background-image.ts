@@ -94,6 +94,23 @@ export async function fileToBackgroundImage(file: File): Promise<PickedImage> {
   return { ...shrunk, note: `${shrunk.note ?? "已压缩"}（原图 ${formatBytes(size)}）` };
 }
 
+/** 本地图片 → 书封用的 data URL：最长边压到 720px，JPEG 重编码，避免把大图塞进书架数据。 */
+export async function fileToCoverImage(file: File): Promise<string> {
+  assertSupportedImage(file);
+  const dataUrl = await readAsDataUrl(file);
+  const img = await loadElement(dataUrl);
+  const scale = Math.min(1, 720 / Math.max(img.naturalWidth, img.naturalHeight));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return dataUrl;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.86);
+}
+
 /** 检查链接能否作为背景图加载；失败时就别写进设置，保持原有底色。 */
 export async function canLoadImageUrl(url: string): Promise<boolean> {
   try {

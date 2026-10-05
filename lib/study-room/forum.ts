@@ -180,6 +180,8 @@ export type ForumState = {
   generatedAt: Record<string, string>;
   /** 用户关注了哪些书友 */
   following: string[];
+  /** 特别关注（星标）：必须先关注；取消关注时一起取消 */
+  starred: string[];
   /** 收到的互动通知（评论、回复、点赞、提及、好友申请、关注） */
   notifications: ForumNotification[];
   /** 草稿箱 */
@@ -200,6 +202,7 @@ export const DEFAULT_FORUM: ForumState = {
   hiddenPostIds: [],
   generatedAt: {},
   following: [],
+  starred: [],
   notifications: [],
   drafts: [],
   pendingReplies: [],
@@ -223,6 +226,7 @@ export function loadForum(): ForumState {
       hiddenPostIds: Array.isArray(parsed.hiddenPostIds) ? parsed.hiddenPostIds : [],
       generatedAt: parsed.generatedAt && typeof parsed.generatedAt === "object" ? parsed.generatedAt : {},
       following: Array.isArray(parsed.following) ? parsed.following : [],
+      starred: Array.isArray(parsed.starred) ? parsed.starred : [],
       notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
       drafts: Array.isArray(parsed.drafts) ? parsed.drafts : [],
       pendingReplies: Array.isArray(parsed.pendingReplies) ? parsed.pendingReplies : [],

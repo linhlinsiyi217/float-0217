@@ -14,6 +14,8 @@ export type UserProfile = {
   /** 显示名；留空表示跟随宿主的用户身份 */
   name: string;
   signature: string;
+  /** 常驻状态气泡（如「在读《简·爱》」），留空不显示 */
+  status: string;
   tags: string[];
   /** 头像：生成式头像（可换） */
   avatar: NpcAvatar;
@@ -35,6 +37,7 @@ export function loadProfile(): UserProfile {
         id,
         name: typeof parsed.name === "string" ? parsed.name : "",
         signature: typeof parsed.signature === "string" ? parsed.signature : "",
+        status: typeof parsed.status === "string" ? parsed.status : "",
         tags: Array.isArray(parsed.tags) ? parsed.tags.filter((tag): tag is string => typeof tag === "string").slice(0, 6) : [],
         avatar: parsed.avatar && typeof parsed.avatar === "object"
           ? (parsed.avatar as NpcAvatar)
@@ -47,7 +50,7 @@ export function loadProfile(): UserProfile {
     // 落到默认
   }
   const id = makeId();
-  const profile: UserProfile = { id, name: "", signature: "", tags: [], avatar: avatarFromKey(id), useHostAvatar: true };
+  const profile: UserProfile = { id, name: "", signature: "", status: "", tags: [], avatar: avatarFromKey(id), useHostAvatar: true };
   saveProfile(profile);
   return profile;
 }

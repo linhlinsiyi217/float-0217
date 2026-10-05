@@ -5,6 +5,7 @@ import { BookPlus } from "lucide-react";
 
 import { deleteBook, loadAllProgress, loadBooks } from "@/lib/reading-storage";
 import { importBookFromBlob, UnsupportedBookFormatError } from "@/lib/study-room/import";
+import { DocxReadError } from "@/lib/study-room/docx";
 import { moveInOrder, sortShelfBooks, type ShelfSort } from "@/lib/study-room/shelf-layout";
 import { loadShelfPrefs, saveShelfPrefs, type ShelfPrefs } from "@/lib/study-room/shelf-prefs";
 import type { Book } from "@/lib/reading-types";
@@ -12,7 +13,7 @@ import { StudyRoomShelf3D } from "./study-room-shelf3d";
 import { StudyRoomBookDetail } from "./study-room-book-detail";
 
 type StudyRoomShelfProps = {
-  onOpenBook: (book: Book, chapterIndex?: number, paragraphIndex?: number) => void;
+  onOpenBook: (book: Book, chapterIndex?: number, paragraphIndex?: number, options?: { tts?: boolean }) => void;
   onOpenMessages: () => void;
   returnFromBookId?: string | null;
 };
@@ -99,7 +100,10 @@ export function StudyRoomShelf({ onOpenBook, onOpenMessages, returnFromBookId }:
       console.error("[StudyRoom] import failed:", err);
       setImportState({
         status: "error",
-        message: err instanceof UnsupportedBookFormatError ? err.message : "导入失败，请确认文件未损坏后重试。",
+        message:
+          err instanceof UnsupportedBookFormatError || err instanceof DocxReadError
+            ? err.message
+            : "导入失败，请确认文件未损坏后重试。",
       });
     }
   };
@@ -123,7 +127,7 @@ export function StudyRoomShelf({ onOpenBook, onOpenMessages, returnFromBookId }:
           <BookPlus size={18} strokeWidth={1.7} />
           {importState.status === "running" ? importState.label : "导入本地书"}
         </button>
-        <input ref={fileInputRef} type="file" accept=".txt,.epub,.pdf" hidden onChange={handleFile} />
+        <input ref={fileInputRef} type="file" accept=".txt,.epub,.pdf,.docx" hidden onChange={handleFile} />
         {books.length > 1 && (
           <div className="sr-sort" role="radiogroup" aria-label="书架排序">
             {SORT_OPTIONS.map((opt) => (
@@ -154,7 +158,7 @@ export function StudyRoomShelf({ onOpenBook, onOpenMessages, returnFromBookId }:
           <p>
             书架还是空的。
             <br />
-            导入一本本地 TXT / EPUB / PDF 开始阅读；
+            导入一本本地 TXT / EPUB / PDF / DOCX 开始阅读；
             <br />
             联网找书在「书城」中提供。
           </p>
@@ -185,6 +189,11 @@ export function StudyRoomShelf({ onOpenBook, onOpenMessages, returnFromBookId }:
           book={detailBook}
           onClose={closeDetail}
           onRead={(book, chapterIndex, paragraphIndex) => onOpenBook(book, chapterIndex, paragraphIndex)}
+          onListen={(book) => onOpenBook(book, undefined, undefined, { tts: true })}
+          onChanged={(book) => {
+            setDetailBook(book);
+            void refresh();
+          }}
           onOpenMessages={onOpenMessages}
           onRemove={handleDelete}
           onMove={prefs.sort === "manual" ? (delta) => moveBook(detailBook, delta) : undefined}
