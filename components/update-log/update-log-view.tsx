@@ -92,16 +92,8 @@ export function UpdateLogView({ releases, currentReleaseId, seen }: UpdateLogVie
                   );
                 })}
 
-                {release.pending && release.pending.length > 0 && (
-                  <div className="upd-pending">
-                    <span className="upd-pending-label">待完成 / 待实机确认</span>
-                    <ul>
-                      {release.pending.map((item, index) => (
-                        <li key={index}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                {/* pending（待完成 / 待实机确认）只留在发布数据与交付报告里，
+                    不在用户界面上渲染成开发提示卡。 */}
 
                 <p className="upd-meta">
                   {seen?.[release.releaseId]

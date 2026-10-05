@@ -580,7 +580,7 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
           }
           value={
             colorTarget.kind === "bgMask"
-              ? draft.background.maskColor || draft.vars["--sr-page-bg"] || "#f1f2f6"
+              ? draft.background.maskColor || draft.vars["--sr-page-bg"] || "#ffffff"
               : draft.vars[colorTarget.key] ?? "#0a84ff"
           }
           onChange={(v) =>

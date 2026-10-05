@@ -592,7 +592,7 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
                   角色卡创作
                 </button>
                 <button type="button" className="sr-chip" data-active={draft.writeMode === "hand" ? "true" : undefined} onClick={() => update({ writeMode: draft.writeMode === "hand" ? "ai" : "hand" })}>
-                  {draft.writeMode === "hand" ? "手写模式：开" : "手写模式：关"}
+                  {draft.writeMode === "hand" ? "手写：开" : "手写：关"}
                 </button>
               </div>
               {draft.writer.mode === "assistant" ? (

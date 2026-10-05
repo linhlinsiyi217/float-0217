@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { UpdateNotePopup } from "@/components/update-log/update-note-popup";
+import { claimSlot, releaseSlot, subscribeSlot } from "@/lib/update-log/popup-slot";
 import {
   hasSeenStudyRoomRelease,
   latestStudyRoomRelease,
@@ -11,36 +12,62 @@ import {
 import type { Release } from "@/lib/update-log/types";
 
 type StudyRoomUpdateNoticeProps = {
-  /** 启动画面结束后才显示（顺序：启动画面 → 进入书房 → 书房更新便签） */
+  /** 启动画面结束后才显示（顺序：启动画面 → 进入书房 → 书房更新卡） */
   enabled: boolean;
   onOpenLog: () => void;
 };
 
-/** 书房自己的更新便签：只跟书房版本有关，系统更新不会触发它。 */
+const SLOT_OWNER = "studyroom";
+
+/**
+ * 书房自己的更新卡：只跟书房版本有关，系统更新不会触发它。
+ * 如果系统更新卡正在前台，这里会等它被确认关闭后再接上，
+ * 不让用户一进书房就被两个重复通知叠住。
+ */
 export function StudyRoomUpdateNotice({ enabled, onOpenLog }: StudyRoomUpdateNoticeProps) {
   const [release, setRelease] = useState<Release | null>(null);
 
+  const tryShow = useCallback(() => {
+    const latest = latestStudyRoomRelease();
+    if (hasSeenStudyRoomRelease(latest.releaseId)) return true;
+    if (!claimSlot(SLOT_OWNER)) return false;
+    setRelease(latest);
+    return true;
+  }, []);
+
   useEffect(() => {
     if (!enabled) return;
-    const latest = latestStudyRoomRelease();
-    if (hasSeenStudyRoomRelease(latest.releaseId)) return;
-    const timer = window.setTimeout(() => setRelease(latest), 500);
-    return () => window.clearTimeout(timer);
-  }, [enabled]);
+    let unsubscribe: (() => void) | undefined;
+    const timer = window.setTimeout(() => {
+      if (tryShow()) return;
+      // 展示位被系统更新卡占着：等它空出来再试一次
+      unsubscribe = subscribeSlot(() => {
+        if (tryShow()) unsubscribe?.();
+      });
+    }, 500);
+    return () => {
+      window.clearTimeout(timer);
+      unsubscribe?.();
+    };
+  }, [enabled, tryShow]);
+
+  useEffect(() => () => releaseSlot(SLOT_OWNER), []);
 
   if (!release) return null;
+
+  const dismiss = () => {
+    markStudyRoomReleaseSeen(release.releaseId);
+    setRelease(null);
+    releaseSlot(SLOT_OWNER);
+  };
 
   return (
     <UpdateNotePopup
       appName="书房"
       release={release}
-      onClose={() => {
-        markStudyRoomReleaseSeen(release.releaseId);
-        setRelease(null);
-      }}
+      onClose={dismiss}
       onOpenLog={() => {
-        markStudyRoomReleaseSeen(release.releaseId);
-        setRelease(null);
+        dismiss();
         onOpenLog();
       }}
     />

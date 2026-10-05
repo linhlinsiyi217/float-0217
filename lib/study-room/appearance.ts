@@ -99,7 +99,7 @@ export const VAR_DEFS: Array<{
   { key: "--sr-glass-blur", module: "global", label: "毛玻璃模糊", type: "range", fallback: "18", min: 0, max: 32, step: 1, unit: "px" },
   { key: "--sr-shadow-alpha", module: "global", label: "阴影强度", type: "range", fallback: "10", min: 0, max: 40, step: 1, unit: "%" },
   { key: "--sr-radius", module: "global", label: "圆角", type: "range", fallback: "20", min: 0, max: 28, step: 1, unit: "px" },
-  { key: "--sr-page-bg", module: "global", label: "页面底色", type: "color", fallback: "#f1f2f6" },
+  { key: "--sr-page-bg", module: "global", label: "页面底色", type: "color", fallback: "#ffffff" },
 
   // 书架
   { key: "--sr-shelf-gap", module: "shelf", label: "层间距", type: "range", fallback: "34", min: 10, max: 72, step: 2, unit: "px" },
@@ -112,7 +112,7 @@ export const VAR_DEFS: Array<{
   { key: "--sr-reader-font", module: "reader", label: "正文字号", type: "range", fallback: "17", min: 13, max: 24, step: 0.5, unit: "px" },
   { key: "--sr-reader-leading", module: "reader", label: "行距", type: "range", fallback: "1.95", min: 1.3, max: 2.6, step: 0.05, unit: "" },
   { key: "--sr-reader-ink", module: "reader", label: "正文颜色", type: "color", fallback: "#33383f" },
-  { key: "--sr-reader-bg", module: "reader", label: "阅读底色", type: "color", fallback: "#fbfcfe" },
+  { key: "--sr-reader-bg", module: "reader", label: "阅读底色", type: "color", fallback: "#ffffff" },
   // 顶/底栏：隐藏后轻点正文即可唤回，返回入口不会永久不可达
   { key: "--sr-bar-autohide", module: "reader", label: "进入时隐藏工具栏", type: "toggle", fallback: "0" },
   { key: "--sr-bar-btn", module: "reader", label: "工具栏按钮尺寸", type: "range", fallback: "40", min: 34, max: 52, step: 1, unit: "px" },

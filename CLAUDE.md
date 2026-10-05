@@ -45,6 +45,18 @@
    完成后说明改了什么、检查结果与未解决项。
    需要用户操作时**一次只给一个小步骤**，长说明用 TXT。
 
+## 二·五、UI 任务必读（2026-10-05 加入）
+
+做任何界面、样式、动效改动前，**先读**：
+
+1. 项目根目录 [DESIGN.md](./DESIGN.md)：色彩、字体、间距、组件用途、页面布局、动效、禁用样式、参考图映射。
+2. 设计 Skill `apple-ui-designer`（heyman333/atelier-ui · `skills/apple-ui-designer/SKILL.md`）。
+   若 `.claude/skills/apple-ui-designer/SKILL.md` 不存在，说明尚未装进项目，先尝试安装；装不上如实报告。
+
+优先级：用户当次指令与参考图 > DESIGN.md > Skill 默认偏好。
+交付时说明实际用了哪些设计规则，不能只写「使用了 Skill」；设计分析不写进产品界面。
+长任务的阶段进度写在 [docs/progress/](./docs/progress/)，中断后从记录继续。
+
 ## 三、本项目既有的有效规则（保留）
 
 - 本仓库是 `xiaolongbao0709/ai-virtual-phone` 的 fork，采用 **AGPL-3.0-only**，
@@ -59,12 +71,14 @@
 
 ## 四、发布与更新日志（强制）
 
-更新日志与更新弹窗**只有一份数据**：`lib/update-log-data.ts`（结构约定、类型与内容都在里面），
-读取与已读状态在 `lib/update-log.ts`，界面是设置里的「更新日志」页与全局更新弹窗。
+更新日志与更新弹窗**同源**：数据在 `lib/update-log/` 下按范围分两份——
+小手机系统 `system-data.ts`、书房 `studyroom-data.ts`（类型在 `types.ts`），
+读取与已读状态在同目录的 `system.ts` / `studyroom.ts`，界面是设置里的「更新日志」页、
+书房「更新日志」页与共用的更新弹窗（`components/update-log/`）。两份弹窗共用一个展示位，不会同时弹。
 
 **每次推送（push）必须同步这些内容**，缺任何一项都视为这次交付没完成：
 
-1. 在 `lib/update-log-data.ts` 的 `RELEASES` 顶部（最新一版）补上本次的 `UpdateEntry`：
+1. 在对应范围的 `*-data.ts` 顶部（最新一版）补上本次的条目：
    属于哪个应用/模块（如「书房 · 书城」）、类别（新增/修复/调整/性能/文档）、一句话标题、具体条目。
 2. 弹窗文案与设置里的日志读同一份数据，改一处即可，不要另写一份公告文案。
 3. 最新一版必须带 `pending` 字段（没有就写空数组）。**代码检查通过不等于实机验证过**：

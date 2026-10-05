@@ -9,7 +9,7 @@
   inset: 0;
   display: flex;
   flex-direction: column;
-  background: var(--sr-page-bg, var(--c-page-body-bg));
+  background: var(--sr-page-bg, #ffffff);
   color: var(--sr-text-ink, var(--c-text-title));
   font-family: var(--sr-font-family, var(--app-font-family));
   overflow: hidden;
@@ -274,17 +274,21 @@
 /* ── 导入 / 操作条 ── */
 .sr-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 16px;
 }
+/* 主要矩形操作。文字永远横向单行：空间不够时整颗按钮换到下一行，
+   而不是把中文挤成一字一行的竖排；触摸高度不低于 44px。 */
 .sr-btn {
-  flex: 1;
+  flex: 1 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
-  min-height: 42px;
+  min-height: 44px;
   padding: 0 16px;
+  white-space: nowrap;
   border-radius: var(--ui-radius-card);
   border: 0.5px solid var(--c-card-border);
   background: var(--c-card);
@@ -339,6 +343,8 @@
   font-size: 12.5px;
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .sr-chip[data-active="true"] {
   background: color-mix(in srgb, var(--c-icon-active) 92%, transparent);
@@ -352,7 +358,7 @@
   inset: 0;
   display: flex;
   flex-direction: column;
-  background: var(--sr-reader-bg, #fbfcfe);
+  background: var(--sr-reader-bg, #ffffff);
   z-index: 40;
 }
 .sr-reader-header {
@@ -804,6 +810,10 @@
   backdrop-filter: blur(var(--sr-glass-blur, var(--ui-blur))) saturate(var(--ui-saturate));
   -webkit-backdrop-filter: blur(var(--sr-glass-blur, var(--ui-blur))) saturate(var(--ui-saturate));
   box-shadow: 0 10px 26px rgba(20, 28, 45, calc(var(--sr-shadow-alpha, 18) / 100)), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  /* 按钮多时横向滑动，不把文字挤成竖排 */
+  max-width: calc(100vw - 24px);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 .sr-selbar-btn {
   display: inline-flex;
@@ -818,6 +828,9 @@
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s ease, transform 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-height: 40px;
 }
 .sr-selbar-btn:active {
   background: color-mix(in srgb, var(--c-icon-active) 12%, transparent);
@@ -2260,6 +2273,7 @@
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
+  white-space: nowrap;
 }
 .sr-forum-count { margin-left: 3px; font-size: 11.5px; }
 .sr-forum-comments {
@@ -2435,7 +2449,7 @@
   overflow: hidden;
   background:
     radial-gradient(120% 80% at 50% 0%, rgba(255, 255, 255, 0.65), transparent 70%),
-    linear-gradient(180deg, color-mix(in srgb, var(--sr-page-bg, #f1f2f6) 84%, #ffffff), var(--sr-page-bg, #f1f2f6));
+    linear-gradient(180deg, color-mix(in srgb, var(--sr-page-bg, #ffffff) 84%, #ffffff), var(--sr-page-bg, #ffffff));
   animation: sr-splash-in 0.42s ease-out;
 }
 .sr-splash[data-leaving="true"] {
@@ -2476,7 +2490,7 @@
   stroke-width: 1.4;
 }
 .sr-splash-page {
-  fill: color-mix(in srgb, var(--sr-page-bg, #f1f2f6) 70%, #ffffff);
+  fill: color-mix(in srgb, var(--sr-page-bg, #ffffff) 70%, #ffffff);
   stroke: color-mix(in srgb, var(--sr-text-ink, var(--c-text-title)) 24%, transparent);
   stroke-width: 1.2;
   transform-origin: 54px 24px;
@@ -2546,6 +2560,8 @@
   font-size: 14px;
   cursor: pointer;
   transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  white-space: nowrap;
+  padding: 0 12px;
 }
 .sr-draw-cat:active { transform: scale(0.97); }
 .sr-draw-cat:hover { border-color: color-mix(in srgb, var(--sr-accent) 45%, transparent); }
@@ -2758,6 +2774,7 @@
   font-size: 12px;
   color: color-mix(in srgb, var(--sr-chat-send, #0a84ff) 85%, var(--c-text-title));
   cursor: pointer;
+  white-space: nowrap;
 }
 .sr-help-link--muted { color: var(--c-text); }
 @keyframes sr-help-in { from { opacity: 0; transform: translateY(-4px) } to { opacity: 1; transform: none } }
@@ -2885,7 +2902,7 @@
   z-index: 35;
   display: flex;
   flex-direction: column;
-  background: var(--sr-page-bg, var(--c-page-body-bg));
+  background: var(--sr-page-bg, #ffffff);
 }
 .sr-forum-sub-head {
   display: flex;

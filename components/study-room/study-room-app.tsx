@@ -50,12 +50,13 @@ type StudyRoomView =
   | { kind: "draw" }
   | { kind: "wishlist" };
 
-const TAB_META: Record<StudyRoomTab, { label: string; icon: typeof Library; subtitle: string }> = {
-  shelf: { label: "书架", icon: Library, subtitle: "已收藏的书" },
-  store: { label: "书城", icon: Store, subtitle: "搜索与发现" },
-  desk: { label: "书桌", icon: NotebookPen, subtitle: "摘录 · 批注 · 创作" },
-  forum: { label: "书友圈", icon: Users, subtitle: "书友的讨论" },
-  mine: { label: "我的", icon: User, subtitle: "书房与阅读" },
+/** label 是 Dock 上的短名；title 是页面顶部显示的当前界面名字 */
+const TAB_META: Record<StudyRoomTab, { label: string; icon: typeof Library; title: string }> = {
+  shelf: { label: "书架", icon: Library, title: "书架" },
+  store: { label: "书城", icon: Store, title: "书城" },
+  desk: { label: "书桌", icon: NotebookPen, title: "书桌" },
+  forum: { label: "书友圈", icon: Users, title: "书友圈" },
+  mine: { label: "我的", icon: User, title: "我的主页" },
 };
 
 const TAB_ORDER: StudyRoomTab[] = ["shelf", "store", "desk", "forum", "mine"];
@@ -230,11 +231,9 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
           <button type="button" className="sr-icon-btn" onClick={onClose} aria-label="返回桌面">
             <ChevronLeft size={22} strokeWidth={1.6} />
           </button>
-          <div>
-            {/* 标题就是当前页面的名字；「书房」只留给书架首页（应用根级页面） */}
-            <div className="sr-header-title">{tab === "shelf" ? "书房" : tab === "forum" ? forumName : active.label}</div>
-            <span className="sr-header-sub">{active.subtitle}</span>
-          </div>
+          {/* 标题就是当前界面的名字（书架 / 书城 / 书桌 / 书友圈 / 我的主页），不统一叫「书房」；
+              不再在标题下面挂一行解释小字 */}
+          <div className="sr-header-title">{tab === "forum" ? forumName : active.title}</div>
           <span style={{ width: 40 }} />
         </div>
       </header>

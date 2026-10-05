@@ -120,7 +120,6 @@ export function CreativePanel({ onOpenDraft, onOpenNotes, onOpenWishlist }: Crea
           <Feather size={20} strokeWidth={1.6} />
           <div>
             <div className="sr-desk-hero-title">开始创作</div>
-            <div className="sr-note-meta">让角色帮你写、自己手写，或从模板开始</div>
           </div>
         </div>
         <div className="sr-desk-hero-actions">
@@ -130,15 +129,15 @@ export function CreativePanel({ onOpenDraft, onOpenNotes, onOpenWishlist }: Crea
           </button>
           <button type="button" className="sr-btn" onClick={() => createFromTemplate("blank", "hand")}>
             <PenLine size={16} strokeWidth={1.8} />
-            手写模式
+            手写
           </button>
           <button type="button" className="sr-btn" onClick={() => setPickingTemplate((value) => !value)}>
             <LayoutTemplate size={16} strokeWidth={1.8} />
-            从模板开始
+            模板
           </button>
           <label className="sr-btn" style={{ cursor: "pointer" }}>
             <Upload size={16} strokeWidth={1.8} />
-            导入草稿
+            导入
             <input
               type="file"
               accept=".txt,.md,text/plain"
@@ -202,8 +201,7 @@ export function CreativePanel({ onOpenDraft, onOpenNotes, onOpenWishlist }: Crea
       {recent.length === 0 ? (
         <div className="sr-note-card">
           <div className="sr-note-meta" style={{ lineHeight: 1.9 }}>
-            还没有项目。上面点「AI 创作」让角色先起个头，或「手写模式」自己写第一章；
-            写过的项目会出现在这里，带章节进度与最后编辑时间。
+            还没有作品，点上面「AI 创作」或「手写」开始第一章。
           </div>
         </div>
       ) : (

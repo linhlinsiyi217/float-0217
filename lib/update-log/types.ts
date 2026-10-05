@@ -1,7 +1,8 @@
 // lib/update-log/types.ts — 两套更新日志共用的类型与分类定义。
 //
-// 分类沿用彩色语义标签：新增=蓝，修复=红，优化=橙，调整=紫。
-// 颜色只用于小标签/圆点，正文保持深黑与灰色。
+// 分类用彩色语义标签：新增=蓝，修复=绿，优化=橙，调整=紫。
+// 颜色只用于小标签与圆点，并且始终和文字分类一起出现（不靠颜色单独表意）；
+// 正文保持深黑与灰色。
 
 export type UpdateCategory = "feat" | "fix" | "perf" | "tweak";
 
@@ -42,12 +43,20 @@ export const CATEGORY_LABEL: Record<UpdateCategory, string> = {
 
 export const CATEGORY_ORDER: UpdateCategory[] = ["feat", "fix", "perf", "tweak"];
 
-/** 分类色只用于小标签文字与圆点 */
+/** 分类色只用于小标签文字与圆点；始终与文字分类同时出现 */
 export const CATEGORY_COLOR: Record<UpdateCategory, string> = {
-  feat: "#3C6FD1",
-  fix: "#C2504A",
-  perf: "#C07C2A",
+  feat: "#2F6FD0",
+  fix: "#2E8B57",
+  perf: "#CE7A1F",
   tweak: "#7A5CB8",
+};
+
+/** 分类标签的浅色底（纯白卡上的小色块，保持低饱和） */
+export const CATEGORY_TINT: Record<UpdateCategory, string> = {
+  feat: "#EDF3FD",
+  fix: "#EAF5EE",
+  perf: "#FDF2E4",
+  tweak: "#F3EFFB",
 };
 
 /** 一个版本涉及的应用名（收起时显示） */
@@ -68,11 +77,24 @@ export function releaseCounts(release: Release): Array<{ category: UpdateCategor
   })).filter((item) => item.count > 0);
 }
 
-/** 弹窗用的精简条目：每个分类取前几条 */
-export function popupEntries(release: Release, perCategory = 2): UpdateEntry[] {
+/**
+ * 弹窗摘要条目：按分类轮流取，保证 3—5 条且各分类都露一条，
+ * 五秒内能看完。完整条目在弹窗里折叠展开，或到更新日志页看。
+ */
+export function popupEntries(release: Release, max = 5): UpdateEntry[] {
+  const buckets = CATEGORY_ORDER.map((category) =>
+    release.entries.filter((entry) => entry.category === category),
+  );
   const out: UpdateEntry[] = [];
-  for (const category of CATEGORY_ORDER) {
-    out.push(...release.entries.filter((entry) => entry.category === category).slice(0, perCategory));
+  let round = 0;
+  // 轮流取：先每个分类各一条，再补第二条，直到够 max
+  while (out.length < max && buckets.some((bucket) => bucket.length > round)) {
+    for (const bucket of buckets) {
+      if (out.length >= max) break;
+      const entry = bucket[round];
+      if (entry) out.push(entry);
+    }
+    round += 1;
   }
-  return out.slice(0, 5);
+  return out;
 }
