@@ -266,6 +266,31 @@ export type DrawRecord = {
   createdAt: string;
 };
 
+/**
+ * 一次已结算（或正在结算）但还没出结果的抽取。
+ * 先写挂单再扣费，扣费带上挂单 id；出结果后才清掉。
+ * 这样重复点击、中途关闭、重试都只会接着这一单走，不会再扣一次。
+ */
+export type PendingDraw = {
+  id: string;
+  count: 1 | 5;
+  cost: number;
+  free: boolean;
+  /** charging：已写挂单、扣费结果未确认；paid：已扣费（或免费）待出结果 */
+  status: "charging" | "paid";
+  createdAt: string;
+};
+
+/** 收藏的卡片：只是留个纪念，不等于买书，也不会把书加进书架。 */
+export type SavedDrawCard = {
+  key: string;
+  title: string;
+  author?: string;
+  cover?: string;
+  categoryLabel: string;
+  savedAt: string;
+};
+
 export type DrawState = {
   /** 上次用掉每日免费的日期（YYYY-MM-DD） */
   lastFreeOn: string | null;
@@ -274,20 +299,58 @@ export type DrawState = {
   history: string[];
   /** 连续多少次五连抽没有新书（达到 2 次则下一次单抽免费，作为保底，不改概率） */
   dryStreak: number;
+  pending: PendingDraw | null;
+  savedCards: SavedDrawCard[];
 };
 
-export const DEFAULT_DRAW_STATE: DrawState = { lastFreeOn: null, records: [], history: [], dryStreak: 0 };
+export const DEFAULT_DRAW_STATE: DrawState = {
+  lastFreeOn: null,
+  records: [],
+  history: [],
+  dryStreak: 0,
+  pending: null,
+  savedCards: [],
+};
+
+/** 单抽一次给几张候选：抽到分类后翻开这几张，由用户挑想读的一本。 */
+export const CANDIDATES_PER_DRAW: Record<1 | 5, number> = { 1: 3, 5: 5 };
+
+function parsePending(value: unknown): PendingDraw | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Partial<PendingDraw>;
+  if (typeof item.id !== "string" || (item.count !== 1 && item.count !== 5)) return null;
+  return {
+    id: item.id,
+    count: item.count,
+    cost: typeof item.cost === "number" ? item.cost : 0,
+    free: item.free === true,
+    status: item.status === "charging" ? "charging" : "paid",
+    createdAt: typeof item.createdAt === "string" ? item.createdAt : new Date().toISOString(),
+  };
+}
+
+/** 钱包里是不是已经有这一单的扣费记录（用挂单 id 关联）。 */
+function chargedInWallet(drawId: string): boolean {
+  return loadWalletState().transactions.some((item) => item.relatedOrderId === drawId);
+}
 
 export function loadDrawState(): DrawState {
   try {
     const raw = kvGet(DRAW_KEY);
     if (!raw) return { ...DEFAULT_DRAW_STATE };
     const parsed = JSON.parse(raw) as Partial<DrawState>;
+    let pending = parsePending(parsed.pending);
+    // 上次停在「扣费中」：以钱包流水为准，扣过就当已付，没扣就作废这单
+    if (pending?.status === "charging") {
+      pending = pending.free || chargedInWallet(pending.id) ? { ...pending, status: "paid" } : null;
+    }
     return {
       lastFreeOn: typeof parsed.lastFreeOn === "string" ? parsed.lastFreeOn : null,
       records: Array.isArray(parsed.records) ? parsed.records : [],
       history: Array.isArray(parsed.history) ? parsed.history.filter((item): item is string => typeof item === "string") : [],
       dryStreak: typeof parsed.dryStreak === "number" ? parsed.dryStreak : 0,
+      pending,
+      savedCards: Array.isArray(parsed.savedCards) ? parsed.savedCards : [],
     };
   } catch {
     return { ...DEFAULT_DRAW_STATE };
@@ -311,29 +374,97 @@ export function walletBalance(): number {
   return getWalletBalance(loadWalletState());
 }
 
-export type DrawPayment = { ok: boolean; cost: number; free: boolean; error?: string };
+export type DrawPayment = { ok: boolean; cost: number; free: boolean; resumed?: boolean; error?: string };
+
+/** 这一次抽取要花多少（给界面做扣费确认用，不会真的扣）。 */
+export function quoteDraw(state: DrawState, count: 1 | 5): { cost: number; free: boolean; reason?: "daily" | "pity" } {
+  if (count === 1 && hasFreeDraw(state)) return { cost: 0, free: true, reason: "daily" };
+  if (count === 1 && pityFreeAvailable(state)) return { cost: 0, free: true, reason: "pity" };
+  return { cost: count === 5 ? DRAW_PRICE.five : DRAW_PRICE.single, free: false };
+}
 
 /**
- * 结算一次抽取：优先用每日免费；否则从宿主钱包扣费。
- * 余额不足时不扣费、不出结果，并把提示交给界面。
+ * 结算一次抽取（幂等）：
+ *  - 已有未出结果的挂单 → 直接沿用，不再扣费；
+ *  - 否则先写「扣费中」挂单，再带挂单 id 从统一钱包扣费，成功后标记已付；
+ *  - 余额不足 → 撤掉挂单，不扣费、不开始抽取。
  */
-export function payForDraw(state: DrawState, count: 1 | 5, pityFree = false): { state: DrawState; payment: DrawPayment } {
-  const free = hasFreeDraw(state) && count === 1;
-  if (free || pityFree) {
-    const next = { ...state, lastFreeOn: free ? todayKey() : state.lastFreeOn };
-    return { state: next, payment: { ok: true, cost: 0, free: true } };
+export function beginDraw(state: DrawState, count: 1 | 5): { state: DrawState; payment: DrawPayment; pending: PendingDraw | null } {
+  if (state.pending) {
+    const { pending } = state;
+    return { state, payment: { ok: true, cost: pending.cost, free: pending.free, resumed: true }, pending };
   }
-  const cost = count === 5 ? DRAW_PRICE.five : DRAW_PRICE.single;
+  const quote = quoteDraw(state, count);
+  const pending: PendingDraw = {
+    id: `draw_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    count,
+    cost: quote.cost,
+    free: quote.free,
+    status: quote.free ? "paid" : "charging",
+    createdAt: new Date().toISOString(),
+  };
+  let next: DrawState = {
+    ...state,
+    pending,
+    lastFreeOn: quote.reason === "daily" ? todayKey() : state.lastFreeOn,
+    // 用掉保底后计数归零，避免保底一直免费
+    dryStreak: quote.reason === "pity" ? 0 : state.dryStreak,
+  };
+  saveDrawState(next);
+  if (quote.free) return { state: next, payment: { ok: true, cost: 0, free: true }, pending };
+
   const result = payWithWalletBalance({
-    amount: cost,
+    amount: quote.cost,
     title: count === 5 ? "书房 · 抽一本（五连）" : "书房 · 抽一本（单抽）",
-    detail: "书房抽一本",
+    detail: "书房抽一本：抽分类免费，抽书时扣费",
     category: "阅读",
+    relatedOrderId: pending.id,
   });
   if (!result.ok) {
-    return { state, payment: { ok: false, cost, free: false, error: result.error ?? "余额不足，无法抽取。" } };
+    next = { ...state };
+    saveDrawState(next);
+    return {
+      state: next,
+      payment: { ok: false, cost: quote.cost, free: false, error: result.error ?? "余额不足，无法抽取。" },
+      pending: null,
+    };
   }
-  return { state, payment: { ok: true, cost, free: false } };
+  const paid: PendingDraw = { ...pending, status: "paid" };
+  next = { ...next, pending: paid };
+  saveDrawState(next);
+  return { state: next, payment: { ok: true, cost: quote.cost, free: false }, pending: paid };
+}
+
+/** 抽到结果：写记录并结掉挂单。 */
+export function finishDraw(
+  state: DrawState,
+  params: { category: DrawCategory; candidates: DrawCandidate[] },
+): DrawState {
+  const pending = state.pending;
+  if (!pending) return state;
+  return recordDraw(
+    { ...state, pending: null },
+    { category: params.category, candidates: params.candidates, count: pending.count, cost: pending.cost, free: pending.free },
+  );
+}
+
+export function cardKey(item: { title: string; author?: string }): string {
+  return `${item.title}|${item.author ?? ""}`.toLowerCase();
+}
+
+/** 收藏 / 取消收藏一张抽到的卡（只是纪念，不加书架、不算购买）。 */
+export function toggleSavedCard(state: DrawState, item: DrawCandidate, categoryLabel: string): DrawState {
+  const key = cardKey(item);
+  const exists = state.savedCards.some((card) => card.key === key);
+  const savedCards = exists
+    ? state.savedCards.filter((card) => card.key !== key)
+    : [
+        { key, title: item.title, author: item.author, cover: item.cover, categoryLabel, savedAt: new Date().toISOString() },
+        ...state.savedCards,
+      ].slice(0, 120);
+  const next = { ...state, savedCards };
+  saveDrawState(next);
+  return next;
 }
 
 /** 记录一次抽取：写入记录、更新重复保护用的历史，并维护「连续没抽到新书」的计数。 */
@@ -370,6 +501,7 @@ export function pityFreeAvailable(state: DrawState): boolean {
 }
 
 export function clearDrawHistory(): DrawState {
+  // 只清记录；未出结果的已付挂单要留着，免得白扣
   const next: DrawState = { ...loadDrawState(), records: [], history: [], dryStreak: 0 };
   saveDrawState(next);
   return next;
