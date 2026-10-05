@@ -39,6 +39,7 @@ import {
   updateInspiration,
   type InspirationNote,
 } from "@/lib/study-room/inspiration";
+import { WorldBookPicker } from "./study-room-worldbook-picker";
 
 type CreativePanelProps = {
   onOpenDraft: (draftId: string) => void;
@@ -49,6 +50,18 @@ type CreativePanelProps = {
 };
 
 type Drawer = "note" | "cast" | "world" | "outline" | "box" | null;
+
+type CastSetup = {
+  characterId: string;
+  theme: string;
+  form: "short" | "serial";
+  words: number;
+  chapters: number;
+  worldBookIds: string[] | undefined;
+};
+
+const WORD_OPTIONS = [1500, 2500, 4000];
+const CHAPTER_OPTIONS = [5, 10, 20, 40];
 
 /**
  * 书桌：制书工作台。
@@ -62,6 +75,7 @@ export function CreativePanel({ onOpenDraft, onOpenNotes, onOpenWishlist }: Crea
   const [inspirations, setInspirations] = useState<InspirationNote[]>(() => loadInspirations());
   const [draftNote, setDraftNote] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const [castSetup, setCastSetup] = useState<CastSetup | null>(null);
 
   const characters = useMemo(() => loadCharacters(), []);
   const worldBooks = useMemo(() => loadWorldBooks(), []);
@@ -90,13 +104,32 @@ export function CreativePanel({ onOpenDraft, onOpenNotes, onOpenWishlist }: Crea
     onOpenDraft(draft.id);
   };
 
-  /** 模式 A：用宿主角色当作者（保留角色口吻），进编辑页后再定题材、字数等 */
-  const createWithCharacter = (characterId: string) => {
-    const base = createDraft("longform");
-    const draft: CreativeDraft = { ...base, writeMode: "ai", writer: { ...base.writer, mode: "character", characterId } };
+  /** 角色写作：先在参数面板里定主题、篇幅、世界书，再开新作品 */
+  const createWithCharacter = () => {
+    if (!castSetup) return;
+    const finished = castSetup.form === "short";
+    const base = createDraft(finished ? "shortstory" : "longform");
+    const draft: CreativeDraft = {
+      ...base,
+      genre: castSetup.theme.trim() || base.genre,
+      kind: finished ? "short" : "novel",
+      serialization: finished ? "finished" : "serial",
+      targetWords: castSetup.words,
+      plannedChapters: finished ? 1 : castSetup.chapters,
+      writeMode: "ai",
+      writer: { ...base.writer, mode: "character", characterId: castSetup.characterId, worldBookIds: castSetup.worldBookIds },
+    };
     setDrafts(upsertDraft(drafts, draft));
+    setCastSetup(null);
     onOpenDraft(draft.id);
   };
+
+  const pickCharacter = (characterId: string) =>
+    setCastSetup((current) =>
+      current?.characterId === characterId
+        ? null
+        : { characterId, theme: "", form: "serial", words: 2500, chapters: 10, worldBookIds: undefined },
+    );
 
   const handleDelete =(draft: CreativeDraft) => {
     if (!confirm(`删除草稿「${draft.title.trim() || "未命名作品"}」？已发布到书架的书不会被删掉。`)) return;
@@ -190,8 +223,10 @@ export function CreativePanel({ onOpenDraft, onOpenNotes, onOpenWishlist }: Crea
                 key={character.id}
                 type="button"
                 className="sr-desk-cast-item"
-                onClick={() => createWithCharacter(character.id)}
+                onClick={() => pickCharacter(character.id)}
                 aria-label={`让${character.name}来写`}
+                aria-expanded={castSetup?.characterId === character.id}
+                data-active={castSetup?.characterId === character.id ? "true" : undefined}
               >
                 <span className="sr-desk-cast-avatar" aria-hidden>
                   {character.avatar ? (
@@ -205,6 +240,92 @@ export function CreativePanel({ onOpenDraft, onOpenNotes, onOpenWishlist }: Crea
               </button>
             ))}
           </div>
+          {castSetup && (
+            <div className="sr-cast-setup" role="group" aria-label="角色写作参数">
+              <div className="sr-cast-setup-title">
+                {characters.find((c) => c.id === castSetup.characterId)?.name ?? "角色"} 来写
+              </div>
+              <input
+                className="sr-appear-input"
+                value={castSetup.theme}
+                onChange={(event) => setCastSetup({ ...castSetup, theme: event.target.value })}
+                placeholder="写什么？题材或一句话主题（可留空，进去再定）"
+                aria-label="主题"
+              />
+              <div className="sr-filter-row">
+                <span className="sr-filter-label">篇幅</span>
+                <div className="sr-chip-row">
+                  {(
+                    [
+                      ["short", "短篇"],
+                      ["serial", "连载"],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      className="sr-chip"
+                      data-active={castSetup.form === key ? "true" : undefined}
+                      aria-pressed={castSetup.form === key}
+                      onClick={() => setCastSetup({ ...castSetup, form: key })}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="sr-filter-row">
+                <span className="sr-filter-label">{castSetup.form === "short" ? "字数" : "每章字数"}</span>
+                <div className="sr-chip-row">
+                  {WORD_OPTIONS.map((words) => (
+                    <button
+                      key={words}
+                      type="button"
+                      className="sr-chip"
+                      data-active={castSetup.words === words ? "true" : undefined}
+                      aria-pressed={castSetup.words === words}
+                      onClick={() => setCastSetup({ ...castSetup, words })}
+                    >
+                      约 {words}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {castSetup.form === "serial" && (
+                <div className="sr-filter-row">
+                  <span className="sr-filter-label">计划章数</span>
+                  <div className="sr-chip-row">
+                    {CHAPTER_OPTIONS.map((chapters) => (
+                      <button
+                        key={chapters}
+                        type="button"
+                        className="sr-chip"
+                        data-active={castSetup.chapters === chapters ? "true" : undefined}
+                        aria-pressed={castSetup.chapters === chapters}
+                        onClick={() => setCastSetup({ ...castSetup, chapters })}
+                      >
+                        {chapters} 章
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <WorldBookPicker
+                characterId={castSetup.characterId}
+                value={castSetup.worldBookIds}
+                onChange={(worldBookIds) => setCastSetup({ ...castSetup, worldBookIds })}
+              />
+              <div className="sr-css-actions">
+                <button type="button" className="sr-btn sr-btn-primary" onClick={createWithCharacter}>
+                  <Sparkles size={16} strokeWidth={1.8} />
+                  开始写
+                </button>
+                <button type="button" className="sr-btn" onClick={() => setCastSetup(null)}>
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
 

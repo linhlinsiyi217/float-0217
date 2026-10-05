@@ -45,18 +45,18 @@ export const CATEGORY_ORDER: UpdateCategory[] = ["feat", "fix", "perf", "tweak"]
 
 /** 分类色只用于小标签文字与圆点；始终与文字分类同时出现 */
 export const CATEGORY_COLOR: Record<UpdateCategory, string> = {
-  feat: "#2F6FD0",
-  fix: "#2E8B57",
-  perf: "#CE7A1F",
-  tweak: "#7A5CB8",
+  feat: "#3F6DA8",
+  fix: "#3F7A5C",
+  perf: "#8C6A3A",
+  tweak: "#66598F",
 };
 
 /** 分类标签的浅色底（纯白卡上的小色块，保持低饱和） */
 export const CATEGORY_TINT: Record<UpdateCategory, string> = {
-  feat: "#EDF3FD",
-  fix: "#EAF5EE",
-  perf: "#FDF2E4",
-  tweak: "#F3EFFB",
+  feat: "#F0F4FA",
+  fix: "#EFF5F1",
+  perf: "#F6F2EC",
+  tweak: "#F3F1F8",
 };
 
 /** 一个版本涉及的应用名（收起时显示） */

@@ -60,6 +60,7 @@ import {
   type WorkKind,
 } from "@/lib/study-room/creative";
 import { HelpFoot, HelpTip } from "./help-tip";
+import { WorldBookPicker } from "./study-room-worldbook-picker";
 
 type StudyRoomCreativeEditorProps = {
   draftId: string;
@@ -598,13 +599,20 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
               ) : (
                 <div className="sr-appear-row">
                   <span className="sr-appear-label">作者（角色卡）</span>
-                  <select className="sr-appear-select" value={draft.writer.characterId ?? ""} onChange={(e) => update({ writer: { ...draft.writer, characterId: e.target.value || undefined } })} aria-label="选择作者角色">
+                  <select className="sr-appear-select" value={draft.writer.characterId ?? ""} onChange={(e) => update({ writer: { ...draft.writer, characterId: e.target.value || undefined, worldBookIds: undefined } })} aria-label="选择作者角色">
                     <option value="">选择角色</option>
                     {characters.map((character) => (
                       <option key={character.id} value={character.id}>{character.name}</option>
                     ))}
                   </select>
                 </div>
+              )}
+              {draft.writer.mode === "character" && draft.writer.characterId && (
+                <WorldBookPicker
+                  characterId={draft.writer.characterId}
+                  value={draft.writer.worldBookIds}
+                  onChange={(worldBookIds) => update({ writer: { ...draft.writer, worldBookIds } })}
+                />
               )}
               <p className="sr-note-meta" style={{ display: "flex", alignItems: "center", gap: 2 }}>
                 当前执笔：{writer.writerLabel}

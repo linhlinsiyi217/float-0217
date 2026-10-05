@@ -48,6 +48,16 @@ function authorAvatar(post: ForumPost, state: ForumState, meAvatar?: string): st
 }
 
 /** 信息流里的一条帖子：点头像去主页、点正文开详情，互动都在卡片上。 */
+/** 列表里的时间：今天只写时分，今年写月日，跨年才写年份 */
+function shortTime(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const hm = date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  if (date.toDateString() === now.toDateString()) return hm;
+  if (date.getFullYear() === now.getFullYear()) return `${date.getMonth() + 1}月${date.getDate()}日 ${hm}`;
+  return date.toLocaleDateString("zh-CN");
+}
+
 export function StudyRoomForumPostCard({
   post,
   state,
@@ -93,7 +103,7 @@ export function StudyRoomForumPostCard({
           </button>
           <span className="sr-note-meta">
             {KIND_TEXT[post.kind]}
-            {post.generated ? " · AI" : ""} · {new Date(post.createdAt).toLocaleString("zh-CN")}
+            {post.generated ? " · AI" : ""} · {shortTime(post.createdAt)}
           </span>
         </span>
         {onBlock && post.authorKind === "npc" && (

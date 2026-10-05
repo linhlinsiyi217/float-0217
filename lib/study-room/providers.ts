@@ -284,6 +284,8 @@ const wikisource: Provider = {
     const out: BookSearchResult[] = [];
     for (const [title, item] of byTitle) {
       const categories = categoriesOf.get(title) ?? [];
+      // 消歧义页只是一串链接，没有正文，不能标成全文可读
+      if (/消歧[义義]/.test(title) || categories.some((c) => /消歧[义義]/.test(c))) continue;
       const snippet = (item.snippet ?? "").replace(/<[^>]+>/g, "").slice(0, 120);
 
       // 标题命中：这本书真的叫这个名字（「简爱」不会命中含「爱简」的判决书）

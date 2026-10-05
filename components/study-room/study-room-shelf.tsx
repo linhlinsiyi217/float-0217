@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookPlus } from "lucide-react";
+import { ArrowDownUp, BookPlus } from "lucide-react";
 
 import { deleteBook, loadAllProgress, loadBooks } from "@/lib/reading-storage";
 import { importBookFromBlob, UnsupportedBookFormatError } from "@/lib/study-room/import";
@@ -40,6 +40,9 @@ export function StudyRoomShelf({ onOpenBook, onOpenMessages, returnFromBookId }:
   const [activeId, setActiveId] = useState<string | null>(returnFromBookId ?? null);
   const [detailBook, setDetailBook] = useState<Book | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 从阅读器回来时「正在归位」的书：这段时间里抽出状态只是动画，不该自动弹详情
+  const restoringRef = useRef<string | null>(returnFromBookId ?? null);
+  const holdTimerRef = useRef<number | null>(null);
 
   const refresh = useCallback(async () => {
     setBooks(loadBooks());
@@ -55,8 +58,15 @@ export function StudyRoomShelf({ onOpenBook, onOpenMessages, returnFromBookId }:
   useEffect(() => {
     if (!returnFromBookId) return;
     // 先把这本书设为「已抽出」，停留一小会儿后自然归位（书架的抽出/归位动画本身由 transitionend 驱动）
+    restoringRef.current = returnFromBookId;
     setActiveId((id) => (id === returnFromBookId ? id : returnFromBookId));
-    const timer = window.setTimeout(() => setActiveId((id) => (id === returnFromBookId ? null : id)), RETURN_HOLD_MS);
+    const timer = window.setTimeout(() => {
+      holdTimerRef.current = null;
+      if (restoringRef.current !== returnFromBookId) return;
+      restoringRef.current = null;
+      setActiveId((id) => (id === returnFromBookId ? null : id));
+    }, RETURN_HOLD_MS);
+    holdTimerRef.current = timer;
     return () => window.clearTimeout(timer);
   }, [returnFromBookId]);
 
@@ -82,8 +92,28 @@ export function StudyRoomShelf({ onOpenBook, onOpenMessages, returnFromBookId }:
   };
 
   const closeDetail = () => {
+    restoringRef.current = null;
     setDetailBook(null);
     setActiveId(null);
+  };
+
+  const selectBook = (book: Book) => {
+    if (activeId === book.id) {
+      // 归位途中又点了它：当成「想打开」，停下归位直接开详情
+      if (restoringRef.current === book.id) {
+        if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current);
+        holdTimerRef.current = null;
+        restoringRef.current = null;
+        setDetailBook(book);
+        return;
+      }
+      // 再点已抽出的书：放回去
+      closeDetail();
+      return;
+    }
+    restoringRef.current = null;
+    setDetailBook(null);
+    setActiveId(book.id);
   };
 
   const handleFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -129,20 +159,17 @@ export function StudyRoomShelf({ onOpenBook, onOpenMessages, returnFromBookId }:
         </button>
         <input ref={fileInputRef} type="file" accept=".txt,.epub,.pdf,.docx" hidden onChange={handleFile} />
         {books.length > 1 && (
-          <div className="sr-sort" role="radiogroup" aria-label="书架排序">
-            {SORT_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                role="radio"
-                aria-checked={prefs.sort === opt.value}
-                data-active={prefs.sort === opt.value ? "true" : undefined}
-                onClick={() => changeSort(opt.value)}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+          <label className="sr-shelf-sort">
+            <ArrowDownUp size={15} strokeWidth={1.8} aria-hidden />
+            <span className="sr-visually-hidden">书架排序</span>
+            <select value={prefs.sort} onChange={(event) => changeSort(event.target.value as ShelfSort)}>
+              {SORT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
         )}
       </div>
 
@@ -155,13 +182,7 @@ export function StudyRoomShelf({ onOpenBook, onOpenMessages, returnFromBookId }:
       {books.length === 0 ? (
         <div className="sr-empty">
           <Library3D />
-          <p>
-            书架还是空的。
-            <br />
-            导入一本本地 TXT / EPUB / PDF / DOCX 开始阅读；
-            <br />
-            联网找书在「书城」中提供。
-          </p>
+          <p>书架还是空的。导入本地书，或去书城找一本。</p>
           <button type="button" className="sr-btn sr-btn-primary" onClick={() => fileInputRef.current?.click()}>
             <BookPlus size={16} strokeWidth={1.8} />
             导入书籍
@@ -172,15 +193,11 @@ export function StudyRoomShelf({ onOpenBook, onOpenMessages, returnFromBookId }:
           books={sorted}
           activeId={activeId}
           restoreOutId={returnFromBookId}
-          onSelect={(book) => {
-            // 再点已抽出的书：放回去
-            if (activeId === book.id) closeDetail();
-            else {
-              setDetailBook(null);
-              setActiveId(book.id);
-            }
+          onSelect={selectBook}
+          onPulled={(book) => {
+            if (restoringRef.current === book.id) return;
+            setDetailBook(book);
           }}
-          onPulled={(book) => setDetailBook(book)}
         />
       )}
 

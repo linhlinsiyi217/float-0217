@@ -9,7 +9,8 @@ import { loadCharacters } from "@/lib/character-storage";
 import { kvGet, kvSet, registerKvMigration } from "@/lib/kv-db";
 import { addBook, loadBooks, saveChapters } from "@/lib/reading-storage";
 import type { Book, BookChapter } from "@/lib/reading-types";
-import { loadApiConfigs, loadBindingConfig, resolveBinding } from "@/lib/settings-storage";
+import { formatCharacterRelationsForPrompt } from "@/lib/character-world-storage";
+import { loadApiConfigs, loadBindingConfig, loadWorldBooks, resolveBinding } from "@/lib/settings-storage";
 
 const DRAFTS_KEY = "ai_phone_studyroom_creative_drafts_v1";
 registerKvMigration(DRAFTS_KEY);
@@ -55,6 +56,8 @@ export type CreativeWriter = {
   apiConfigId?: string;
   /** mode="character" 时使用哪张角色卡 */
   characterId?: string;
+  /** 这部作品单独选的世界书；不填 = 跟随角色在「共创」里的绑定 */
+  worldBookIds?: string[];
 };
 
 export type CreativeDraft = {
@@ -75,6 +78,8 @@ export type CreativeDraft = {
   outline?: string;
   /** 每章目标字数，给 AI 的参考 */
   targetWords?: number;
+  /** 计划写几章（只作参考，不强制） */
+  plannedChapters?: number;
   serialization: "serial" | "finished";
   cover?: string;
   extra?: string;
@@ -308,9 +313,49 @@ function draftBrief(draft: CreativeDraft): string {
     draft.outline ? `大纲：${draft.outline}` : "",
     draft.serialization === "finished" ? "形态：完结短篇" : "形态：连载",
     draft.targetWords ? `每章目标字数：约 ${draft.targetWords} 字` : "",
+    draft.plannedChapters ? `计划篇幅：约 ${draft.plannedChapters} 章` : "",
     draft.extra ? `补充要求：${draft.extra}` : "",
   ].filter(Boolean);
-  return lines.join("\n");
+  const hidden = characterContext(draft);
+  return hidden ? `${lines.join("\n")}\n\n${hidden}` : lines.join("\n");
+}
+
+/** 角色写作时用哪些世界书：作品里单独选过就用作品的，否则跟随角色的共创绑定。 */
+export function resolveWriterWorldBooks(draft: CreativeDraft): { ids: string[]; followBinding: boolean } {
+  if (draft.writer.worldBookIds) return { ids: draft.writer.worldBookIds, followBinding: false };
+  if (draft.writer.mode !== "character" || !draft.writer.characterId) return { ids: [], followBinding: true };
+  const binding = resolveBinding(loadBindingConfig(), draft.writer.characterId, "cocreate");
+  return { ids: binding.worldBookIds ?? [], followBinding: true };
+}
+
+function clip(text: string, max: number): string {
+  const value = text.trim();
+  return value.length > max ? `${value.slice(0, max)}…` : value;
+}
+
+/**
+ * 角色写作的隐藏设定：人设、世界书、世界卷宗（角色关系）。
+ * 只交给模型把握口吻与设定，界面上不展示；专业写作助手模式不带这些。
+ */
+function characterContext(draft: CreativeDraft): string {
+  if (draft.writer.mode !== "character" || !draft.writer.characterId) return "";
+  const character = loadCharacters().find((c) => c.id === draft.writer.characterId);
+  const parts: string[] = [];
+  const persona = [character?.persona, character?.personality].filter((v): v is string => Boolean(v?.trim())).join("\n");
+  if (persona) parts.push(`【作者人设（只用来把握你的口吻与视角，不要写进书里）】\n${clip(persona, 1500)}`);
+
+  const { ids } = resolveWriterWorldBooks(draft);
+  if (ids.length > 0) {
+    const books = loadWorldBooks().filter((book) => ids.includes(book.id));
+    const entries = books
+      .flatMap((book) => book.entries.filter((entry) => !entry.disable && entry.content.trim()).map((entry) => `- ${clip(entry.content, 400)}`))
+      .join("\n");
+    if (entries) parts.push(`【世界书设定（可以作为素材，按需取用）】\n${clip(entries, 4000)}`);
+  }
+
+  const relations = formatCharacterRelationsForPrompt(draft.writer.characterId);
+  if (relations) parts.push(`【世界卷宗：作者所在世界与角色关系（只作背景参考）】\n${clip(relations, 1200)}`);
+  return parts.join("\n\n");
 }
 
 /** 最近两章的开头/结尾作为衔接参考，避免把整本都发出去。 */

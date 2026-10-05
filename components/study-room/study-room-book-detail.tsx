@@ -11,6 +11,7 @@ import {
   Gift,
   Headphones,
   ImagePlus,
+  Link2,
   Loader2,
   MessagesSquare,
   PenLine,
@@ -64,7 +65,7 @@ const TABS: Array<{ key: DetailTab; label: string }> = [
   { key: "toc", label: "目录" },
   { key: "notes", label: "笔记" },
   { key: "coread", label: "共读" },
-  { key: "tools", label: "工具" },
+  { key: "tools", label: "更多" },
 ];
 
 const TOC_PREVIEW = 8;
@@ -91,6 +92,10 @@ export function StudyRoomBookDetail({
   const [notice, setNotice] = useState<string | null>(null);
   const [gifting, setGifting] = useState(false);
   const [review, setReview] = useState<"quick" | "fine" | null>(null);
+  const [coverOpen, setCoverOpen] = useState(false);
+  const [coverUrl, setCoverUrl] = useState("");
+  const [coverUrlError, setCoverUrlError] = useState<string | null>(null);
+  const [descOpen, setDescOpen] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -173,12 +178,54 @@ export function StudyRoomBookDetail({
     setNotice(null);
     try {
       const cover = await fileToCoverImage(file);
+      setCoverFailed(false);
       await saveBook({ ...book, cover, originalCover: book.originalCover ?? book.cover ?? "" }, "封面已更换。");
+      setCoverOpen(false);
     } catch (error) {
       setNotice(error instanceof UnsupportedBackgroundError ? error.message : "这张图片读不出来，换一张试试。");
     } finally {
       setCoverBusy(false);
     }
+  };
+
+  /** 用图片直链当封面：只接受 https，先确认真能加载成图片再保存 */
+  const applyCoverUrl = async () => {
+    setCoverUrlError(null);
+    let parsed: URL;
+    try {
+      parsed = new URL(coverUrl.trim());
+    } catch {
+      setCoverUrlError("这不是有效的链接。");
+      return;
+    }
+    if (parsed.protocol !== "https:") {
+      setCoverUrlError("请用 https 开头的图片链接。");
+      return;
+    }
+    setCoverBusy(true);
+    const ok = await new Promise<boolean>((resolve) => {
+      const img = new Image();
+      const timer = window.setTimeout(() => resolve(false), 10000);
+      img.onload = () => {
+        window.clearTimeout(timer);
+        resolve(img.naturalWidth > 0);
+      };
+      img.onerror = () => {
+        window.clearTimeout(timer);
+        resolve(false);
+      };
+      img.src = parsed.href;
+    });
+    if (!ok) {
+      setCoverBusy(false);
+      setCoverUrlError("这个链接打不开图片：可能不是图片直链，或对方不允许外链。");
+      return;
+    }
+    setCoverFailed(false);
+    await saveBook({ ...book, cover: parsed.href, originalCover: book.originalCover ?? book.cover ?? "" }, "封面已更换。");
+    setCoverBusy(false);
+    setCoverUrl("");
+    setCoverOpen(false);
   };
 
   const restoreCover = () => {
@@ -257,6 +304,19 @@ export function StudyRoomBookDetail({
           </div>
         </div>
 
+        {book.description?.trim() && (
+          <div className="sr-detail-synopsis">
+            <p className="sr-detail-desc" data-open={descOpen ? "true" : undefined}>
+              {book.description.trim()}
+            </p>
+            {book.description.trim().length > 90 && (
+              <button type="button" className="sr-btn-text sr-detail-desc-more" onClick={() => setDescOpen((v) => !v)} aria-expanded={descOpen}>
+                {descOpen ? "收起" : "展开简介"}
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="sr-detail-actions">
           <button type="button" className="sr-btn sr-btn-primary" onClick={() => onRead(book)}>
             <BookOpen size={18} strokeWidth={1.7} />
@@ -268,7 +328,59 @@ export function StudyRoomBookDetail({
               朗读
             </button>
           )}
+          <button
+            type="button"
+            className="sr-btn"
+            onClick={() => setCoverOpen((v) => !v)}
+            aria-expanded={coverOpen}
+            data-active={coverOpen ? "true" : undefined}
+          >
+            <ImagePlus size={17} strokeWidth={1.7} />
+            封面
+          </button>
         </div>
+
+        {coverOpen && (
+          <div className="sr-detail-cover-panel">
+            <div className="sr-detail-cover-row">
+              <button type="button" className="sr-btn" onClick={() => coverInputRef.current?.click()} disabled={coverBusy}>
+                {coverBusy ? <Loader2 size={16} className="sr-spin" /> : <ImagePlus size={16} strokeWidth={1.8} />}
+                从相册上传
+              </button>
+              {book.originalCover !== undefined && (
+                <button type="button" className="sr-btn" onClick={restoreCover} disabled={coverBusy}>
+                  <RotateCcw size={16} strokeWidth={1.8} />
+                  {book.originalCover ? "恢复原封面" : "改回文字封面"}
+                </button>
+              )}
+            </div>
+            <form
+              className="sr-detail-cover-url"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void applyCoverUrl();
+              }}
+            >
+              <Link2 size={16} strokeWidth={1.8} aria-hidden />
+              <input
+                type="url"
+                inputMode="url"
+                value={coverUrl}
+                onChange={(event) => {
+                  setCoverUrl(event.target.value);
+                  setCoverUrlError(null);
+                }}
+                placeholder="或粘贴图片直链（https）"
+                aria-label="封面图片链接"
+              />
+              <button type="submit" className="sr-btn sr-btn-sm" disabled={!coverUrl.trim() || coverBusy}>
+                使用
+              </button>
+            </form>
+            {coverUrlError && <p className="sr-detail-cover-error" role="alert">{coverUrlError}</p>}
+            <input ref={coverInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,.gif" hidden onChange={handleCoverFile} />
+          </div>
+        )}
         {extraActions && <div className="sr-detail-extra">{extraActions}</div>}
         {notice && (
           <p className="sr-detail-notice" role="status">
@@ -295,13 +407,6 @@ export function StudyRoomBookDetail({
         <div className="sr-detail-scroll" role="tabpanel">
           {tab === "toc" && (
             <>
-              {book.description?.trim() && (
-                <>
-                  <h3 className="sr-detail-h">简介</h3>
-                  <p className="sr-detail-desc">{book.description.trim()}</p>
-                </>
-              )}
-
               <h3 className="sr-detail-h">目录</h3>
               {data === null ? (
                 <div aria-label="正在读取目录">
@@ -437,21 +542,6 @@ export function StudyRoomBookDetail({
 
           {tab === "tools" && (
             <>
-              <h3 className="sr-detail-h">封面</h3>
-              <div className="sr-detail-footer" style={{ marginTop: 0 }}>
-                <button type="button" className="sr-btn" onClick={() => coverInputRef.current?.click()} disabled={coverBusy}>
-                  {coverBusy ? <Loader2 size={16} className="sr-spin" /> : <ImagePlus size={16} strokeWidth={1.8} />}
-                  {book.cover ? "更换封面" : "上传封面"}
-                </button>
-                {book.originalCover !== undefined && (
-                  <button type="button" className="sr-btn" onClick={restoreCover}>
-                    <RotateCcw size={16} strokeWidth={1.8} />
-                    {book.originalCover ? "恢复原封面" : "改回文字封面"}
-                  </button>
-                )}
-                <input ref={coverInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,.gif" hidden onChange={handleCoverFile} />
-              </div>
-
               <h3 className="sr-detail-h">分享与导出</h3>
               <div className="sr-detail-footer" style={{ marginTop: 0 }}>
                 <button type="button" className="sr-btn" onClick={() => setGifting(true)}>

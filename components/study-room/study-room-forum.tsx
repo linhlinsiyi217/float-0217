@@ -591,20 +591,16 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
       )}
 
       {posts.length === 0 ? (
-        <div className="sr-empty" style={{ paddingTop: 30 }}>
+        <div className="sr-forum-empty">
           {state.npcs.length === 0 ? (
             <>
-              <Loader2 size={28} className="sr-spin" />
+              <Loader2 size={22} className="sr-spin" />
               <p>正在准备书友…</p>
             </>
           ) : (
             <>
-              <PenLine size={38} strokeWidth={1} />
-              <p>
-                这个频道还没有内容。
-                <br />
-                点右下角「写帖子」发一条，书友们会来回应；也可以去「书友管理」多请几位书友。
-              </p>
+              <PenLine size={24} strokeWidth={1.4} />
+              <p>这个频道还没有帖子。点右下角「写帖子」发一条，书友们会来回应。</p>
             </>
           )}
         </div>

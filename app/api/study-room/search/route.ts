@@ -88,7 +88,8 @@ export async function GET(request: Request) {
       }
     }
 
-    cacheSet(key, payload);
+    // 来源都失败、一个结果也没有时不缓存，免得网络恢复后 5 分钟内还看到失败
+    if (payload.results.length > 0 || payload.failed.length === 0) cacheSet(key, payload);
     return NextResponse.json(payload);
   } catch (error) {
     console.error("[study-room/search]", error);

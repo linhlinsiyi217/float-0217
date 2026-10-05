@@ -148,12 +148,10 @@ export function layoutShelf(books: Book[], rowWidth: number, scale = 1): ShelfIt
       const hash = hashString(book.id || book.title);
       return { ...measureBook(book), lean: 0, gapBefore: gapBefore(index, hash) };
     });
-    const clusterWidth = rowWidthOf(cluster, scale);
     // 末尾放一个轻量书立，暗示这一段是有意识摆放的边界
     cluster.push({ kind: "bookend", width: 12, height: 62 });
-    // 聚落右侧放一枚小纸签（是「策展说明」，不是系统提示）
-    const withTag: ShelfItem[] = [...cluster, { kind: "tag", width: 78, height: 26, text: "全部藏书", offsetY: 8 }];
-    rows.push(clusterWidth < usable * 0.62 ? withTag : cluster);
+    // 第二批：去掉右侧「全部藏书」米黄纸签——纯装饰、点了没反应，用户会以为是按钮
+    rows.push(cluster);
     return rows;
   }
 

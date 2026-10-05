@@ -78,11 +78,12 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 24px 22px 18px;
-  border-radius: 22px;
+  padding: 28px 24px 20px;
+  border-radius: 24px;
   background: #fff;
+  border: 0.5px solid rgba(255, 255, 255, 0.9);
   color: #1c1f24;
-  box-shadow: 0 20px 52px rgba(20, 28, 45, 0.16), 0 2px 6px rgba(20, 28, 45, 0.05);
+  box-shadow: 0 20px 52px rgba(20, 28, 45, 0.14), 0 2px 6px rgba(20, 28, 45, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.95);
   overflow-y: auto;
   overscroll-behavior: contain;
   animation: updn-in 0.26s cubic-bezier(0.22, 0.9, 0.32, 1) both;
