@@ -23,6 +23,7 @@ import {
   type ForumNpc,
   type ForumState,
 } from "@/lib/study-room/forum";
+import { HelpFoot } from "./help-tip";
 
 type StudyRoomNpcPanelProps = {
   onBack: () => void;
@@ -150,7 +151,7 @@ export function StudyRoomNpcPanel({ onBack }: StudyRoomNpcPanelProps) {
             />
             <button
               type="button"
-              className="sr-chip"
+              className="sr-btn sr-btn-sm"
               disabled={!nameDraft.trim() || nameDraft.trim() === state.name}
               onClick={() => {
                 save({ ...state, name: nameDraft.trim() });
@@ -179,24 +180,24 @@ export function StudyRoomNpcPanel({ onBack }: StudyRoomNpcPanelProps) {
             />
           </div>
           <div className="sr-css-actions" style={{ marginBottom: 10 }}>
-            <button type="button" className="sr-chip" onClick={() => handleRandom()}>
+            <button type="button" className="sr-btn sr-btn-sm" onClick={() => handleRandom()}>
               <Dices size={13} strokeWidth={1.8} />随机生成
             </button>
-            <button type="button" className="sr-chip" onClick={() => handleRandom(Math.floor(Math.random() * 100000))}>
+            <button type="button" className="sr-btn sr-btn-sm" onClick={() => handleRandom(Math.floor(Math.random() * 100000))}>
               <RefreshCw size={13} strokeWidth={1.8} />再来一个
             </button>
             {busy ? (
-              <button type="button" className="sr-chip" onClick={() => abortRef.current?.abort()}>
+              <button type="button" className="sr-btn sr-btn-sm" onClick={() => abortRef.current?.abort()}>
                 <Square size={13} strokeWidth={2} />停止
               </button>
             ) : (
-              <button type="button" className="sr-chip" onClick={() => void handleAi()}>
+              <button type="button" className="sr-btn sr-btn-sm" onClick={() => void handleAi()}>
                 <Sparkles size={13} strokeWidth={1.8} />用 AI 生成
               </button>
             )}
             <button
               type="button"
-              className="sr-chip"
+              className="sr-btn sr-btn-sm"
               onClick={() => {
                 const npc = blankNpc();
                 save(upsertNpc(state, npc));
@@ -207,7 +208,7 @@ export function StudyRoomNpcPanel({ onBack }: StudyRoomNpcPanelProps) {
             </button>
             <button
               type="button"
-              className="sr-chip"
+              className="sr-btn sr-btn-sm"
               onClick={() => setPickCharacter((v) => !v)}
               disabled={characters.length === 0}
             >
@@ -306,14 +307,14 @@ export function StudyRoomNpcPanel({ onBack }: StudyRoomNpcPanelProps) {
                     </span>
                     <span className="sr-note-tools">
                       {friends[npc.id] ? (
-                        <button type="button" className="sr-chip" onClick={() => openChatWith(friends[npc.id])}>
+                        <button type="button" className="sr-btn sr-btn-sm" onClick={() => openChatWith(friends[npc.id])}>
                           <MessageCircle size={13} strokeWidth={1.8} style={{ marginRight: 4 }} />
                           去聊天
                         </button>
                       ) : (
                         <button
                           type="button"
-                          className="sr-chip"
+                          className="sr-btn sr-btn-sm"
                           onClick={async () => {
                             const result = await makeFriendFromNpc(state, npc);
                             if (result.created) {
@@ -396,10 +397,10 @@ export function StudyRoomNpcPanel({ onBack }: StudyRoomNpcPanelProps) {
             })
           )}
 
-          <p className="sr-note-meta" style={{ marginTop: 16, lineHeight: 1.8 }}>
+          <HelpFoot id="npc-about" label="关于书友人设">
             人设会先保存下来，论坛发言再按人设生成；头像使用书房内置的图形素材（动物、人物、天气、天空、风景），
             可以逐个换，也可以固定保存。
-          </p>
+          </HelpFoot>
         </div>
       </div>
     </section>

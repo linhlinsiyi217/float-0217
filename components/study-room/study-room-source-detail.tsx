@@ -180,7 +180,7 @@ export function StudyRoomSourceDetail({ item, versions = [], onClose, onRead, on
             <Heart size={13} strokeWidth={1.8} fill={wished ? "currentColor" : "none"} />
             {wished ? "已记在想读" : "记下想读"}
           </button>
-          <a className="sr-chip" href={item.externalUrl} target="_blank" rel="noopener noreferrer">
+          <a className="sr-btn sr-btn-sm" href={item.externalUrl} target="_blank" rel="noopener noreferrer">
             <Compass size={13} strokeWidth={1.8} />
             前往原站
           </a>
@@ -221,7 +221,7 @@ export function StudyRoomSourceDetail({ item, versions = [], onClose, onRead, on
               <span className="sr-sheet-label" style={{ margin: 0 }}>
                 预览《{item.title}》
               </span>
-              <a className="sr-chip" href={item.externalUrl} target="_blank" rel="noopener noreferrer">
+              <a className="sr-btn sr-btn-sm" href={item.externalUrl} target="_blank" rel="noopener noreferrer">
                 在新窗口打开
               </a>
             </div>

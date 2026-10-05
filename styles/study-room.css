@@ -306,6 +306,42 @@
   color: #fff;
   border-color: transparent;
 }
+/* 行内次要操作：小号矩形，纯白、不加玻璃；和筛选用的胶囊 .sr-chip 区分开。
+   视觉高 40px，点击区域用伪元素补到 44px。 */
+.sr-btn.sr-btn-sm {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 13px;
+  gap: 5px;
+  border-radius: 10px;
+  border: 1px solid #e4e8ee;
+  background: #fff;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  font-size: 13px;
+  text-decoration: none;
+}
+.sr-btn.sr-btn-sm.sr-btn-primary { background: #1c1f24; border-color: transparent; color: #fff; }
+.sr-btn.sr-btn-sm:disabled { opacity: 0.45; cursor: default; }
+.sr-btn-sm::after { content: ""; position: absolute; inset: -2px 0; }
+/* 轻量文字操作：取消、知道了、算了 */
+.sr-btn-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  color: #5b6472;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.sr-btn-text:active { opacity: 0.6; }
 
 /* ── 书城搜索 ── */
 .sr-search {
@@ -2770,6 +2806,11 @@
   box-shadow: 0 10px 28px rgba(20, 28, 45, 0.14);
   animation: sr-help-in 0.18s ease-out;
 }
+.sr-help-bubble[data-placement="up"] { top: auto; bottom: calc(100% + 6px); }
+/* 问号视觉 22px，点击区域补到 44px */
+.sr-help-btn { position: relative; }
+.sr-help-btn::after { content: ""; position: absolute; inset: -11px; }
+.sr-help-foot { display: flex; align-items: center; gap: 2px; margin-top: 16px; font-size: 12.5px; color: #8a93a1; }
 .sr-help-text { font-size: 12.5px; line-height: 1.7; color: var(--c-text-title); }
 .sr-help-actions { display: flex; gap: 12px; justify-content: flex-end; }
 .sr-help-link {

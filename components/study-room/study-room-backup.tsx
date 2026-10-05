@@ -11,6 +11,7 @@ import {
   type StudyRoomBackupSummary,
 } from "@/lib/study-room/backup";
 import { loadBooks } from "@/lib/reading-storage";
+import { HelpFoot } from "./help-tip";
 
 type StudyRoomBackupProps = { onBack: () => void };
 
@@ -168,9 +169,9 @@ export function StudyRoomBackup({ onBack }: StudyRoomBackupProps) {
             </>
           )}
 
-          <p className="sr-note-meta" style={{ marginTop: 16, lineHeight: 1.8 }}>
+          <HelpFoot id="backup-about" label="关于备份">
             备份文件保存在你自己的设备上，不会上传。导出的 EPUB 在书详情里单独提供，用于把某一本带批注的书带走。
-          </p>
+          </HelpFoot>
         </div>
       </div>
     </section>

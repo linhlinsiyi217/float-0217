@@ -1060,7 +1060,7 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
       {ttsNotice && (
         <div className="sr-note-card" style={{ position: "absolute", left: 16, right: 16, bottom: 96, zIndex: 45 }}>
           <div className="sr-note-meta" style={{ lineHeight: 1.7 }}>{ttsNotice}</div>
-          <button type="button" className="sr-chip" onClick={() => setTtsNotice(null)}>知道了</button>
+          <button type="button" className="sr-btn-text" onClick={() => setTtsNotice(null)}>知道了</button>
         </div>
       )}
       {barsHidden && showHint && <div className="sr-reader-hint">轻点正文显示工具栏</div>}

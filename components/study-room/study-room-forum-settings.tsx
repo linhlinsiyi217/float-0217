@@ -5,6 +5,7 @@ import { ChevronDown, ChevronLeft, RotateCcw, Save, Users } from "lucide-react";
 
 import type { ForumRules, ForumState } from "@/lib/study-room/forum";
 import { normalizeRules, singleDefaultRule, updateForumRules } from "@/lib/study-room/forum-social";
+import { HelpFoot } from "./help-tip";
 
 type Field = {
   key: keyof ForumRules;
@@ -133,7 +134,7 @@ export function StudyRoomForumSettings({
           />
           <button
             type="button"
-            className="sr-chip"
+            className="sr-btn sr-btn-sm"
             disabled={!nameDraft.trim() || nameDraft.trim() === state.name}
             onClick={() => {
               onMutate((prev) => ({ ...prev, name: nameDraft.trim() }));
@@ -144,10 +145,11 @@ export function StudyRoomForumSettings({
           </button>
         </div>
 
-        <p className="sr-note-meta" style={{ lineHeight: 1.8, margin: "6px 0 12px" }}>
+        <HelpFoot id="forum-rules-about" label="关于生成规则">
           这些规则只影响书友圈自己生成的内容：不填也能正常用，默认值就是开箱可用的那套。
           改完点该组的「保存」才会生效；「取消」丢弃本次改动。
-        </p>
+          默认值：{GROUPS.map((group) => group.label).join(" / ")}。全部改回默认不会影响已有的帖子、书友与关注关系。
+        </HelpFoot>
 
         {GROUPS.map((group) => {
           const open = expanded === group.key;
@@ -213,13 +215,13 @@ export function StudyRoomForumSettings({
                   )}
 
                   <div className="sr-css-actions">
-                    <button type="button" className="sr-chip" onClick={() => resetGroup(group)}>
+                    <button type="button" className="sr-btn sr-btn-sm" onClick={() => resetGroup(group)}>
                       <RotateCcw size={13} strokeWidth={1.8} />
                       恢复默认
                     </button>
                     <button
                       type="button"
-                      className="sr-chip"
+                      className="sr-btn-text"
                       onClick={() => {
                         setDraft(state.rules);
                         onNotice("已取消这一组的未保存修改");
@@ -227,7 +229,7 @@ export function StudyRoomForumSettings({
                     >
                       取消
                     </button>
-                    <button type="button" className="sr-chip" onClick={() => saveGroup(group)}>
+                    <button type="button" className="sr-btn sr-btn-sm sr-btn-primary" onClick={() => saveGroup(group)}>
                       <Save size={13} strokeWidth={1.8} />
                       保存
                     </button>
@@ -237,10 +239,6 @@ export function StudyRoomForumSettings({
             </section>
           );
         })}
-
-        <p className="sr-note-meta" style={{ marginTop: 12, lineHeight: 1.8 }}>
-          默认值：{GROUPS.map((group) => group.label).join(" / ")}。全部改回默认不会影响已有的帖子、书友与关注关系。
-        </p>
       </div>
     </div>
   );

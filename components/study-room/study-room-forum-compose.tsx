@@ -15,6 +15,7 @@ import {
   type ForumState,
 } from "@/lib/study-room/forum";
 import { deleteDraft, parseDraftField, saveDraft } from "@/lib/study-room/forum-social";
+import { HelpFoot } from "./help-tip";
 
 type StudyRoomForumComposeProps = {
   state: ForumState;
@@ -234,7 +235,7 @@ export function StudyRoomForumCompose({
             placeholder="书名（可留空，书架以外的书也能写）"
             aria-label="关联书籍"
           />
-          <button type="button" className="sr-chip" onClick={() => setShowShelf((value) => !value)}>
+          <button type="button" className="sr-btn sr-btn-sm" onClick={() => setShowShelf((value) => !value)}>
             从书架选
           </button>
         </div>
@@ -272,7 +273,7 @@ export function StudyRoomForumCompose({
         </div>
 
         <div className="sr-css-actions" style={{ marginTop: 10, flexWrap: "wrap" }}>
-          <button type="button" className="sr-chip" onClick={() => imageRef.current?.click()} disabled={busy === "image"}>
+          <button type="button" className="sr-btn sr-btn-sm" onClick={() => imageRef.current?.click()} disabled={busy === "image"}>
             {busy === "image" ? <Loader2 size={13} className="sr-spin" /> : <ImagePlus size={13} strokeWidth={1.8} />}
             加图片
           </button>
@@ -287,13 +288,13 @@ export function StudyRoomForumCompose({
               if (file) void handleImage(file);
             }}
           />
-          <button type="button" className="sr-chip" onClick={() => void handlePolish()} disabled={busy === "polish"}>
+          <button type="button" className="sr-btn sr-btn-sm" onClick={() => void handlePolish()} disabled={busy === "polish"}>
             {busy === "polish" ? <Loader2 size={13} className="sr-spin" /> : <Sparkles size={13} strokeWidth={1.8} />}
             AI 润色
           </button>
           <button
             type="button"
-            className="sr-chip"
+            className="sr-btn sr-btn-sm"
             onClick={() => {
               const text = body.trim();
               if (!text) {
@@ -320,7 +321,7 @@ export function StudyRoomForumCompose({
           {draft && (
             <button
               type="button"
-              className="sr-chip"
+              className="sr-btn sr-btn-sm"
               onClick={() => {
                 onMutate((prev) => deleteDraft(prev, draft.id));
                 onNotice("草稿已删除", 2000);
@@ -337,10 +338,10 @@ export function StudyRoomForumCompose({
           </button>
         </div>
 
-        <p className="sr-note-meta" style={{ marginTop: 10, lineHeight: 1.7 }}>
+        <HelpFoot id="compose-about" label="关于发布">
           发布后会立刻出现在信息流顶部；书友们会在稍后陆续来评论（按人设，错时出现）。
           不写标签、不写标题都能发；AI 润色是可选的。
-        </p>
+        </HelpFoot>
       </div>
     </div>
   );

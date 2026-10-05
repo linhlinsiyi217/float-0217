@@ -74,7 +74,7 @@ export function StudyRoomForumProfile({
         <span className="sr-forum-sub-title">{npc.nickname} 的主页</span>
         <button
           type="button"
-          className="sr-chip"
+          className="sr-btn sr-btn-sm"
           style={{ marginLeft: "auto" }}
           onClick={() => {
             if (blocked || confirm(`屏蔽 ${npc.nickname}？TA 的帖子不再出现，也不会再来回复。`)) onToggleBlock();

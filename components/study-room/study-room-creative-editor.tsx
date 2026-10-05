@@ -59,6 +59,7 @@ import {
   type CreativeDraft,
   type WorkKind,
 } from "@/lib/study-room/creative";
+import { HelpFoot, HelpTip } from "./help-tip";
 
 type StudyRoomCreativeEditorProps = {
   draftId: string;
@@ -563,9 +564,9 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
                   让 AI 先给一版
                 </button>
               </div>
-              <p className="sr-note-meta" style={{ marginTop: 8, lineHeight: 1.8 }}>
+              <HelpFoot id="creative-flow-about" label="关于创作流程">
                 流程是「先方案大纲 → 你确认 → 试写 → 分章写 → 修订」。大纲与设定怎么写由你决定，不强制填满。
-              </p>
+              </HelpFoot>
             </>
           )}
 
@@ -605,11 +606,13 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
                   </select>
                 </div>
               )}
-              <p className="sr-note-meta" style={{ lineHeight: 1.75 }}>
-                当前执笔：{writer.writerLabel}。
-                {draft.writer.mode === "character"
-                  ? "角色是以「作者」身份构思，书里的人不等同于 TA 自己，也不等同用户现实身份。"
-                  : "助手内部会分头把关策划、人物一致性、伏笔与文风，界面上只有这一位助手。"}
+              <p className="sr-note-meta" style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                当前执笔：{writer.writerLabel}
+                <HelpTip id="creative-writer-about" label="关于执笔">
+                  {draft.writer.mode === "character"
+                    ? "角色是以「作者」身份构思，书里的人不等同于 TA 自己，也不等同用户现实身份。"
+                    : "助手内部会分头把关策划、人物一致性、伏笔与文风，界面上只有这一位助手。"}
+                </HelpTip>
               </p>
 
               <div className="sr-css-actions" style={{ marginTop: 10, flexWrap: "wrap" }}>
@@ -655,21 +658,21 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
                           <input className="sr-appear-input" value={chapter.title} onChange={(e) => update({ chapters: draft.chapters.map((item) => item.id === chapter.id ? { ...item, title: e.target.value, updatedAt: new Date().toISOString() } : item) })} aria-label="章节标题" />
                           <textarea className="sr-css-editor" rows={10} value={chapter.content} onChange={(e) => update({ chapters: draft.chapters.map((item) => item.id === chapter.id ? { ...item, content: e.target.value, updatedAt: new Date().toISOString() } : item) })} aria-label="章节正文" />
                           <div className="sr-css-actions" style={{ flexWrap: "wrap" }}>
-                            <button type="button" className="sr-chip" disabled={generating} onClick={() => void runChapter(index + 1, chapter.id)}>
+                            <button type="button" className="sr-btn sr-btn-sm" disabled={generating} onClick={() => void runChapter(index + 1, chapter.id)}>
                               <RefreshCw size={13} strokeWidth={1.8} /> 重新生成这一章
                             </button>
-                            <button type="button" className="sr-chip" disabled={busy.kind === "memory"} onClick={() => void runChapterMemory(chapter)}>
+                            <button type="button" className="sr-btn sr-btn-sm" disabled={busy.kind === "memory"} onClick={() => void runChapterMemory(chapter)}>
                               {busy.kind === "memory" && busy.chapterId === chapter.id ? <Loader2 size={13} className="sr-spin" /> : <Sparkles size={13} strokeWidth={1.8} />}
                               生成本章记忆
                             </button>
-                            <button type="button" className="sr-chip" onClick={() => {
+                            <button type="button" className="sr-btn sr-btn-sm" onClick={() => {
                               if (!confirm(`删除「${chapter.title || `第 ${index + 1} 章`}」？`)) return;
                               update({ chapters: draft.chapters.filter((item) => item.id !== chapter.id) });
                               setOpenChapterId(null);
                             }}>
                               <Trash2 size={13} strokeWidth={1.8} /> 删除
                             </button>
-                            <button type="button" className="sr-chip" onClick={() => {
+                            <button type="button" className="sr-btn sr-btn-sm" onClick={() => {
                               const copy: CreativeChapter = { ...chapter, id: `cc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, title: `${chapter.title}（副本）` };
                               const next = [...draft.chapters];
                               next.splice(index + 1, 0, copy);
@@ -755,7 +758,7 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
                             </div>
                             <button
                               type="button"
-                              className="sr-chip"
+                              className="sr-btn sr-btn-sm"
                               disabled={previewingStyle !== null}
                               onClick={() => void runStylePreview(style.id)}
                             >
@@ -763,7 +766,7 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
                               试写 300–500 字
                             </button>
                             {draft.styleId === style.id && (
-                              <button type="button" className="sr-chip" onClick={() => update({ styleId: undefined })}>
+                              <button type="button" className="sr-btn sr-btn-sm" onClick={() => update({ styleId: undefined })}>
                                 清除文风
                               </button>
                             )}
@@ -776,7 +779,7 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
                             <div className="sr-css-actions">
                               <button
                                 type="button"
-                                className="sr-chip"
+                                className="sr-btn sr-btn-sm"
                                 onClick={() => {
                                   update({ styleId: style.id, userStyleId: undefined });
                                   setStylePreview(null);
@@ -785,7 +788,7 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
                               >
                                 用这套文风
                               </button>
-                              <button type="button" className="sr-chip" onClick={() => setStylePreview(null)}>
+                              <button type="button" className="sr-btn-text" onClick={() => setStylePreview(null)}>
                                 再看看别的
                               </button>
                             </div>
@@ -825,7 +828,7 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
                   placeholder="文风名称"
                   aria-label="文风名称"
                 />
-                <label className="sr-chip" style={{ cursor: "pointer" }}>
+                <label className="sr-btn sr-btn-sm" style={{ cursor: "pointer" }}>
                   导入 TXT / DOCX
                   <input
                     type="file"
@@ -850,7 +853,7 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
               <div className="sr-css-actions">
                 <button
                   type="button"
-                  className="sr-chip"
+                  className="sr-btn sr-btn-sm"
                   disabled={!newStyle.name.trim() || !newStyle.rules.trim()}
                   onClick={() => {
                     setUserStyles(addUserStyle({ name: newStyle.name, rules: newStyle.rules }));
@@ -871,7 +874,7 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
               <div className="sr-section-label">灵感便签（属于这个项目）</div>
               <div className="sr-appear-row">
                 <input className="sr-appear-input" value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} placeholder="记一句灵感…" aria-label="灵感" />
-                <button type="button" className="sr-chip" disabled={!noteDraft.trim()} onClick={() => {
+                <button type="button" className="sr-btn sr-btn-sm" disabled={!noteDraft.trim()} onClick={() => {
                   setInspirations(addInspiration(noteDraft, draft.id).filter((item) => item.draftId === draft.id));
                   setNoteDraft("");
                 }}>
@@ -944,9 +947,9 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
                   </ul>
                 )
               ) : (
-                <p className="sr-note-meta" style={{ lineHeight: 1.8 }}>
+                <HelpFoot id="proofread-about" label="关于校对">
                   校对只给建议，不会自动改你的正文；它会看最近几章、大纲与人物，挑出前后矛盾、状态跳变、时间地点冲突与断掉的伏笔。
-                </p>
+                </HelpFoot>
               )}
               <div className="sr-section-label" style={{ marginTop: 12 }}>章末记忆（防长篇失忆）</div>
               {draft.chapters.filter((chapter) => !chapter.memory).length === 0 && draft.chapters.length > 0 ? (
@@ -983,11 +986,11 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={draft.cover} alt="封面预览" className="sr-creative-cover" />
                 )}
-                <button type="button" className="sr-chip" onClick={() => coverInputRef.current?.click()}>
+                <button type="button" className="sr-btn sr-btn-sm" onClick={() => coverInputRef.current?.click()}>
                   {draft.cover ? "换一张" : "选择图片"}
                 </button>
                 {draft.cover && (
-                  <button type="button" className="sr-chip" onClick={() => update({ cover: undefined })}>
+                  <button type="button" className="sr-btn-text" onClick={() => update({ cover: undefined })}>
                     去掉
                   </button>
                 )}
@@ -1056,10 +1059,10 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
                   </li>
                 ))}
               </ul>
-              <p className="sr-note-meta" style={{ lineHeight: 1.8 }}>
+              <HelpFoot id="publish-about" label="关于加入书架与导出">
                 草稿始终留在书桌；「加入书架」只是把它变成书架上的书，之后还能回来继续写并再次更新。
                 导出的 EPUB 会带上封面与章末记忆附录。
-              </p>
+              </HelpFoot>
             </>
           )}
         </div>

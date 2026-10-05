@@ -425,7 +425,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
           还没有配置模型 API，书友暂时没法发帖和回应。配置好后回到这里，排队的回应会接着出现。
         </div>
         <div className="sr-css-actions">
-          <button type="button" className="sr-chip" onClick={() => setReplyIssue(null)}>
+          <button type="button" className="sr-btn-text" onClick={() => setReplyIssue(null)}>
             知道了
           </button>
           <button type="button" className="sr-chip" data-active="true" onClick={openApiSettings}>
@@ -449,7 +449,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
               {failed.npcName} 没回上来：{failed.message}
             </div>
             <div className="sr-css-actions">
-              <button type="button" className="sr-chip" onClick={() => setReplyIssue(null)}>
+              <button type="button" className="sr-btn-text" onClick={() => setReplyIssue(null)}>
                 算了
               </button>
               <button type="button" className="sr-chip" data-active="true" onClick={retryReply}>
@@ -470,7 +470,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
                 `还有 ${queued} 位书友准备回应（停留在书友圈时陆续出现，离开后暂停）`
               )}
             </span>
-            <button type="button" className="sr-chip" onClick={() => stopReplies(postId)}>
+            <button type="button" className="sr-btn sr-btn-sm" onClick={() => stopReplies(postId)}>
               <Square size={12} strokeWidth={1.8} />
               停止回应
             </button>
@@ -478,7 +478,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
         ) : (
           !failed && (
             <div className="sr-css-actions">
-              <button type="button" className="sr-chip" onClick={() => requestReplies(postId)}>
+              <button type="button" className="sr-btn sr-btn-sm" onClick={() => requestReplies(postId)}>
                 <MessageSquare size={13} strokeWidth={1.8} />
                 请书友回应
               </button>
@@ -754,7 +754,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
         ))}
         <button
           type="button"
-          className="sr-chip"
+          className="sr-btn sr-btn-sm"
           onClick={() => void refreshFeed(false)}
           disabled={busy === "feed"}
           aria-label="请书友们发新帖"
@@ -762,7 +762,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
           <RotateCw size={13} strokeWidth={1.8} />
           刷新
         </button>
-        <button type="button" className="sr-chip" onClick={() => setView({ kind: "settings" })}>
+        <button type="button" className="sr-btn sr-btn-sm" onClick={() => setView({ kind: "settings" })}>
           生成规则
         </button>
       </div>
@@ -780,7 +780,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
           <span className="sr-note-meta" style={{ marginRight: "auto", lineHeight: 1.7 }}>
             <Loader2 size={13} className="sr-spin" /> 书友们正在写新帖…
           </span>
-          <button type="button" className="sr-chip" onClick={stopFeed}>
+          <button type="button" className="sr-btn sr-btn-sm" onClick={stopFeed}>
             <Square size={12} strokeWidth={1.8} />
             停止
           </button>
@@ -791,7 +791,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
         <div className="sr-note-card">
           <div className="sr-note-meta" style={{ lineHeight: 1.7 }}>新帖没生成出来：{feedError}</div>
           <div className="sr-css-actions">
-            <button type="button" className="sr-chip" onClick={() => setFeedError(null)}>
+            <button type="button" className="sr-btn-text" onClick={() => setFeedError(null)}>
               算了
             </button>
             <button type="button" className="sr-chip" data-active="true" onClick={() => void refreshFeed(false)}>
@@ -807,7 +807,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
           <span className="sr-note-meta" style={{ marginRight: "auto", lineHeight: 1.7 }}>
             <Loader2 size={12} className="sr-spin" /> {typing.npcName} 正在回应一条帖子…
           </span>
-          <button type="button" className="sr-chip" onClick={() => stopReplies(typing.postId)}>
+          <button type="button" className="sr-btn sr-btn-sm" onClick={() => stopReplies(typing.postId)}>
             <Square size={12} strokeWidth={1.8} />
             停止
           </button>
@@ -820,7 +820,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
             {replyIssue.npcName} 没回上来：{replyIssue.message}
           </div>
           <div className="sr-css-actions">
-            <button type="button" className="sr-chip" onClick={() => setReplyIssue(null)}>
+            <button type="button" className="sr-btn-text" onClick={() => setReplyIssue(null)}>
               算了
             </button>
             <button type="button" className="sr-chip" data-active="true" onClick={retryReply}>
@@ -883,7 +883,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
           {hiddenInFeed.map((post) => (
             <div key={post.id} className="sr-note-card">
               <div className="sr-note-meta">{post.authorName}：{post.body.slice(0, 40)}…</div>
-              <button type="button" className="sr-chip" onClick={() => mutate((prev) => unhidePost(prev, post.id))}>
+              <button type="button" className="sr-btn sr-btn-sm" onClick={() => mutate((prev) => unhidePost(prev, post.id))}>
                 恢复显示
               </button>
             </div>

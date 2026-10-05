@@ -34,6 +34,8 @@ type HelpTipProps = {
   /** 无障碍标签 */
   label: string;
   children: ReactNode;
+  /** 气泡方向：靠近页面底部时用 up，免得被裁掉 */
+  placement?: "down" | "up";
 };
 
 /**
@@ -41,7 +43,7 @@ type HelpTipProps = {
  * 提供「知道了」与「不再提示」。点外部或按 Esc 关闭，不遮挡主要按钮。
  * 只放在不容易理解的功能旁，返回、搜索、点赞这类通用按钮不挂。
  */
-export function HelpTip({ id, label, children }: HelpTipProps) {
+export function HelpTip({ id, label, children, placement = "down" }: HelpTipProps) {
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState(() => isHelpDismissed(id));
   const wrapRef = useRef<HTMLSpanElement>(null);
@@ -80,7 +82,7 @@ export function HelpTip({ id, label, children }: HelpTipProps) {
         <HelpCircle size={15} strokeWidth={1.8} />
       </button>
       {open && (
-        <span className="sr-help-bubble" role="dialog" aria-label={label}>
+        <span className="sr-help-bubble" role="dialog" aria-label={label} data-placement={placement}>
           <span className="sr-help-text">{children}</span>
           <span className="sr-help-actions">
             <button type="button" className="sr-help-link" onClick={() => setOpen(false)}>
@@ -100,5 +102,18 @@ export function HelpTip({ id, label, children }: HelpTipProps) {
         </span>
       )}
     </span>
+  );
+}
+
+/** 页面底部的「关于 xx」：一行短标签 + 问号，说明收进气泡，不再铺成段小字。 */
+export function HelpFoot({ id, label, children }: { id: string; label: string; children: ReactNode }) {
+  if (isHelpDismissed(id)) return null;
+  return (
+    <div className="sr-help-foot">
+      <span>{label}</span>
+      <HelpTip id={id} label={label} placement="up">
+        {children}
+      </HelpTip>
+    </div>
   );
 }

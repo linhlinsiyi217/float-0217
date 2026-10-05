@@ -265,7 +265,7 @@ export function CreativePanel({ onOpenDraft, onOpenNotes, onOpenWishlist }: Crea
             </button>
             <div className="sr-note-foot">
               <span className="sr-note-tools">
-                <button type="button" className="sr-chip" onClick={() => onOpenDraft(draft.id)}>
+                <button type="button" className="sr-btn sr-btn-sm" onClick={() => onOpenDraft(draft.id)}>
                   继续
                 </button>
                 <button type="button" className="sr-note-tool" title="删除草稿" onClick={() => handleDelete(draft)}>
@@ -307,7 +307,7 @@ export function CreativePanel({ onOpenDraft, onOpenNotes, onOpenWishlist }: Crea
               />
               <button
                 type="button"
-                className="sr-chip"
+                className="sr-btn sr-btn-sm"
                 disabled={!draftNote.trim()}
                 onClick={() => {
                   setInspirations(addInspiration(draftNote));
@@ -381,10 +381,10 @@ export function CreativePanel({ onOpenDraft, onOpenNotes, onOpenWishlist }: Crea
         {drawer === "box" && (
           <div style={{ padding: "0 4px 12px 26px" }}>
             <div className="sr-css-actions">
-              <button type="button" className="sr-chip" onClick={onOpenWishlist} disabled={!onOpenWishlist}>
+              <button type="button" className="sr-btn sr-btn-sm" onClick={onOpenWishlist} disabled={!onOpenWishlist}>
                 想读的书（{wishlist.length}）
               </button>
-              <button type="button" className="sr-chip" onClick={onOpenNotes} disabled={!onOpenNotes}>
+              <button type="button" className="sr-btn sr-btn-sm" onClick={onOpenNotes} disabled={!onOpenNotes}>
                 我的笔记
               </button>
             </div>

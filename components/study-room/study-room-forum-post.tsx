@@ -355,7 +355,7 @@ export function StudyRoomForumPostView({
             <Star size={13} strokeWidth={1.8} fill={collected ? "currentColor" : "none"} />
             {collected ? "已收藏" : "收藏"}
           </button>
-          <button type="button" className="sr-chip" onClick={onGift}>
+          <button type="button" className="sr-btn sr-btn-sm" onClick={onGift}>
             <Gift size={13} strokeWidth={1.8} />
             送礼物
           </button>
@@ -417,13 +417,13 @@ export function StudyRoomForumPostView({
             aria-label="评论"
           />
           {replyTo && (
-            <button type="button" className="sr-chip" onClick={() => setReplyTo(null)}>
+            <button type="button" className="sr-btn-text" onClick={() => setReplyTo(null)}>
               取消回复
             </button>
           )}
           <button
             type="button"
-            className="sr-chip"
+            className="sr-btn sr-btn-sm sr-btn-primary"
             onClick={() => {
               if (!comment.trim()) return;
               onComment(comment, replyTo ?? undefined);

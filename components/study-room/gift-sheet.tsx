@@ -20,7 +20,7 @@ import {
 } from "@/lib/study-room/gifts";
 import { loadForum } from "@/lib/study-room/forum";
 import { loadCharacters } from "@/lib/character-storage";
-import { HelpTip } from "./help-tip";
+import { HelpFoot, HelpTip } from "./help-tip";
 
 /** 礼物图标：原创 SVG，统一 24×24 视口与自己画的路径。 */
 export function GiftIcon({ id, size = 26, className }: { id: GiftId; size?: number; className?: string }) {
@@ -194,19 +194,19 @@ export function GiftSheet({ presetRecipient, book, postId, mode = "gift", onClos
                 </div>
                 <div className="sr-appear-row">
                   <span className="sr-appear-label">数量</span>
-                  <button type="button" className="sr-chip" onClick={() => setCount((c) => Math.max(1, c - 1))} aria-label="减少数量">
+                  <button type="button" className="sr-btn sr-btn-sm" onClick={() => setCount((c) => Math.max(1, c - 1))} aria-label="减少数量">
                     <Minus size={13} strokeWidth={2} />
                   </button>
                   <span className="sr-appear-value" style={{ minWidth: 28 }}>{count}</span>
-                  <button type="button" className="sr-chip" onClick={() => setCount((c) => Math.min(99, c + 1))} aria-label="增加数量">
+                  <button type="button" className="sr-btn sr-btn-sm" onClick={() => setCount((c) => Math.min(99, c + 1))} aria-label="增加数量">
                     <Plus size={13} strokeWidth={2} />
                   </button>
                 </div>
               </>
             ) : (
-              <p className="sr-note-meta" style={{ lineHeight: 1.8 }}>
+              <HelpFoot id="gift-book-about" label="关于送书">
                 送书只送出书目、入口与留言，不会传送正文文件；对方能不能读到取决于 TA 自己的权限。
-              </p>
+              </HelpFoot>
             )}
 
             <textarea

@@ -36,6 +36,7 @@ import {
   looksLikeImageUrl,
 } from "@/lib/study-room/background-image";
 import { ColorSheet } from "./color-sheet";
+import { HelpFoot } from "./help-tip";
 
 type StudyRoomAppearanceProps = { onBack: () => void };
 
@@ -288,12 +289,12 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
                           {new Date(preset.createdAt).toLocaleDateString()} 保存
                         </span>
                       </div>
-                      <button type="button" className="sr-chip" onClick={() => handleApplyPreset(preset)}>
+                      <button type="button" className="sr-btn sr-btn-sm" onClick={() => handleApplyPreset(preset)}>
                         套用
                       </button>
                       <button
                         type="button"
-                        className="sr-chip"
+                        className="sr-btn sr-btn-sm"
                         onClick={() => handleDeletePreset(preset)}
                         aria-label={`删除预设 ${preset.name}`}
                       >
@@ -311,7 +312,7 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
                   placeholder="给当前外观起个名字"
                   aria-label="预设名称"
                 />
-                <button type="button" className="sr-chip" onClick={handleSavePreset} disabled={!presetName.trim()}>
+                <button type="button" className="sr-btn sr-btn-sm" onClick={handleSavePreset} disabled={!presetName.trim()}>
                   保存预设
                 </button>
               </div>
@@ -363,7 +364,7 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
                       placeholder="或粘贴图片链接 https://…"
                       aria-label="背景图片链接"
                     />
-                    <button type="button" className="sr-chip" onClick={() => void handleBackgroundUrl()} disabled={!bgUrl.trim()}>
+                    <button type="button" className="sr-btn sr-btn-sm" onClick={() => void handleBackgroundUrl()} disabled={!bgUrl.trim()}>
                       使用
                     </button>
                   </div>
@@ -444,10 +445,10 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
                       {draft.background.inReader ? "开" : "关"}
                     </button>
                   </div>
-                  <p className="sr-note-meta" style={{ margin: "6px 2px 12px", lineHeight: 1.7 }}>
+                  <HelpFoot id="bg-format-about" label="关于背景图">
                     支持 JPG / PNG / WebP / GIF（GIF 保留动画）；其它格式会提示改用这几种。
                     背景覆盖书房各子页面，阅读页默认保持干净底色，需要时可单独打开。
-                  </p>
+                  </HelpFoot>
                 </>
               )}
 
@@ -553,7 +554,7 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
                 <button type="button" className="sr-chip" onClick={handleCopyCss}><Copy size={13} strokeWidth={1.8} />复制</button>
                 <button type="button" className="sr-chip" onClick={handleExport}><Download size={13} strokeWidth={1.8} />导出</button>
                 <button type="button" className="sr-chip" onClick={() => fileRef.current?.click()}><Upload size={13} strokeWidth={1.8} />导入</button>
-                <button type="button" className="sr-chip" onClick={handleResetModule}><RotateCcw size={13} strokeWidth={1.8} />恢复本部分默认</button>
+                <button type="button" className="sr-btn sr-btn-sm" onClick={handleResetModule}><RotateCcw size={13} strokeWidth={1.8} />恢复本部分默认</button>
               </div>
               <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void handleImportFile(f); }} />
             </>

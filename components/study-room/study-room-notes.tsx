@@ -328,7 +328,7 @@ export function StudyRoomNotes({ onBack, onOpenSource }: StudyRoomNotesProps) {
               <Layers size={13} strokeWidth={1.8} style={{ marginRight: 5 }} />
               {groupByBook ? "按书分组" : "全部笔记"}
             </button>
-            <button type="button" className="sr-chip" onClick={() => setSortDesc((v) => !v)}>
+            <button type="button" className="sr-btn sr-btn-sm" onClick={() => setSortDesc((v) => !v)}>
               <ArrowDownUp size={13} strokeWidth={1.8} style={{ marginRight: 5 }} />
               {sortDesc ? "从新到旧" : "从旧到新"}
             </button>

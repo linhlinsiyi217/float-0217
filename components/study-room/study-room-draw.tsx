@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 
 import { importBookFromBlob } from "@/lib/study-room/import";
-import { HelpTip } from "./help-tip";
+import { HelpFoot, HelpTip } from "./help-tip";
 import {
   AVAILABILITY_LABEL,
   CANDIDATES_PER_DRAW,
@@ -357,7 +357,7 @@ export function StudyRoomDraw({ onBack, onRead, onImported }: StudyRoomDrawProps
                   <div className="sr-css-actions">
                     <button
                       type="button"
-                      className="sr-chip"
+                      className="sr-btn sr-btn-sm"
                       onClick={() => {
                         if (!confirm("清空抽取记录？（只是记录，不影响书架里的书，也不退款）")) return;
                         setState(clearDrawHistory());
@@ -595,10 +595,10 @@ export function StudyRoomDraw({ onBack, onRead, onImported }: StudyRoomDrawProps
             </>
           )}
 
-          <p className="sr-note-meta" style={{ marginTop: 14, lineHeight: 1.8 }}>
+          <HelpFoot id="draw-source-about" label="关于抽到的书">
             <Coins size={12} strokeWidth={1.8} style={{ verticalAlign: -1, marginRight: 4 }} />
             抽到的是书目与可读来源，不是正文版权：能导入的导入到书架，能预览的在书房内预览，只有书目的标「仅推荐」。
-          </p>
+          </HelpFoot>
         </div>
       </div>
 

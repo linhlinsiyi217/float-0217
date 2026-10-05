@@ -5,6 +5,7 @@ import { ChevronLeft, Gift, BookOpen, Trash2 } from "lucide-react";
 
 import { GiftIcon } from "./gift-sheet";
 import { giftDef, loadGiftState, saveGiftState, type BookGiftRecord, type GiftRecord } from "@/lib/study-room/gifts";
+import { HelpFoot } from "./help-tip";
 
 type StudyRoomGiftsProps = { onBack: () => void };
 
@@ -123,10 +124,10 @@ export function StudyRoomGifts({ onBack }: StudyRoomGiftsProps) {
             ))
           )}
 
-          <p className="sr-note-meta" style={{ marginTop: 16, lineHeight: 1.8 }}>
+          <HelpFoot id="gifts-about" label="关于礼物">
             <Gift size={13} strokeWidth={1.8} style={{ verticalAlign: -2, marginRight: 4 }} />
             礼物是本机记录的虚拟心意：不涉及充值、支付或余额，也不会因为重复点击重复送出。
-          </p>
+          </HelpFoot>
         </div>
       </div>
     </section>

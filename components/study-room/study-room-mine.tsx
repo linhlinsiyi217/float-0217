@@ -378,7 +378,7 @@ export function StudyRoomMine({
               </span>
               <button
                 type="button"
-                className="sr-chip"
+                className="sr-btn sr-btn-sm"
                 onClick={() => setDraftProfile((prev) => ({ ...prev, avatar: nextVariant(prev.avatar), useHostAvatar: false }))}
               >
                 换一个
