@@ -56,7 +56,7 @@ const TAB_META: Record<StudyRoomTab, { label: string; icon: typeof Library; titl
   store: { label: "书城", icon: Store, title: "书城" },
   desk: { label: "书桌", icon: NotebookPen, title: "书桌" },
   forum: { label: "书友圈", icon: Users, title: "书友圈" },
-  mine: { label: "我的", icon: User, title: "我的主页" },
+  mine: { label: "我的", icon: User, title: "我的" },
 };
 
 const TAB_ORDER: StudyRoomTab[] = ["shelf", "store", "desk", "forum", "mine"];
@@ -98,6 +98,8 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
 
   // 从「我的主页」点动态卡：切到书友圈并直接打开原帖（只用一次）
   const [forumPostId, setForumPostId] = useState<string | null>(null);
+  // 从「我的」点「发布第一条动态」：切到书友圈并直接打开发帖（只用一次）
+  const [forumCompose, setForumCompose] = useState(false);
 
   // 论坛名可以在书友管理里改，这里跟着刷新
   const [forumName, setForumName] = useState<string>(() => loadForum().name);
@@ -238,7 +240,7 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
           {/* 标题就是当前界面的名字（书架 / 书城 / 书桌 / 书友圈 / 我的主页），不统一叫「书房」；
               不再在标题下面挂一行解释小字 */}
           <div className="sr-header-title">{tab === "forum" ? forumName : active.title}</div>
-          <span style={{ width: 40 }} />
+          <span style={{ width: 44 }} />
         </div>
       </header>
 
@@ -268,6 +270,7 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
           ) : tab === "forum" ? (
             <StudyRoomForum
               initialPostId={forumPostId ?? undefined}
+              initialCompose={forumCompose}
               onOpenNpcPanel={() => setView({ kind: "npcPanel" })}
               onOpenMine={() => {
                 setView({ kind: "tabs" });
@@ -296,9 +299,16 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
               onOpenWishlist={() => setView({ kind: "wishlist" })}
               onOpenDraft={(draftId) => setView({ kind: "creative", draftId })}
               onOpenPost={(postId) => {
+                setForumCompose(false);
                 setForumPostId(postId);
                 setTab("forum");
               }}
+              onCompose={() => {
+                setForumPostId(null);
+                setForumCompose(true);
+                setTab("forum");
+              }}
+              onOpenDesk={() => setTab("desk")}
             />
           )}
         </div>
@@ -309,6 +319,7 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
         active={tab}
         onSelect={(key) => {
           setForumPostId(null);
+          setForumCompose(false);
           if (key === "draw") {
             setView({ kind: "draw" });
             return;

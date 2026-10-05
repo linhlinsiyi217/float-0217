@@ -66,6 +66,8 @@ type StudyRoomForumProps = {
   onOpenMine: () => void;
   /** 从「我的主页」点动态卡进来时直接打开原帖 */
   initialPostId?: string;
+  /** 从「我的」点「发布第一条动态」进来时直接打开发帖 */
+  initialCompose?: boolean;
 };
 
 const ME = "user";
@@ -92,7 +94,7 @@ function shortError(message: string): string {
  * 普通用户不需要先写话题或提示词：书友与内容会自己生成和维护；
  * 想看什么就搜、想说什么就发，其余交给书友按人设回应。
  */
-export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initialPostId }: StudyRoomForumProps) {
+export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initialPostId, initialCompose }: StudyRoomForumProps) {
   const [state, setState] = useState<ForumState>(() => loadForum());
   const [channel, setChannel] = useState<ForumChannel>("recommend");
   const [view, setView] = useState<
@@ -102,7 +104,9 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
     | { kind: "profile"; npcId: string }
     | { kind: "search"; query: string }
     | { kind: "settings" }
-  >(() => (initialPostId ? { kind: "post", postId: initialPostId } : { kind: "feed" }));
+  >(() =>
+    initialPostId ? { kind: "post", postId: initialPostId } : initialCompose ? { kind: "compose" } : { kind: "feed" },
+  );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [giftTarget, setGiftTarget] = useState<{ postId: string; npcId?: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);

@@ -21,7 +21,12 @@ export type UserProfile = {
   avatar: NpcAvatar;
   /** 是否使用宿主用户身份的头像 */
   useHostAvatar: boolean;
+  /** 自己上传的头像照片（压缩后的 data:image），优先于生成式头像与宿主头像；旧数据没有这一项 */
+  avatarUrl?: string;
 };
+
+/** 状态气泡最多多少字（两三行） */
+export const STATUS_MAX = 40;
 
 function makeId(): string {
   return `uh_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -43,6 +48,9 @@ export function loadProfile(): UserProfile {
           ? (parsed.avatar as NpcAvatar)
           : avatarFromKey(id),
         useHostAvatar: parsed.useHostAvatar === true,
+        ...(typeof parsed.avatarUrl === "string" && parsed.avatarUrl.startsWith("data:image/")
+          ? { avatarUrl: parsed.avatarUrl }
+          : {}),
       };
       return profile;
     }
@@ -57,6 +65,13 @@ export function loadProfile(): UserProfile {
 
 export function saveProfile(profile: UserProfile): void {
   kvSet(KEY, JSON.stringify(profile));
+}
+
+/** 头像地址：上传的照片 > 宿主头像（选了且有）> 生成式头像。 */
+export function profileAvatarSrc(profile: UserProfile, hostAvatar: string | null | undefined, generated: string): string {
+  if (profile.avatarUrl) return profile.avatarUrl;
+  if (profile.useHostAvatar && hostAvatar) return hostAvatar;
+  return generated;
 }
 
 /** 展示名：优先用书房里改过的名字，否则跟随宿主的用户身份。 */

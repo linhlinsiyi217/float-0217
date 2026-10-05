@@ -53,7 +53,19 @@
 2. 设计 Skill `apple-ui-designer`（heyman333/atelier-ui · `skills/apple-ui-designer/SKILL.md`）。
    若 `.claude/skills/apple-ui-designer/SKILL.md` 不存在，说明尚未装进项目，先尝试安装；装不上如实报告。
 
-优先级：用户当次指令与参考图 > DESIGN.md > Skill 默认偏好。
+**强制（2026-10-05 补充）**：每次修改页面布局、组件样式或交互动效**之前**，必须：
+
+- 用 Skill 工具**实际调用**与本次任务相关的已装 Skill（至少 `apple-ui-designer`；
+  需要审查/重修时加 `impeccable`、`redesign-existing-projects`），并**实际重读**当前 DESIGN.md
+  与用户本次的规格文件；不能只凭记忆或上次对话的印象套用。
+- 每个任务开头调用一次即可，不需要每改一条 CSS 属性重复调用。
+- 若 DESIGN.md 与用户最新要求冲突，先同步修正 DESIGN.md，再改界面。
+- 改完必须验证真实效果（类型检查 + 页面实际渲染/截图，或说明为何没法看）；
+  报告里区分「调用了 Skill 文本」和「跑了辅助工具检查」（如 `impeccable detect`），不混为一谈。
+- 用户当次的具体要求、以及由参考图转写出的规格，优先于 DESIGN.md 和 Skill 的默认偏好；
+  Skill 里与本项目冲突的偏好（换字体、加噪点、暖黄底、强行不对称）不采用。
+
+优先级：用户当次指令与规格文件 > 参考图 > DESIGN.md > Skill 默认偏好。
 交付时说明实际用了哪些设计规则，不能只写「使用了 Skill」；设计分析不写进产品界面。
 长任务的阶段进度写在 [docs/progress/](./docs/progress/)，中断后从记录继续。
 
