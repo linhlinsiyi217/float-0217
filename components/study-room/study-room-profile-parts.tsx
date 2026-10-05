@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
-import { ChevronRight, Heart, MessageCircle, Plus } from "lucide-react";
+import { ChevronRight, Heart, MessageCircle } from "lucide-react";
 
 import { KIND_TEXT, type ForumPost } from "@/lib/study-room/forum";
 
@@ -17,9 +17,46 @@ export function shortTime(iso: string): string {
   return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
 }
 
+
 /**
- * 主页身份区：头像在左、名字与真实统计在右；状态气泡锚定在头像上方。
- * 气泡：有内容就显示；自己的主页没内容时只留一个小「＋」，不常驻「点击编辑」字样。
+ * 云朵思考气泡：轮廓严格取自用户指定素材（/study-room/bubble/bubble-mask.png）。
+ * 玻璃层 = 素材蒙版 + 半透明白 + 背景模糊；边缘高光层 = 素材细边蒙版；文字是真实文字层，只放在主体安全区内，尾巴不放字。
+ */
+function ThoughtBubble({ text, onEdit }: { text: string; onEdit?: () => void }) {
+  const inner = (
+    <>
+      <span className="sr-pf-bubble-part" data-part="dot" aria-hidden>
+        <span className="sr-pf-bubble-shadow" />
+        <span className="sr-pf-bubble-glass" />
+        <span className="sr-pf-bubble-rim" />
+      </span>
+      <span className="sr-pf-bubble-part" data-part="body">
+        <span className="sr-pf-bubble-shadow" aria-hidden />
+        <span className="sr-pf-bubble-glass" aria-hidden />
+        <span className="sr-pf-bubble-rim" aria-hidden />
+        <span className="sr-pf-bubble-text" data-empty={text ? undefined : "true"}>
+          <span>{text || "写点此刻的状态"}</span>
+        </span>
+      </span>
+    </>
+  );
+  if (onEdit) {
+    return (
+      <button type="button" className="sr-pf-bubble" onClick={onEdit} aria-label={text ? `状态：${text}，点按修改` : "设置状态"}>
+        {inner}
+      </button>
+    );
+  }
+  return (
+    <div className="sr-pf-bubble" role="note" aria-label={`状态：${text}`}>
+      {inner}
+    </div>
+  );
+}
+
+/**
+ * 主页身份区：头像在左、名字与真实统计在右；云朵气泡在头像上方，尾巴指向头像。
+ * 自己的主页没写状态时显示一行淡色提示（不放大加号）；他人主页没内容就不显示气泡。
  */
 export function ProfileHero({
   avatarSrc,
@@ -30,6 +67,7 @@ export function ProfileHero({
   stats,
   bubble,
   onEditBubble,
+  corner,
 }: {
   avatarSrc: string;
   name: string;
@@ -40,30 +78,20 @@ export function ProfileHero({
   bubble: string;
   /** 只有自己的主页可编辑气泡 */
   onEditBubble?: () => void;
+  /** 右上角的小按钮（如设置） */
+  corner?: ReactNode;
 }) {
   const text = bubble.trim();
-  let bubbleNode: ReactNode = null;
-  if (onEditBubble) {
-    bubbleNode = text ? (
-      <button type="button" className="sr-pf-bubble" onClick={onEditBubble} aria-label={`状态：${text}，点按修改`}>
-        <span className="sr-pf-bubble-text">{text}</span>
-      </button>
-    ) : (
-      <button type="button" className="sr-pf-bubble sr-pf-bubble--add" onClick={onEditBubble} aria-label="设置状态">
-        <Plus size={15} strokeWidth={2} />
-      </button>
-    );
-  } else if (text) {
-    bubbleNode = (
-      <div className="sr-pf-bubble" role="note" aria-label={`状态：${text}`}>
-        <span className="sr-pf-bubble-text">{text}</span>
-      </div>
-    );
-  }
+  const showBubble = Boolean(onEditBubble) || Boolean(text);
 
   return (
-    <div className="sr-pf-hero">
-      {bubbleNode && <div className="sr-pf-bubble-slot">{bubbleNode}</div>}
+    <div className="sr-pf-hero" data-bubble={showBubble ? "true" : undefined}>
+      {corner && <div className="sr-pf-hero-corner">{corner}</div>}
+      {showBubble && (
+        <div className="sr-pf-bubble-slot">
+          <ThoughtBubble text={text} onEdit={onEditBubble} />
+        </div>
+      )}
       <div className="sr-pf-hero-row">
         <span className="sr-pf-avatar" aria-hidden>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -229,21 +257,16 @@ export function PostStrip({
             disabled={!onOpen}
             draggable={false}
           >
-            {cover ? (
-              <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img className="sr-pf-card-img" src={cover} alt="" draggable={false} />
-                <span className="sr-pf-card-body">
-                  {heading && <span className="sr-pf-card-title">{heading}</span>}
-                  <span className="sr-pf-card-excerpt sr-pf-card-excerpt--short">{post.body}</span>
-                </span>
-              </>
-            ) : (
+            <span className="sr-pf-card-main">
               <span className="sr-pf-card-body">
                 {heading && <span className="sr-pf-card-title">{heading}</span>}
-                <span className="sr-pf-card-excerpt">{post.body}</span>
+                <span className="sr-pf-card-excerpt" data-lines={heading ? "2" : "3"}>{post.body}</span>
               </span>
-            )}
+              {cover && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img className="sr-pf-card-img" src={cover} alt="" draggable={false} />
+              )}
+            </span>
             <span className="sr-pf-card-foot">
               <span className="sr-pf-card-kind">{KIND_TEXT[post.kind]}</span>
               <span className="sr-pf-card-time">{shortTime(post.createdAt)}</span>

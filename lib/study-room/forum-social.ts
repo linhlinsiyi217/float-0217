@@ -6,6 +6,8 @@
 //  - 生成规则可编辑，但默认开箱可用；生成按需触发、可停止、带冷却。
 
 import { simpleLLMCall } from "@/lib/api-helpers";
+import { loadCharacters } from "@/lib/character-storage";
+import { loadBindingConfig, loadWorldBooks, resolveBinding } from "@/lib/settings-storage";
 import { avatarFromKey } from "./npc-avatar";
 import {
   DEFAULT_FORUM_RULES,
@@ -334,6 +336,61 @@ export function scheduleReplies(
   return { ...state, pendingReplies: [...state.pendingReplies, ...planned] };
 }
 
+/**
+ * 请书友回复某一条评论（用户主动点「请书友回复这条」，或用户回复了某位书友）。
+ * 被回复的是书友且还能说话，就由 TA 接话；否则挑一位合适的书友。
+ * 上限与去重照旧：同一条评论已经有人在排队就不再安排，避免来回循环。
+ */
+export function scheduleCommentReply(
+  state: ForumState,
+  postId: string,
+  commentId: string,
+  options: { soon?: boolean } = {},
+): { state: ForumState; npcId: string | null; reason?: string } {
+  const post = state.posts.find((item) => item.id === postId);
+  const target = post?.comments.find((item) => item.id === commentId);
+  if (!post || !target) return { state, npcId: null, reason: "这条评论已经不在了" };
+  const npcCommentCount = post.comments.filter((comment) => comment.authorKind === "npc").length;
+  const pendingOnPost = state.pendingReplies.filter((item) => item.postId === postId);
+  if (MAX_NPC_COMMENTS_PER_POST - npcCommentCount - pendingOnPost.length <= 0) {
+    return { state, npcId: null, reason: "这条帖子里书友已经聊得够多了" };
+  }
+  if (pendingOnPost.some((item) => item.replyToId === commentId)) {
+    return { state, npcId: null, reason: "已经有书友准备回这条了" };
+  }
+  const spoken = (npcId: string) => post.comments.filter((comment) => comment.authorId === npcId).length;
+  const usable = (npc: ForumNpc) =>
+    !state.mutedNpcIds.includes(npc.id) &&
+    spoken(npc.id) < MAX_COMMENTS_PER_NPC + 1 &&
+    !pendingOnPost.some((item) => item.npcId === npc.id);
+
+  let npc: ForumNpc | undefined;
+  // 用户回复了某位书友：由那位书友接话；其余情况挑一位别的书友（书友不接自己的话）
+  if (target.authorKind === "user" && target.replyToId) {
+    const parent = post.comments.find((item) => item.id === target.replyToId);
+    const author = parent?.authorKind === "npc" ? state.npcs.find((item) => item.id === parent.authorId) : undefined;
+    if (author && usable(author)) npc = author;
+  }
+  if (!npc) {
+    const topic: ForumTopic = {
+      key: post.topics?.[0] ?? post.bookTitle ?? post.title ?? "帖子",
+      label: post.title ?? post.bookTitle ?? "这条帖子",
+      bookTitle: post.bookTitle,
+    };
+    npc = pickParticipants(state, topic, 6).find((item) => item.id !== target.authorId && usable(item));
+  }
+  if (!npc) return { state, npcId: null, reason: "暂时没有能接话的书友" };
+  const delay = options.soon === false ? 20_000 + Math.random() * 30_000 : 1_500;
+  const reply: PendingReply = {
+    id: `pr_${Date.now()}_c_${Math.random().toString(36).slice(2, 5)}`,
+    postId,
+    npcId: npc.id,
+    dueAt: new Date(Date.now() + delay).toISOString(),
+    replyToId: commentId,
+  };
+  return { state: { ...state, pendingReplies: [...state.pendingReplies, reply] }, npcId: npc.id };
+}
+
 export function dueReplies(state: ForumState, now = Date.now()): PendingReply[] {
   return state.pendingReplies.filter((item) => new Date(item.dueAt).getTime() <= now);
 }
@@ -390,7 +447,37 @@ export function isDuplicateComment(post: ForumPost, npcId: string, body: string)
   });
 }
 
-export function buildCommentPrompt(post: ForumPost, npc: ForumNpc, rules: ForumRules): string {
+/**
+ * 角色卡书友的隐藏背景：沿用小手机里给这个角色绑定的世界书（书房应用的绑定，没有就继承角色/全局默认），
+ * 只取常驻条目，限制长度；不在界面上显示，只作为生成时的背景。
+ */
+export function npcHiddenContext(npc: ForumNpc): string {
+  if (!npc.characterId) return "";
+  try {
+    const character = loadCharacters().find((item) => item.id === npc.characterId);
+    const slot = resolveBinding(loadBindingConfig(), npc.characterId, "studyroom");
+    const books = loadWorldBooks().filter((book) => (slot.worldBookIds ?? []).includes(book.id));
+    const lore = books
+      .flatMap((book) => book.entries.filter((entry) => !entry.disable && entry.constant).map((entry) => entry.content.trim()))
+      .filter(Boolean)
+      .join("\n")
+      .slice(0, 1200);
+    return [
+      character?.persona ? `你的人设（只作背景，别照念）：${character.persona.slice(0, 600)}` : "",
+      lore ? `世界设定（只作背景）：\n${lore}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  } catch {
+    return "";
+  }
+}
+
+export function buildCommentPrompt(post: ForumPost, npc: ForumNpc, rules: ForumRules, target?: ForumComment): string {
+  const recent = post.comments
+    .slice(-6)
+    .map((comment) => `- ${comment.authorName}：${comment.body.slice(0, 80)}`)
+    .join("\n");
   return [
     `你是${npc.nickname}，读书论坛「书友圈」里的书友。`,
     npc.occupation ? `职业/领域：${npc.occupation}。` : "",
@@ -404,6 +491,11 @@ export function buildCommentPrompt(post: ForumPost, npc: ForumNpc, rules: ForumR
     post.bookTitle ? `关联书籍：《${post.bookTitle}》` : "",
     post.title ? `标题：${post.title}` : "",
     `正文：${post.body.slice(0, 600)}`,
+    recent ? `已有评论（不要重复这些说法）：\n${recent}` : "",
+    target
+      ? `你这次是回复 ${target.authorName}${target.authorId === USER_ID ? "（用户本人）" : ""} 的这条评论：「${target.body.slice(0, 200)}」。直接接着这句说，不要另起话题。`
+      : "",
+    npcHiddenContext(npc),
     "",
     `评论要求：${rules.commentLength}；${rules.commentTone}；${rules.commentRelation}。`,
     "写法：像真人在论坛回帖——可以只回一句，也可以问一句；不要客服腔、不要说教、不要每次都用同一种句式。",
@@ -439,10 +531,11 @@ export async function generateComment(
   npc: ForumNpc,
   rules: ForumRules,
   signal?: AbortSignal,
+  target?: ForumComment,
 ): Promise<CommentResult> {
   const apiConfig = resolveForumApiConfig();
   if (!apiConfig) return { status: "no-api" };
-  const result = await simpleLLMCall(apiConfig, [{ role: "user", content: buildCommentPrompt(post, npc, rules) }], {
+  const result = await simpleLLMCall(apiConfig, [{ role: "user", content: buildCommentPrompt(post, npc, rules, target) }], {
     temperature: 0.9,
     max_tokens: 400,
     signal,
@@ -454,13 +547,14 @@ export async function generateComment(
   return { status: "ok", body };
 }
 
-export function makeComment(npc: ForumNpc, body: string): ForumComment {
+export function makeComment(npc: ForumNpc, body: string, replyToId?: string): ForumComment {
   return {
     id: `fc_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
     authorId: npc.id,
     authorName: npc.nickname,
     authorKind: "npc",
     body,
+    replyToId,
     createdAt: new Date().toISOString(),
   };
 }
@@ -479,9 +573,21 @@ export function applyComment(state: ForumState, reply: PendingReply, body: strin
   let next: ForumState = {
     ...state,
     posts: state.posts.map((item) =>
-      item.id === post.id ? { ...item, comments: [...item.comments, makeComment(npc, body)] } : item,
+      item.id === post.id ? { ...item, comments: [...item.comments, makeComment(npc, body, reply.replyToId)] } : item,
     ),
   };
+
+  // 书友回了用户的评论（不在用户自己的帖子里）：也通知一声
+  const target = reply.replyToId ? post.comments.find((item) => item.id === reply.replyToId) : undefined;
+  if (target?.authorId === USER_ID && post.authorId !== USER_ID) {
+    next = pushNotification(next, {
+      kind: "comment",
+      fromId: npc.id,
+      fromName: npc.nickname,
+      postId: post.id,
+      text: body.slice(0, 60),
+    });
+  }
 
   if (post.authorId === USER_ID) {
     next = pushNotification(next, {

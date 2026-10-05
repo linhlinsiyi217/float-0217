@@ -126,6 +126,8 @@ export type PendingReply = {
   postId: string;
   npcId: string;
   dueAt: string;
+  /** 回复某一条评论（用户点了「请书友回复这条」，或书友被用户回复后接话） */
+  replyToId?: string;
 };
 
 /** 论坛生成规则：分五组，默认开箱可用，普通用户不需要改。 */

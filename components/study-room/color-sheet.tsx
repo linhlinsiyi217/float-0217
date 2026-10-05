@@ -50,6 +50,16 @@ function parseColor(input: string): Rgba {
   return { r: 10, g: 132, b: 255, a: 1 };
 }
 
+/** 能识别的颜色写法：#RGB / #RRGGBB / #RRGGBBAA / rgb() / rgba()。 */
+function isParsableColor(input: string): boolean {
+  const value = (input || "").trim();
+  if (/^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value)) return true;
+  const rgb = value.match(/^rgba?(([^)]+))$/i);
+  if (!rgb) return false;
+  const parts = rgb[1].split(",").map((p) => Number(p.trim()));
+  return parts.length >= 3 && parts.length <= 4 && parts.every((n) => Number.isFinite(n));
+}
+
 function toHex({ r, g, b }: Rgba): string {
   const h = (n: number) => clamp(Math.round(n), 0, 255).toString(16).padStart(2, "0");
   return `#${h(r)}${h(g)}${h(b)}`;
@@ -118,6 +128,7 @@ export function ColorSheet({ title, value, onChange, onClose }: ColorSheetProps)
   const [v, setV] = useState(initialHsv.v);
   const [a, setA] = useState(initial.a);
   const [hexDraft, setHexDraft] = useState(toHex(initial));
+  const [hexError, setHexError] = useState(false);
   const [recent, setRecent] = useState<string[]>([]);
 
   useEffect(() => setRecent(loadRecent()), []);
@@ -154,6 +165,12 @@ export function ColorSheet({ title, value, onChange, onClose }: ColorSheetProps)
   const handleAlpha = (na: number) => { setA(na); emit(h, s, v, na); };
 
   const handleHexCommit = () => {
+    // 输错的值不采用：保留当前颜色并提示，不会悄悄换成默认色
+    if (!isParsableColor(hexDraft)) {
+      setHexError(true);
+      return;
+    }
+    setHexError(false);
     const parsed = parseColor(hexDraft);
     const hsv = rgbToHsv(parsed);
     setH(hsv.h); setS(hsv.s); setV(hsv.v); setA(parsed.a);
@@ -248,13 +265,15 @@ export function ColorSheet({ title, value, onChange, onClose }: ColorSheetProps)
             <span>HEX</span>
             <input
               value={hexDraft}
-              onChange={(e) => setHexDraft(e.target.value)}
+              onChange={(e) => { setHexDraft(e.target.value); setHexError(false); }}
               onBlur={handleHexCommit}
               onKeyDown={(e) => { if (e.key === "Enter") handleHexCommit(); }}
               spellCheck={false}
               aria-label="HEX 颜色"
+              aria-invalid={hexError || undefined}
             />
           </label>
+          {hexError && <span className="sr-color-error" role="alert">颜色格式不对，例如 #5B7DB1</span>}
           <div className="sr-rgb">
             <label className="sr-field sr-field--sm"><span>R</span>
               <input value={Math.round(current.r)} onChange={(e) => handleRgb("r", e.target.value)} inputMode="numeric" aria-label="红" /></label>

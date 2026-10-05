@@ -298,6 +298,10 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
               onOpenUpdateLog={() => setView({ kind: "updateLog" })}
               onOpenWishlist={() => setView({ kind: "wishlist" })}
               onOpenDraft={(draftId) => setView({ kind: "creative", draftId })}
+              onOpenBook={(book) => {
+                lastOpenedBookRef.current = book.id;
+                setView({ kind: "reader", book });
+              }}
               onOpenPost={(postId) => {
                 setForumCompose(false);
                 setForumPostId(postId);
