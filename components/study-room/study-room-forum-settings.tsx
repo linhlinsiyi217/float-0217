@@ -36,8 +36,10 @@ const GROUPS: Group[] = [
   {
     key: "comment",
     label: "评论与回复",
-    desc: "控制书友评论的长度、语气、关系感与是否追问",
+    desc: "书友要不要自动回、每次几位，以及评论的长度、语气与关系感",
     fields: [
+      { key: "autoReply", label: "书友自动回复", kind: "toggle" },
+      { key: "replyCount", label: "每次几位回应（1–5）", kind: "number" },
       { key: "commentLength", label: "长度", kind: "text", rows: 2 },
       { key: "commentTone", label: "语气", kind: "text", rows: 2 },
       { key: "commentRelation", label: "关系感", kind: "text", rows: 2 },
@@ -189,8 +191,8 @@ export function StudyRoomForumSettings({
                         <input
                           className="sr-appear-input"
                           type="number"
-                          min={0}
-                          max={40}
+                          min={field.key === "replyCount" ? 1 : 0}
+                          max={field.key === "replyCount" ? 5 : 40}
                           value={Number(draft[field.key] ?? 0)}
                           onChange={(event) => setField(field.key, Number(event.target.value))}
                           aria-label={field.label}

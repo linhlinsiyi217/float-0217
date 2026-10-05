@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bell, ChevronLeft, Compass, Loader2, PenLine, Search, X } from "lucide-react";
+import { Bell, ChevronLeft, Compass, Loader2, MessageSquare, PenLine, RotateCw, Search, Square, X } from "lucide-react";
 
 import { loadBooks } from "@/lib/reading-storage";
 import type { Book } from "@/lib/reading-types";
@@ -13,22 +13,33 @@ import {
   hidePost,
   loadForum,
   makeFriendFromNpc,
+  resolveForumApiConfig,
   saveForum,
   toggleLike,
   unhidePost,
+  unmuteNpc,
   type ForumNpc,
   type ForumPost,
   type ForumState,
-  type ForumTopic,
+  type PendingReply,
 } from "@/lib/study-room/forum";
 import {
   CHANNEL_LABEL,
+  FEED_REFRESH_KEY,
   applyComment,
+  blockNpc,
   channelPosts,
+  clearPostReplies,
   consumeReply,
+  dedupePosts,
+  deleteOwnComment,
   dueReplies,
   ensureSeeded,
+  feedRefreshDue,
   generateComment,
+  normalizeRules,
+  pickFeedTopic,
+  type CommentResult,
   isFollowing,
   markNotificationsRead,
   pushNotification,
@@ -58,7 +69,23 @@ type StudyRoomForumProps = {
 };
 
 const ME = "user";
-const REPLY_TICK_MS = 20_000;
+/** 停留在书友圈时多久看一次排队的回应（离开书友圈就不再生成，回来后接着来）。 */
+const REPLY_TICK_MS = 8_000;
+
+/** 书友回应出的问题：没配模型（排队的回应保留），或某一条生成失败（可重试）。 */
+type ReplyIssue =
+  | { kind: "no-api" }
+  | { kind: "error"; postId: string; npcName: string; message: string; reply: PendingReply };
+
+function openApiSettings() {
+  // 复用宿主的设置应用，直接打开「API 设置」页
+  window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: "settings", settingsPage: "api" } }));
+}
+
+function shortError(message: string): string {
+  const text = message.replace(/\s+/g, " ").trim();
+  return text.length > 60 ? `${text.slice(0, 60)}…` : text || "未知原因";
+}
 
 /**
  * 书友圈：进来就是能读的信息流。
@@ -81,9 +108,14 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [showHidden, setShowHidden] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
+  /** 正在「打字」的书友：真实的进行中请求，停止即中断 */
+  const [typing, setTyping] = useState<{ postId: string; npcName: string } | null>(null);
+  const [replyIssue, setReplyIssue] = useState<ReplyIssue | null>(null);
+  const [feedError, setFeedError] = useState<string | null>(null);
+  const replyAbortRef = useRef<AbortController | null>(null);
+  const feedAbortRef = useRef<AbortController | null>(null);
+  const processingRef = useRef(false);
   const bootstrappedRef = useRef(false);
-  const feedBootstrappedRef = useRef(false);
   const books = useMemo(() => {
     const map: Record<string, Book> = {};
     for (const book of loadBooks()) map[book.id] = book;
@@ -103,7 +135,64 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
     window.setTimeout(() => setNotice((current) => (current === message ? null : current)), ms);
   }, []);
 
-  // 首次进入：没有书友就先建一批（本地生成，不依赖 API）
+  /**
+   * 刷新首页：请几位书友按「热门话题」各发一条新帖。
+   * 过程可见、可停止；没配模型就引导去设置，失败就如实说并给重试。
+   */
+  const refreshFeed = useCallback(
+    async (auto: boolean) => {
+      if (feedAbortRef.current) return;
+      const current = loadForum();
+      const active = current.npcs.filter((npc) => !current.mutedNpcIds.includes(npc.id));
+      if (active.length === 0) {
+        if (!auto) flash("书友圈里还没有能发帖的书友，先去「书友管理」请几位");
+        return;
+      }
+      if (!resolveForumApiConfig()) {
+        setReplyIssue({ kind: "no-api" });
+        return;
+      }
+      const controller = new AbortController();
+      feedAbortRef.current = controller;
+      setBusy("feed");
+      setFeedError(null);
+      try {
+        const rules = normalizeRules(current.rules);
+        const topic = pickFeedTopic(current);
+        const participants = pickParticipants(current, topic, Math.max(2, Math.min(rules.feedCount, 4)));
+        const created = await generateForumPosts(current, topic, participants, controller.signal);
+        if (controller.signal.aborted) return;
+        const fresh = dedupePosts(loadForum().posts, created).slice(0, Math.max(1, rules.feedCount));
+        const stamp = new Date().toISOString();
+        mutate((prev) => ({
+          ...prev,
+          posts: [...dedupePosts(prev.posts, fresh), ...prev.posts],
+          generatedAt: { ...prev.generatedAt, [FEED_REFRESH_KEY]: stamp },
+        }));
+        if (!auto || fresh.length === 0) {
+          flash(fresh.length > 0 ? `书友们发了 ${fresh.length} 条新帖` : "这次的内容和已有帖子重复了，没有加进来");
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setFeedError(shortError(error instanceof Error ? error.message : String(error)));
+        }
+      } finally {
+        if (feedAbortRef.current === controller) feedAbortRef.current = null;
+        setBusy((value) => (value === "feed" ? null : value));
+      }
+    },
+    [flash, mutate],
+  );
+
+  const stopFeed = () => {
+    feedAbortRef.current?.abort();
+    feedAbortRef.current = null;
+    setBusy((value) => (value === "feed" ? null : value));
+    flash("已停止，这次没有新帖");
+  };
+
+  // 首次进入：没有书友就先建一批（本地生成，不依赖 API）；
+  // 没有帖子、或很久没刷新过，就请书友们发几条新帖（只在打开书友圈时进行）
   useEffect(() => {
     if (bootstrappedRef.current) return;
     bootstrappedRef.current = true;
@@ -112,79 +201,137 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
       saveForum(seeded);
       setState(seeded);
     }
-  }, []);
-
-  // 首次进入且还没有帖子：让书友先聊几句（按生成规则里的数量），生成不了就如实说明
-  useEffect(() => {
-    if (feedBootstrappedRef.current) return;
-    const current = loadForum();
-    if (current.posts.length > 0 || current.npcs.length === 0) return;
-    feedBootstrappedRef.current = true;
-    const controller = new AbortController();
-    abortRef.current = controller;
-    void (async () => {
-      setBusy("feed");
-      try {
-        const topic: ForumTopic = {
-          key: "首页动态",
-          label: current.rules.hotTopics.slice(0, 40) || "最近在读什么",
-          prompt: current.rules.feedTypes,
-        };
-        const participants = pickParticipants(current, topic, Math.max(2, Math.min(current.rules.feedCount, 4)));
-        const created = await generateForumPosts(current, topic, participants, controller.signal);
-        if (controller.signal.aborted) return;
-        mutate((prev) => ({ ...prev, posts: [...created.slice(0, Math.max(1, prev.rules.feedCount)), ...prev.posts] }));
-      } catch {
-        if (!controller.signal.aborted) {
-          flash("暂时生成不了初始内容（可能还没绑定模型，或来源暂时不可用）。你可以自己发一条，或到「生成规则」里检查设置。", 4600);
-        }
-      } finally {
-        if (!controller.signal.aborted) setBusy(null);
-      }
-    })();
-    return () => controller.abort();
+    if (initialPostId) return;
+    if (seeded.posts.length === 0 || feedRefreshDue(seeded)) void refreshFeed(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 计划中的书友评论：到点就生成一条（错时出现，刷新后继续）
+  // 排队的书友回应：到点就生成一条。一次只跑一个请求，过程可见、可停止；
+  // 失败的那条留着给重试，没配模型就暂停（回应留在队列里，配置好后接着来）。
   const processDueReplies = useCallback(async () => {
-    const current = loadForum();
-    const due = dueReplies(current).slice(0, 2);
-    if (due.length === 0) return;
-    for (const reply of due) {
-      const post = current.posts.find((item) => item.id === reply.postId);
-      const npc = current.npcs.find((item) => item.id === reply.npcId);
-      if (!post || !npc) {
-        mutate((prev) => consumeReply(prev, reply.id));
-        continue;
-      }
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
-      try {
-        const body = await generateComment(post, npc, current.rules, controller.signal);
-        if (controller.signal.aborted) return;
-        if (!body) {
+    if (processingRef.current) return;
+    processingRef.current = true;
+    try {
+      for (let round = 0; round < 2; round += 1) {
+        const current = loadForum();
+        const reply = dueReplies(current)[0];
+        if (!reply) return;
+        const post = current.posts.find((item) => item.id === reply.postId);
+        const npc = current.npcs.find((item) => item.id === reply.npcId);
+        if (!post || !npc || current.mutedNpcIds.includes(npc.id)) {
           mutate((prev) => consumeReply(prev, reply.id));
           continue;
         }
-        mutate((prev) => applyComment(prev, reply, body));
-      } catch {
-        mutate((prev) => consumeReply(prev, reply.id));
+        if (!resolveForumApiConfig()) {
+          setReplyIssue({ kind: "no-api" });
+          return;
+        }
+        const controller = new AbortController();
+        replyAbortRef.current = controller;
+        setTyping({ postId: post.id, npcName: npc.nickname });
+        let result: CommentResult;
+        try {
+          result = await generateComment(post, npc, normalizeRules(current.rules), controller.signal);
+        } catch (error) {
+          result = { status: "error", message: error instanceof Error ? error.message : String(error) };
+        } finally {
+          setTyping(null);
+          if (replyAbortRef.current === controller) replyAbortRef.current = null;
+        }
+        if (controller.signal.aborted) return;
+        if (result.status === "ok") {
+          const body = result.body;
+          mutate((prev) => applyComment(prev, reply, body));
+          setReplyIssue((issue) => (issue?.kind === "no-api" ? null : issue));
+        } else if (result.status === "no-api") {
+          setReplyIssue({ kind: "no-api" });
+          return;
+        } else {
+          // 失败的这条先移出队列（避免一直重复失败），保留下来给用户手动重试
+          mutate((prev) => consumeReply(prev, reply.id));
+          setReplyIssue({ kind: "error", postId: post.id, npcName: npc.nickname, message: shortError(result.message), reply });
+          return;
+        }
       }
+    } finally {
+      processingRef.current = false;
     }
   }, [mutate]);
 
   useEffect(() => {
     const timer = window.setInterval(() => void processDueReplies(), REPLY_TICK_MS);
-    const initial = window.setTimeout(() => void processDueReplies(), 4000);
+    const initial = window.setTimeout(() => void processDueReplies(), 2500);
     return () => {
       window.clearInterval(timer);
       window.clearTimeout(initial);
     };
   }, [processDueReplies]);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  // 离开书友圈：进行中的请求一并中断（排队的回应留着，回来后接着生成）
+  useEffect(
+    () => () => {
+      replyAbortRef.current?.abort();
+      feedAbortRef.current?.abort();
+    },
+    [],
+  );
+
+  /** 停止某条帖子的回应：中断正在输入的那位，并取消剩下排队的。 */
+  const stopReplies = (postId: string) => {
+    if (typing?.postId === postId) replyAbortRef.current?.abort();
+    setTyping((value) => (value?.postId === postId ? null : value));
+    mutate((prev) => clearPostReplies(prev, postId));
+    flash("已停止，这条帖子剩下的回应不再生成");
+  };
+
+  const retryReply = () => {
+    if (replyIssue?.kind !== "error") return;
+    const reply: PendingReply = { ...replyIssue.reply, dueAt: new Date().toISOString() };
+    mutate((prev) => ({
+      ...prev,
+      pendingReplies: [...prev.pendingReplies.filter((item) => item.id !== reply.id), reply],
+    }));
+    setReplyIssue(null);
+    window.setTimeout(() => void processDueReplies(), 300);
+  };
+
+  /** 用户主动请书友回应（不受「自动回复」开关影响，人数与上限照旧）。 */
+  const requestReplies = (postId: string) => {
+    if (!resolveForumApiConfig()) {
+      setReplyIssue({ kind: "no-api" });
+      return;
+    }
+    const before = loadForum();
+    const planned = scheduleReplies(before, postId, { manual: true, soon: true });
+    if (planned.pendingReplies.length === before.pendingReplies.length) {
+      flash("这条帖子里书友已经聊得够多了，换一条试试");
+      return;
+    }
+    mutate((prev) => scheduleReplies(prev, postId, { manual: true, soon: true }));
+    window.setTimeout(() => void processDueReplies(), 1800);
+  };
+
+  /** 发帖或评论后：按「自动回复」设置安排书友回应，并如实说明什么时候会出现。 */
+  const afterUserActivity = (postId: string, done: string) => {
+    const current = loadForum();
+    if (current.rules.autoReply === false) {
+      flash(`${done}。自动回复已关闭，想听书友说什么可以点「请书友回应」`, 3600);
+      return;
+    }
+    if (!resolveForumApiConfig()) {
+      setReplyIssue({ kind: "no-api" });
+      flash(done);
+      return;
+    }
+    mutate((prev) => scheduleReplies(prev, postId));
+    flash(`${done}。停留在书友圈时，书友会陆续回应；离开后暂停，回来接着来`, 3600);
+  };
+
+  const handleBlock = (npcId: string) => {
+    const npc = state.npcs.find((item) => item.id === npcId);
+    mutate((prev) => blockNpc(prev, npcId));
+    flash(`已屏蔽 ${npc?.nickname ?? "这位书友"}，可以在「书友管理」里解除`);
+  };
 
   const handleLike = (post: ForumPost) => {
     const liked = post.likedBy.includes(ME);
@@ -215,9 +362,8 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
         createdAt: new Date().toISOString(),
       }),
     );
-    // 用户参与后，安排书友在稍后错时回应
-    mutate((prev) => scheduleReplies(prev, post.id, 3));
-    flash("已评论，书友们过一会儿会陆续回应");
+    // 用户参与后，按设置安排书友错时回应
+    afterUserActivity(post.id, "已评论");
   };
 
   const handleFollow = (npc: ForumNpc) => {
@@ -262,10 +408,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
     });
   };
 
-  const posts = useMemo(() => {
-    const list = channelPosts(state, channel);
-    return showHidden ? list : list;
-  }, [state, channel, showHidden]);
+  const posts = useMemo(() => channelPosts(state, channel), [state, channel]);
 
   const hiddenInFeed = useMemo(
     () => channelPosts({ ...state, hiddenPostIds: [] }, channel).filter((post) => state.hiddenPostIds.includes(post.id)),
@@ -273,6 +416,78 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
   );
 
   const unread = unreadNotifications(state);
+
+  /** 没配模型时的提示：如实说明，并给出去设置的入口。 */
+  const noApiCard =
+    replyIssue?.kind === "no-api" ? (
+      <div className="sr-note-card">
+        <div className="sr-note-meta" style={{ lineHeight: 1.7 }}>
+          还没有配置模型 API，书友暂时没法发帖和回应。配置好后回到这里，排队的回应会接着出现。
+        </div>
+        <div className="sr-css-actions">
+          <button type="button" className="sr-chip" onClick={() => setReplyIssue(null)}>
+            知道了
+          </button>
+          <button type="button" className="sr-chip" data-active="true" onClick={openApiSettings}>
+            去设置模型
+          </button>
+        </div>
+      </div>
+    ) : null;
+
+  /** 帖子详情里的书友回应状态：正在输入 / 排队中 / 失败重试 / 请书友回应。 */
+  const renderReplyPanel = (postId: string) => {
+    const queued = state.pendingReplies.filter((item) => item.postId === postId).length;
+    const typingHere = typing?.postId === postId ? typing : null;
+    const failed = replyIssue?.kind === "error" && replyIssue.postId === postId ? replyIssue : null;
+    return (
+      <div className="sr-forum-reply-panel" style={{ margin: "10px 0" }}>
+        {noApiCard}
+        {failed && (
+          <div className="sr-note-card">
+            <div className="sr-note-meta" style={{ lineHeight: 1.7 }}>
+              {failed.npcName} 没回上来：{failed.message}
+            </div>
+            <div className="sr-css-actions">
+              <button type="button" className="sr-chip" onClick={() => setReplyIssue(null)}>
+                算了
+              </button>
+              <button type="button" className="sr-chip" data-active="true" onClick={retryReply}>
+                <RotateCw size={13} strokeWidth={1.8} />
+                重试
+              </button>
+            </div>
+          </div>
+        )}
+        {typingHere || queued > 0 ? (
+          <div className="sr-css-actions" style={{ alignItems: "center" }}>
+            <span className="sr-note-meta" style={{ marginRight: "auto", lineHeight: 1.6 }}>
+              {typingHere ? (
+                <>
+                  <Loader2 size={12} className="sr-spin" /> {typingHere.npcName} 正在输入…
+                </>
+              ) : (
+                `还有 ${queued} 位书友准备回应（停留在书友圈时陆续出现，离开后暂停）`
+              )}
+            </span>
+            <button type="button" className="sr-chip" onClick={() => stopReplies(postId)}>
+              <Square size={12} strokeWidth={1.8} />
+              停止回应
+            </button>
+          </div>
+        ) : (
+          !failed && (
+            <div className="sr-css-actions">
+              <button type="button" className="sr-chip" onClick={() => requestReplies(postId)}>
+                <MessageSquare size={13} strokeWidth={1.8} />
+                请书友回应
+              </button>
+            </div>
+          )
+        )}
+      </div>
+    );
+  };
 
   // ── 子视图 ──
   if (view.kind === "compose") {
@@ -284,8 +499,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
         onMutate={mutate}
         onPublished={(postId) => {
           setView({ kind: "feed" });
-          mutate((prev) => scheduleReplies(prev, postId, 3));
-          flash("已发布，书友们的回应会陆续出现");
+          afterUserActivity(postId, "已发布");
         }}
         onNotice={flash}
         onOpenSettings={() => setView({ kind: "settings" })}
@@ -338,6 +552,19 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
           setView({ kind: "feed" });
           flash("已删除这条帖子");
         }}
+        onDeleteComment={(commentId) => {
+          mutate((prev) => deleteOwnComment(prev, post.id, commentId));
+          flash("已删除这条评论");
+        }}
+        onBlockAuthor={
+          post.authorKind === "npc"
+            ? () => {
+                handleBlock(post.authorId);
+                setView({ kind: "feed" });
+              }
+            : undefined
+        }
+        replyPanel={renderReplyPanel(post.id)}
       />
     );
   }
@@ -367,6 +594,14 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
         onChat={() => handleOpenChat(npc)}
         onOpenPost={(postId) => setView({ kind: "post", postId })}
         busy={busy === npc.id}
+        onToggleBlock={() => {
+          if (state.mutedNpcIds.includes(npc.id)) {
+            mutate((prev) => unmuteNpc(prev, npc.id));
+            flash(`已解除屏蔽 ${npc.nickname}`);
+          } else {
+            handleBlock(npc.id);
+          }
+        }}
       />
     );
   }
@@ -451,6 +686,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
                       onOpenAuthor={(npcId) => setView({ kind: "profile", npcId })}
                       onGift={() => setGiftTarget({ postId: post.id, npcId: post.authorKind === "npc" ? post.authorId : undefined })}
                       onHide={() => mutate((prev) => hidePost(prev, post.id))}
+                      onBlock={() => handleBlock(post.authorId)}
                       busy={false}
                     />
                   ))}
@@ -516,6 +752,16 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
             {CHANNEL_LABEL[key]}
           </button>
         ))}
+        <button
+          type="button"
+          className="sr-chip"
+          onClick={() => void refreshFeed(false)}
+          disabled={busy === "feed"}
+          aria-label="请书友们发新帖"
+        >
+          <RotateCw size={13} strokeWidth={1.8} />
+          刷新
+        </button>
         <button type="button" className="sr-chip" onClick={() => setView({ kind: "settings" })}>
           生成规则
         </button>
@@ -527,10 +773,62 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
         </div>
       )}
 
+      {noApiCard}
+
       {busy === "feed" && (
-        <p className="sr-note-meta" style={{ textAlign: "center", lineHeight: 1.7 }}>
-          <Loader2 size={13} className="sr-spin" /> 书友们正在开个头…
-        </p>
+        <div className="sr-css-actions" style={{ alignItems: "center" }}>
+          <span className="sr-note-meta" style={{ marginRight: "auto", lineHeight: 1.7 }}>
+            <Loader2 size={13} className="sr-spin" /> 书友们正在写新帖…
+          </span>
+          <button type="button" className="sr-chip" onClick={stopFeed}>
+            <Square size={12} strokeWidth={1.8} />
+            停止
+          </button>
+        </div>
+      )}
+
+      {feedError && busy !== "feed" && (
+        <div className="sr-note-card">
+          <div className="sr-note-meta" style={{ lineHeight: 1.7 }}>新帖没生成出来：{feedError}</div>
+          <div className="sr-css-actions">
+            <button type="button" className="sr-chip" onClick={() => setFeedError(null)}>
+              算了
+            </button>
+            <button type="button" className="sr-chip" data-active="true" onClick={() => void refreshFeed(false)}>
+              <RotateCw size={13} strokeWidth={1.8} />
+              重试
+            </button>
+          </div>
+        </div>
+      )}
+
+      {typing && (
+        <div className="sr-css-actions" style={{ alignItems: "center" }}>
+          <span className="sr-note-meta" style={{ marginRight: "auto", lineHeight: 1.7 }}>
+            <Loader2 size={12} className="sr-spin" /> {typing.npcName} 正在回应一条帖子…
+          </span>
+          <button type="button" className="sr-chip" onClick={() => stopReplies(typing.postId)}>
+            <Square size={12} strokeWidth={1.8} />
+            停止
+          </button>
+        </div>
+      )}
+
+      {replyIssue?.kind === "error" && (
+        <div className="sr-note-card">
+          <div className="sr-note-meta" style={{ lineHeight: 1.7 }}>
+            {replyIssue.npcName} 没回上来：{replyIssue.message}
+          </div>
+          <div className="sr-css-actions">
+            <button type="button" className="sr-chip" onClick={() => setReplyIssue(null)}>
+              算了
+            </button>
+            <button type="button" className="sr-chip" data-active="true" onClick={retryReply}>
+              <RotateCw size={13} strokeWidth={1.8} />
+              重试
+            </button>
+          </div>
+        </div>
       )}
 
       {posts.length === 0 ? (
@@ -564,6 +862,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
             onOpenAuthor={(npcId) => setView({ kind: "profile", npcId })}
             onGift={() => setGiftTarget({ postId: post.id, npcId: post.authorKind === "npc" ? post.authorId : undefined })}
             onHide={() => mutate((prev) => hidePost(prev, post.id))}
+            onBlock={() => handleBlock(post.authorId)}
             busy={false}
           />
         ))

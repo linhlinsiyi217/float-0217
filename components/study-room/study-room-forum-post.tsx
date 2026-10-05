@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { BookOpen, ChevronLeft, Gift, Heart, MessageSquare, PenLine, Star, Trash2, X } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Ban, BookOpen, ChevronLeft, Gift, Heart, MessageSquare, PenLine, Star, Trash2, X } from "lucide-react";
 
 import type { Book } from "@/lib/reading-types";
 import { avatarDataUrl } from "@/lib/study-room/npc-avatar";
@@ -34,6 +34,8 @@ type CardProps = {
   onOpenAuthor: (npcId: string) => void;
   onGift: () => void;
   onHide: () => void;
+  /** 屏蔽这位书友（只对书友的帖子出现） */
+  onBlock?: () => void;
 };
 
 function authorAvatar(post: ForumPost, state: ForumState): string | null {
@@ -55,6 +57,7 @@ export function StudyRoomForumPostCard({
   onOpenAuthor,
   onGift,
   onHide,
+  onBlock,
 }: CardProps) {
   const avatar = authorAvatar(post, state);
   const liked = post.likedBy.includes(ME);
@@ -90,7 +93,21 @@ export function StudyRoomForumPostCard({
             {post.generated ? " · AI" : ""} · {new Date(post.createdAt).toLocaleString("zh-CN")}
           </span>
         </span>
-        <button type="button" className="sr-note-tool" title="不感兴趣" onClick={onHide} disabled={busy}>
+        {onBlock && post.authorKind === "npc" && (
+          <button
+            type="button"
+            className="sr-note-tool"
+            title="屏蔽这位书友"
+            aria-label={`屏蔽 ${post.authorName}`}
+            onClick={() => {
+              if (confirm(`屏蔽 ${post.authorName}？TA 的帖子不再出现，也不会再来回复。可以在「书友管理」里解除。`)) onBlock();
+            }}
+            disabled={busy}
+          >
+            <Ban size={14} strokeWidth={1.8} />
+          </button>
+        )}
+        <button type="button" className="sr-note-tool" title="不感兴趣" aria-label="不感兴趣" onClick={onHide} disabled={busy}>
           <X size={15} strokeWidth={1.8} />
         </button>
       </header>
@@ -168,6 +185,12 @@ type ViewProps = {
   onDelete: () => void;
   /** 编辑自己的帖子 */
   onEdit: (body: string) => void;
+  /** 删除自己的评论 */
+  onDeleteComment: (commentId: string) => void;
+  /** 屏蔽楼主（楼主是书友时） */
+  onBlockAuthor?: () => void;
+  /** 书友回应的状态区：正在输入 / 停止 / 失败重试 / 去设置模型 */
+  replyPanel?: ReactNode;
 };
 
 /** 帖子详情：完整正文、图片、评论与回复；自己的帖子可以改或删。 */
@@ -184,6 +207,9 @@ export function StudyRoomForumPostView({
   onOpenAuthor,
   onDelete,
   onEdit,
+  onDeleteComment,
+  onBlockAuthor,
+  replyPanel,
 }: ViewProps) {
   const [comment, setComment] = useState("");
   const [replyTo, setReplyTo] = useState<string | null>(null);
@@ -223,6 +249,21 @@ export function StudyRoomForumPostView({
               }}
             >
               <Trash2 size={16} strokeWidth={1.7} />
+            </button>
+          </span>
+        )}
+        {post.authorKind === "npc" && onBlockAuthor && (
+          <span className="sr-note-tools">
+            <button
+              type="button"
+              className="sr-note-tool"
+              title="屏蔽楼主"
+              aria-label={`屏蔽 ${post.authorName}`}
+              onClick={() => {
+                if (confirm(`屏蔽 ${post.authorName}？TA 的帖子不再出现，也不会再来回复。可以在「书友管理」里解除。`)) onBlockAuthor();
+              }}
+            >
+              <Ban size={16} strokeWidth={1.7} />
             </button>
           </span>
         )}
@@ -348,11 +389,24 @@ export function StudyRoomForumPostView({
                   <button type="button" className="sr-forum-reply" onClick={() => setReplyTo(item.id)}>
                     回复
                   </button>
+                  {item.authorId === ME && (
+                    <button
+                      type="button"
+                      className="sr-forum-reply"
+                      onClick={() => {
+                        if (confirm("删除这条评论？")) onDeleteComment(item.id);
+                      }}
+                    >
+                      删除
+                    </button>
+                  )}
                 </li>
               );
             })}
           </ul>
         )}
+
+        {replyPanel}
 
         <div className="sr-forum-comment-box">
           <input

@@ -141,6 +141,10 @@ export type ForumRules = {
   commentTone: string;
   commentRelation: string;
   commentFollowUp: boolean;
+  /** 书友是否自动回复我的帖子与评论；关掉后只在我手动请人回应时才回 */
+  autoReply: boolean;
+  /** 每次请书友回应时最多几位（1–5） */
+  replyCount: number;
   /** NPC 日常活动：发帖、点赞、关注、送礼、加好友的节奏 */
   dailyPosts: number;
   dailyLikes: number;
@@ -160,6 +164,8 @@ export const DEFAULT_FORUM_RULES: ForumRules = {
   commentTone: "像真人打字：允许赞同、追问、补充与温和反驳，不要一片夸奖",
   commentRelation: "按与楼主的关系调整亲疏：熟人更随意，陌生人更客气",
   commentFollowUp: true,
+  autoReply: true,
+  replyCount: 2,
   dailyPosts: 2,
   dailyLikes: 6,
   dailyFollows: 1,

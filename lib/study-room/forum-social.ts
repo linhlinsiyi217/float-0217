@@ -49,6 +49,8 @@ export function normalizeRules(rules: ForumRules): ForumRules {
     commentTone: rules.commentTone?.trim() || DEFAULT_FORUM_RULES.commentTone,
     commentRelation: rules.commentRelation?.trim() || DEFAULT_FORUM_RULES.commentRelation,
     commentFollowUp: rules.commentFollowUp !== false,
+    autoReply: rules.autoReply !== false,
+    replyCount: clamp(Number(rules.replyCount ?? DEFAULT_FORUM_RULES.replyCount), 1, 5),
     dailyPosts: clamp(Number(rules.dailyPosts), 0, 12),
     dailyLikes: clamp(Number(rules.dailyLikes), 0, 40),
     dailyFollows: clamp(Number(rules.dailyFollows), 0, 10),
@@ -94,6 +96,39 @@ function generateSeededNpc(seed: number, usedNames: Set<string>): ForumNpc | nul
   return null;
 }
 
+// ── 首页刷新：书友发新帖 ──
+
+/** 刷新首页用的记录键（存在 generatedAt 里，和话题冷却同一处）。 */
+export const FEED_REFRESH_KEY = "__feed_refresh";
+/** 进入时自动刷新的间隔：太久没有新帖才自动补，不会每次进来都调用模型。 */
+export const FEED_AUTO_REFRESH_MS = 3 * 60 * 60 * 1000;
+
+/** 距上次刷新首页是否已经够久（没刷过也算）。 */
+export function feedRefreshDue(state: ForumState, now = Date.now()): boolean {
+  const at = state.generatedAt[FEED_REFRESH_KEY];
+  if (!at) return true;
+  return now - new Date(at).getTime() >= FEED_AUTO_REFRESH_MS;
+}
+
+/** 从「热门话题」里随机挑一个当这次的话头，避免每次都聊同一件事。 */
+export function pickFeedTopic(state: ForumState): ForumTopic {
+  const raw = state.rules.hotTopics.replace(/^[^：:]*[：:]/, "");
+  const pieces = raw.split(/[、,，;；\n]+/).map((item) => item.trim()).filter(Boolean);
+  const label = pieces.length > 0 ? pieces[Math.floor(Math.random() * pieces.length)] : "最近在读什么";
+  return { key: `首页动态:${label}`, label, prompt: state.rules.feedTypes };
+}
+
+/** 新帖去重：和已有帖子正文一样的不要。 */
+export function dedupePosts(existing: ForumPost[], created: ForumPost[]): ForumPost[] {
+  const seen = new Set(existing.map((post) => commentKey(post.body)));
+  return created.filter((post) => {
+    const key = commentKey(post.body);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 // ── 频道 ──
 
 export type ForumChannel = "recommend" | "following" | "latest" | "hot" | "review" | "discussion" | "creation";
@@ -110,7 +145,10 @@ export const CHANNEL_LABEL: Record<ForumChannel, string> = {
 
 /** 各频道的内容口径：推荐看互动与新鲜度，关注只看关注的作者，最新按时间，书评只看书评。 */
 export function channelPosts(state: ForumState, channel: ForumChannel): ForumPost[] {
-  const visible = state.posts.filter((post) => !state.hiddenPostIds.includes(post.id));
+  // 不感兴趣的帖子与屏蔽书友的帖子都不进信息流
+  const visible = state.posts.filter(
+    (post) => !state.hiddenPostIds.includes(post.id) && !state.mutedNpcIds.includes(post.authorId),
+  );
   const now = Date.now();
   const score = (post: ForumPost) => {
     const hours = Math.max((now - new Date(post.createdAt).getTime()) / 3600_000, 0.5);
@@ -240,23 +278,51 @@ export function deleteDraft(state: ForumState, draftId: string): ForumState {
 
 // ── 评论：分批错时出现 ──
 
-export function scheduleReplies(state: ForumState, postId: string, count = 3): ForumState {
+/** 同一条帖子里书友评论的上限：到了就不再安排，避免越回越多、来回循环。 */
+export const MAX_NPC_COMMENTS_PER_POST = 12;
+/** 同一位书友在同一条帖子里最多说几次。 */
+export const MAX_COMMENTS_PER_NPC = 2;
+
+/**
+ * 安排书友回应。默认遵守「自动回复」开关与「回应人数」；
+ * manual=true 表示用户主动点了「请书友回应」，此时不看开关，但人数与上限照旧。
+ */
+export function scheduleReplies(
+  state: ForumState,
+  postId: string,
+  options: { manual?: boolean; soon?: boolean } = {},
+): ForumState {
   const post = state.posts.find((item) => item.id === postId);
   if (!post) return state;
+  if (!options.manual && state.rules.autoReply === false) return state;
+
+  const npcCommentCount = post.comments.filter((comment) => comment.authorKind === "npc").length;
+  const pendingOnPost = state.pendingReplies.filter((item) => item.postId === postId);
+  const room = MAX_NPC_COMMENTS_PER_POST - npcCommentCount - pendingOnPost.length;
+  if (room <= 0) return state;
+
+  const count = Math.min(Math.max(Number(state.rules.replyCount) || 2, 1), 5, room);
   const topic: ForumTopic = {
     key: post.topics?.[0] ?? post.bookTitle ?? post.title ?? "帖子",
     label: post.title ?? post.bookTitle ?? "这条帖子",
     bookTitle: post.bookTitle,
   };
-  const participants = pickParticipants(state, topic, Math.max(2, Math.min(count, 4)));
-  const existing = new Set(state.pendingReplies.map((item) => `${item.postId}:${item.npcId}`));
+  const spoken = (npcId: string) => post.comments.filter((comment) => comment.authorId === npcId).length;
+  // 多挑几位候选，再排除：已在排队的、说够了的、楼主自己
+  const candidates = pickParticipants(state, topic, count + 4).filter(
+    (npc) =>
+      npc.id !== post.authorId &&
+      spoken(npc.id) < MAX_COMMENTS_PER_NPC &&
+      !pendingOnPost.some((item) => item.npcId === npc.id),
+  );
+  const participants = candidates.slice(0, count);
   const now = Date.now();
   const planned: PendingReply[] = [];
   participants.forEach((npc, index) => {
-    const key = `${postId}:${npc.id}`;
-    if (existing.has(key)) return;
-    // 20–110 秒内错开出现，避免发布瞬间刷出一排
-    const delay = 20_000 + index * 18_000 + Math.random() * 22_000;
+    // 用户主动请回应时几秒内开始；自动回应在 20–110 秒内错开出现，避免刷出一排
+    const delay = options.soon
+      ? 1_500 + index * 6_000
+      : 20_000 + index * 18_000 + Math.random() * 22_000;
     planned.push({
       id: `pr_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 5)}`,
       postId,
@@ -274,6 +340,54 @@ export function dueReplies(state: ForumState, now = Date.now()): PendingReply[] 
 
 export function consumeReply(state: ForumState, replyId: string): ForumState {
   return { ...state, pendingReplies: state.pendingReplies.filter((item) => item.id !== replyId) };
+}
+
+/** 停止某条帖子剩下的回应（用户点了「停止」）。 */
+export function clearPostReplies(state: ForumState, postId: string): ForumState {
+  return { ...state, pendingReplies: state.pendingReplies.filter((item) => item.postId !== postId) };
+}
+
+/** 屏蔽书友：不再出现在信息流，也不再来回复；已经排队的回应一并取消。 */
+export function blockNpc(state: ForumState, npcId: string): ForumState {
+  return {
+    ...state,
+    mutedNpcIds: state.mutedNpcIds.includes(npcId) ? state.mutedNpcIds : [...state.mutedNpcIds, npcId],
+    following: state.following.filter((id) => id !== npcId),
+    starred: state.starred.filter((id) => id !== npcId),
+    pendingReplies: state.pendingReplies.filter((item) => item.npcId !== npcId),
+  };
+}
+
+/** 删除自己的评论（只删用户本人写的，书友的评论不能删）。 */
+export function deleteOwnComment(state: ForumState, postId: string, commentId: string): ForumState {
+  return {
+    ...state,
+    posts: state.posts.map((post) =>
+      post.id === postId
+        ? { ...post, comments: post.comments.filter((comment) => !(comment.id === commentId && comment.authorId === USER_ID)) }
+        : post,
+    ),
+  };
+}
+
+/** 去重用的比较形式：去标点空白、小写。 */
+function commentKey(text: string): string {
+  return text.replace(/[\s\p{P}\p{S}]+/gu, "").toLowerCase();
+}
+
+/** 新评论是否和这条帖子里已有的评论重复（同样的话，或同一人几乎一样的话）。 */
+export function isDuplicateComment(post: ForumPost, npcId: string, body: string): boolean {
+  const key = commentKey(body);
+  if (!key) return true;
+  return post.comments.some((comment) => {
+    const other = commentKey(comment.body);
+    if (other === key) return true;
+    if (comment.authorId !== npcId) return false;
+    // 同一位书友：一句包含另一句且长度相近，视为复读
+    const shorter = Math.min(other.length, key.length);
+    const longer = Math.max(other.length, key.length);
+    return shorter > 0 && shorter / longer > 0.8 && (other.includes(key) || key.includes(other));
+  });
 }
 
 export function buildCommentPrompt(post: ForumPost, npc: ForumNpc, rules: ForumRules): string {
@@ -314,22 +428,30 @@ export function cleanComment(raw: string): string | null {
   return text.replace(/^[一-龥A-Za-z0-9_]{1,12}[：:]\s*/, "").slice(0, 300);
 }
 
+/** 生成结果分开说清楚：成功 / 没配 API / 调用失败（失败要能重试，不能悄悄吞掉）。 */
+export type CommentResult =
+  | { status: "ok"; body: string }
+  | { status: "no-api" }
+  | { status: "error"; message: string };
+
 export async function generateComment(
   post: ForumPost,
   npc: ForumNpc,
   rules: ForumRules,
   signal?: AbortSignal,
-): Promise<string | null> {
+): Promise<CommentResult> {
   const apiConfig = resolveForumApiConfig();
-  if (!apiConfig) return null;
+  if (!apiConfig) return { status: "no-api" };
   const result = await simpleLLMCall(apiConfig, [{ role: "user", content: buildCommentPrompt(post, npc, rules) }], {
     temperature: 0.9,
     max_tokens: 400,
     signal,
     label: "studyroom-forum-comment",
   });
-  if (result.error || !result.content) return null;
-  return cleanComment(result.content);
+  if (result.error) return { status: "error", message: result.error };
+  const body = result.content ? cleanComment(result.content) : null;
+  if (!body) return { status: "error", message: "模型返回了空内容" };
+  return { status: "ok", body };
 }
 
 export function makeComment(npc: ForumNpc, body: string): ForumComment {
@@ -351,6 +473,8 @@ export function applyComment(state: ForumState, reply: PendingReply, body: strin
   const npc = state.npcs.find((item) => item.id === reply.npcId);
   const post = state.posts.find((item) => item.id === reply.postId);
   if (!npc || !post) return consumeReply(state, reply.id);
+  // 重复的话、屏蔽后的书友：这条直接作废，不进评论区
+  if (state.mutedNpcIds.includes(npc.id) || isDuplicateComment(post, npc.id, body)) return consumeReply(state, reply.id);
 
   let next: ForumState = {
     ...state,

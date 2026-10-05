@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronLeft, Loader2, MessageCircle, Star, UserPlus } from "lucide-react";
+import { Ban, Check, ChevronDown, ChevronLeft, Loader2, MessageCircle, Star, UserPlus } from "lucide-react";
 
 import { avatarDataUrl } from "@/lib/study-room/npc-avatar";
 import type { ForumNpc, ForumState } from "@/lib/study-room/forum";
@@ -18,6 +18,8 @@ type StudyRoomForumProfileProps = {
   onAddFriend: () => void;
   onChat: () => void;
   onOpenPost: (postId: string) => void;
+  /** 屏蔽 / 解除屏蔽 */
+  onToggleBlock: () => void;
 };
 
 /**
@@ -34,7 +36,9 @@ export function StudyRoomForumProfile({
   onAddFriend,
   onChat,
   onOpenPost,
+  onToggleBlock,
 }: StudyRoomForumProfileProps) {
+  const blocked = state.mutedNpcIds.includes(npc.id);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const posts = state.posts.filter((post) => post.authorId === npc.id);
@@ -68,7 +72,23 @@ export function StudyRoomForumProfile({
           <ChevronLeft size={22} strokeWidth={1.6} />
         </button>
         <span className="sr-forum-sub-title">{npc.nickname} 的主页</span>
+        <button
+          type="button"
+          className="sr-chip"
+          style={{ marginLeft: "auto" }}
+          onClick={() => {
+            if (blocked || confirm(`屏蔽 ${npc.nickname}？TA 的帖子不再出现，也不会再来回复。`)) onToggleBlock();
+          }}
+        >
+          <Ban size={13} strokeWidth={1.8} />
+          {blocked ? "解除屏蔽" : "屏蔽"}
+        </button>
       </div>
+      {blocked && (
+        <div className="sr-note-card">
+          <div className="sr-note-meta">已屏蔽：TA 的帖子不在信息流里出现，也不会来回复你。</div>
+        </div>
+      )}
 
       <div className="sr-forum-sub-body">
         <div className="sr-pf-head">
