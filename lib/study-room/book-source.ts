@@ -283,6 +283,24 @@ export function classifyKind(text: string | undefined | null): BookKind | null {
   return "novel";
 }
 
+// 文书类标题：判决书、裁定书、起诉书、案号等。标题本身就说明它是法律文书，
+// 不管来源有没有给分类、分类里混了多少文学词，都按资料处理（《简爱》不会被它误伤）。
+const LEGAL_TITLE_RE = new RegExp(
+  [
+    "(判决|裁定|调解|起诉|公诉|抗诉|上诉|答辩|仲裁|执行)书",
+    "[一二再]审.{0,6}(判决|裁定|案)",
+    "(纠纷|争议|合同|侵权|离婚|继承|借款|诈骗|盗窃|故意伤害).{0,8}(一案|案件|判决|裁定)",
+    "[（(〔\\[](19|20)\\d{2}[）)〕\\]].{0,12}(民|刑|行|执|赔|知|商)",
+    "(民|刑|行)(初|终|再|申)字?第?\\d+号",
+  ].join("|"),
+);
+
+/** 标题是不是法律文书（判决书、裁定书、案号等）。 */
+export function isLegalDocumentTitle(title: string | undefined | null): boolean {
+  if (!title) return false;
+  return LEGAL_TITLE_RE.test(title.replace(/\s+/g, ""));
+}
+
 /** 判断文本自身是否为中文（用于挑选面向中文的来源）。 */
 export function isCJKQuery(query: string): boolean {
   return hasCJK(query);

@@ -7,6 +7,7 @@
 
 import {
   authorMatchScore,
+  isLegalDocumentTitle,
   normalizeForMatch,
   titleMatchScore,
   type BookKind,
@@ -54,10 +55,23 @@ export function dedupeById(results: BookSearchResult[]): BookSearchResult[] {
  *  - 资料：全部保留
  */
 export function filterByKind(results: BookSearchResult[], kind: BookKind | "all"): BookSearchResult[] {
+  const typed = results.map(markLegalDocument);
   // 资料类永远排在最后（不是删除）：先看能读的书，再往下才是资料
-  if (kind === "novel") return results.filter((r) => r.kind !== "material");
-  if (kind === "comic") return results.filter((r) => r.kind === "comic");
-  return results;
+  if (kind === "novel") return typed.filter((r) => r.kind !== "material");
+  if (kind === "comic") return typed.filter((r) => r.kind === "comic");
+  if (kind === "all") {
+    // 「全部」里：已经搜到真正的书时，标题碰巧含关键词的判决书等文书不再混进来；
+    // 只剩文书时照常显示（有人就是要查这份文书），切到「资料」也一直能看到
+    const hasBooks = typed.some((r) => r.kind !== "material");
+    return hasBooks ? typed.filter((r) => !isLegalDocumentTitle(r.title)) : typed;
+  }
+  return typed;
+}
+
+/** 标题是法律文书的条目：不论来源怎么分类，一律按资料处理，不给阅读入口。 */
+function markLegalDocument(result: BookSearchResult): BookSearchResult {
+  if (!isLegalDocumentTitle(result.title)) return result;
+  return { ...result, kind: "material", readability: "material", importFile: undefined };
 }
 
 /** 可读能力权重：能直接读的排最前，仅资料排最后（不删除，只是降级）。 */
