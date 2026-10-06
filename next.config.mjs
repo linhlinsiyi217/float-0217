@@ -21,6 +21,10 @@ function resolveDistDir() {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // 设置 → 更新日志显示当前构建的提交，正式域名上用来核对「加载的发布」和「部署的提交」一致
+  env: {
+    NEXT_PUBLIC_BUILD_COMMIT: process.env.VERCEL_GIT_COMMIT_SHA ?? "",
+  },
   typedRoutes: true,
   outputFileTracingRoot: projectRoot,
   distDir: resolveDistDir(),

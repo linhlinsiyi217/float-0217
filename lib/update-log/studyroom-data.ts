@@ -8,14 +8,14 @@ import type { Release } from "./types";
 
 export const STUDYROOM_RELEASES: Release[] = [
   {
-    version: "0.7.0",
-    releaseId: "studyroom-2026-10-06-v070",
+    version: "0.7.1",
+    releaseId: "studyroom-2026-10-06-v071",
     date: "2026-10-06",
-    name: "第三批：书架书桌、抽卡、书友圈剧透、文风与分享",
-    summary: "外观设置真正生效、书架管理与立体书本、书桌四步开始创作、抽卡重做、书友圈剧透遮挡、新增四套文风与写作世界书、书和帖子可分享到聊天",
+    name: "第四批（一）：联网搜书与内置书库",
+    summary: "新增 8 部中文经典内置书库；联网搜书支持繁简与别名、各来源单独报错；维基文库作品集导入全文、重复导入直接打开",
     entries: [
       {
-        id: "sr70-builtin",
+        id: "sr71-builtin",
         category: "feat",
         app: "书房 · 书城",
         title: "新增内置书库：8 部中文经典随应用提供",
@@ -26,7 +26,7 @@ export const STUDYROOM_RELEASES: Release[] = [
         ],
       },
       {
-        id: "sr70-search",
+        id: "sr71-search",
         category: "fix",
         app: "书房 · 书城",
         title: "联网搜书更稳，失败原因说清楚",
@@ -38,7 +38,7 @@ export const STUDYROOM_RELEASES: Release[] = [
         ],
       },
       {
-        id: "sr70-import",
+        id: "sr71-import",
         category: "fix",
         app: "书房 · 联网导入",
         title: "维基文库作品集能导入全文，重复导入直接打开",
@@ -49,6 +49,20 @@ export const STUDYROOM_RELEASES: Release[] = [
           "导入失败时显示来源给出的真实原因（限流、超时、页面不存在等）",
         ],
       },
+    ],
+    pending: [
+      "内置书库与联网导入只在本机用脚本和接口测过，没有在手机上实际搜、加书架、翻章、看进度",
+      "Project Gutenberg 在 Vercel 上是否能连通还没在正式站确认，连不上时会显示该来源失败",
+      "Google Books 需要在部署环境配置 GOOGLE_BOOKS_API_KEY，没配置时显示「缺少配置」",
+    ],
+  },
+  {
+    version: "0.7.0",
+    releaseId: "studyroom-2026-10-06-v070",
+    date: "2026-10-06",
+    name: "第三批：书架书桌、抽卡、书友圈剧透、文风与分享",
+    summary: "外观设置真正生效、书架管理与立体书本、书桌四步开始创作、抽卡重做、书友圈剧透遮挡、新增四套文风与写作世界书、书和帖子可分享到聊天",
+    entries: [
       {
         id: "sr70-appearance",
         category: "fix",
@@ -158,9 +172,6 @@ export const STUDYROOM_RELEASES: Release[] = [
       },
     ],
     pending: [
-      "内置书库与联网导入只在本机用脚本和接口测过，没有在手机上实际搜、加书架、翻章、看进度",
-      "Project Gutenberg 在 Vercel 上是否能连通还没在正式站确认，连不上时会显示该来源失败",
-      "Google Books 需要在部署环境配置 GOOGLE_BOOKS_API_KEY，没配置时显示「缺少配置」",
       "本批只做了类型检查、代码检查和发布检查，没有在手机上实测各页面观感与手势",
       "分享到聊天的卡片、点卡片回到书房，没有在手机上实际点过",
       "四套新文风与写作世界书没有用真实模型生成测试，效果待你试写确认",

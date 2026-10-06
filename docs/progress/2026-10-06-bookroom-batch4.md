@@ -85,4 +85,30 @@
 - Vercel 上 gutenberg.org 是否可达。
 - Google Books 需配置 GOOGLE_BOOKS_API_KEY。
 
-**下一步**：新对话从「第 2 组：书房内容分享到聊天」开始。第 2–5 组均未动。
+## 第 1 组发布收尾 + 全项目统一更新规则（2026-10-06）
+
+**规则**：写入 CLAUDE.md 第四节「全项目统一更新规则」（每次发布的完成条件、已读规则、正式网址与部署核对）。
+
+**实现**
+- 总日志：lib/update-log/global.ts 组合函数；system-data.ts 本次发布用 includes.studyroom 并入书房条目，
+  设置「更新日志」与全局弹窗读同一份（lib/update-log/system.ts 的 SYSTEM_RELEASE_LIST / latestSystemRelease）。
+- 已读：lib/update-log/seen.ts；只有「知道了」写已读，「查看完整日志」/Esc 只收起；全局确认时同批书房版本一起记已读。
+- 弹窗按钮改为「查看完整日志」「知道了」；设置日志页显示当前版本、发布标识、构建提交。
+- /api/release：返回部署提交、总日志/书房当前发布标识，用于正式域名核对。
+- scripts/check-update-log.mjs 扩展：书房同步、弹窗与总日志关联、只在「知道了」写已读、已读模拟 9 项、
+  相对 origin/main 的发布标识/版本号/涉及模块。反向测试：删掉新版本、在 Esc 里写已读，都会不通过。
+
+**发布标识**：总日志 0.6.2（system-2026-10-06-v062）includes 书房 0.7.1（studyroom-2026-10-06-v071）。
+第 1 组条目从 0.7.0 移到 0.7.1，看过 0.7.0 的用户也会收到新通知。
+
+**发布与正式域名验证**：见下方「发布结果」。
+
+## 下一步
+
+新对话从「第 2 组：书房内容分享到聊天」开始（第 2–5 组均未动）。第 2 组先读这些文件：
+- lib/study-room/share-to-chat.ts（结构化分享消息）
+- components/study-room/share-sheet.tsx（发送前预览、取消、防重复）
+- components/study-room/study-room-app.tsx（从卡片回跳打开书/帖子）
+- components/study-room/study-room-book-detail.tsx、study-room-forum-post.tsx（分享入口、剧透标记）
+- components/chat/message-bubble.tsx（app_card 卡片渲染）、components/chat/chat-room.tsx（卡片发送与 AI 读取）
+- 不让网页抓取器抓 SPA 路由的问题：先在 app/api 下 grep 抓取/预览相关路由再定位

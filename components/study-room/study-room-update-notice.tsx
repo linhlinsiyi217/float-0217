@@ -20,7 +20,8 @@ type StudyRoomUpdateNoticeProps = {
 const SLOT_OWNER = "studyroom";
 
 /**
- * 书房自己的更新卡：只跟书房版本有关，系统更新不会触发它。
+ * 书房自己的更新卡：只跟书房版本有关。同批书房条目也在全局弹窗和设置总日志里，
+ * 在全局弹窗点过「知道了」的版本这里不再重复弹。只有点「知道了」才算已读。
  * 如果系统更新卡正在前台，这里会等它被确认关闭后再接上，
  * 不让用户一进书房就被两个重复通知叠住。
  */
@@ -55,19 +56,24 @@ export function StudyRoomUpdateNotice({ enabled, onOpenLog }: StudyRoomUpdateNot
 
   if (!release) return null;
 
-  const dismiss = () => {
-    markStudyRoomReleaseSeen(release.releaseId);
+  const hide = () => {
     setRelease(null);
     releaseSlot(SLOT_OWNER);
+  };
+
+  const confirm = () => {
+    markStudyRoomReleaseSeen(release.releaseId);
+    hide();
   };
 
   return (
     <UpdateNotePopup
       appName="书房"
       release={release}
-      onClose={dismiss}
+      onConfirm={confirm}
+      onHide={hide}
       onOpenLog={() => {
-        dismiss();
+        hide();
         onOpenLog();
       }}
     />

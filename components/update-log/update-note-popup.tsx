@@ -17,10 +17,12 @@ type UpdateNotePopupProps = {
   /** 应用名，例如「小手机系统」「书房」 */
   appName: string;
   release: Release;
-  /** 关闭（标记已读由调用方处理） */
-  onClose: () => void;
-  /** 可选：跳到完整的更新日志 */
+  /** 用户点「知道了」：调用方在这里写入已读（只有这一处算确认） */
+  onConfirm: () => void;
+  /** 「查看完整日志」：只收起弹窗去看日志，不算已读，下次打开还会弹 */
   onOpenLog?: () => void;
+  /** 按 Esc 收起：同样不算已读 */
+  onHide?: () => void;
 };
 
 /** 条目一行：「更新应用：书房 · 书城」+ 分类标签 + 具体内容 */
@@ -47,11 +49,11 @@ function EntryRow({ entry }: { entry: UpdateEntry }) {
  * 样式：纯白卡、宽松内边距、层级靠字号与字重拉开，分区之间用虚线分隔，
  * 版本号做成小型角标装饰。不用淡蓝大底、不用拥挤边框、不用便签胶带折角。
  *
- * 行为：摘要 3—5 条，五秒内能读完；「我知道了」立即可点，不强制等待、也不自动消失；
+ * 行为：摘要 3—5 条，五秒内能读完；「知道了」立即可点，不强制等待、也不自动消失；
  * 详细内容默认折叠，想看再展开。每个实际新发布版本首次打开弹一次，
- * 确认后由调用方写入已读，同版本不再重复弹。
+ * 只有点「知道了」才由调用方写入已读，同版本不再重复弹；看日志、按 Esc 只是暂时收起。
  */
-export function UpdateNotePopup({ appName, release, onClose, onOpenLog }: UpdateNotePopupProps) {
+export function UpdateNotePopup({ appName, release, onConfirm, onOpenLog, onHide }: UpdateNotePopupProps) {
   const [leaving, setLeaving] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const summary = useMemo(() => popupEntries(release, 5), [release]);
@@ -60,12 +62,12 @@ export function UpdateNotePopup({ appName, release, onClose, onOpenLog }: Update
   const handleConfirm = () => {
     if (leaving) return;
     setLeaving(true);
-    window.setTimeout(onClose, 160);
+    window.setTimeout(onConfirm, 160);
   };
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") handleConfirm();
+      if (event.key === "Escape") onHide?.();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -142,13 +144,13 @@ export function UpdateNotePopup({ appName, release, onClose, onOpenLog }: Update
         <footer className="updn-foot">
           {onOpenLog && (
             <button type="button" className="updn-link" onClick={onOpenLog}>
-              更新日志
+              查看完整日志
               <ArrowRight size={14} strokeWidth={1.8} aria-hidden />
             </button>
           )}
           <button type="button" className="updn-confirm" onClick={handleConfirm}>
             <Check size={15} strokeWidth={2} aria-hidden />
-            我知道了
+            知道了
           </button>
         </footer>
       </section>

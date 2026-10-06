@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { UpdateNotePopup } from "./update-note-popup";
+import { markStudyRoomReleaseSeen } from "@/lib/update-log/studyroom";
 import { hasSeenSystemRelease, latestSystemRelease, markSystemReleaseSeen } from "@/lib/update-log/system";
 import { claimSlot, releaseSlot } from "@/lib/update-log/popup-slot";
 import type { Release } from "@/lib/update-log/types";
@@ -10,9 +11,12 @@ import type { Release } from "@/lib/update-log/types";
 const SLOT_OWNER = "system";
 
 /**
- * 小手机整体项目的更新弹窗：每个新版本第一次打开弹一次。
- * 关掉或点确认才算已读（同一 releaseId 不再重复弹），可以跳到设置的更新日志页看全部。
- * 占用全局展示位，书房的更新卡会等这一个关掉之后才接上，不会两个一起弹。
+ * 全局更新弹窗：整个小手机每次正式发布（新的 releaseId）第一次加载到时弹一次，
+ * 内容和设置里的总日志是同一份数据（同批的书房条目也在里面）。
+ *
+ * 只有点「知道了」才记录已读；「查看完整日志」和 Esc 只是暂时收起，下次打开还会弹。
+ * 确认时把同批的书房版本一起记为已读，进书房不会再弹一遍同样的内容。
+ * 占用全局展示位，不和书房更新卡叠在一起。
  */
 export function UpdateNotice() {
   const [release, setRelease] = useState<Release | null>(null);
@@ -31,19 +35,25 @@ export function UpdateNotice() {
 
   if (!release) return null;
 
-  const dismiss = () => {
-    markSystemReleaseSeen(release.releaseId);
+  const hide = () => {
     setRelease(null);
     releaseSlot(SLOT_OWNER);
   };
 
+  const confirm = () => {
+    markSystemReleaseSeen(release.releaseId);
+    if (release.includes?.studyroom) markStudyRoomReleaseSeen(release.includes.studyroom);
+    hide();
+  };
+
   return (
     <UpdateNotePopup
-      appName="小手机系统"
+      appName="小手机"
       release={release}
-      onClose={dismiss}
+      onConfirm={confirm}
+      onHide={hide}
       onOpenLog={() => {
-        dismiss();
+        hide();
         window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: "settings", settingsPage: "about" } }));
       }}
     />

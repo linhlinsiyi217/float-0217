@@ -19,7 +19,7 @@ export type UpdateEntry = {
 };
 
 export type Release = {
-  /** 对外看到的版本号；只在真正发布时改 */
+  /** 对外看到的版本号；每次正式发布（推到 main）都换新的，和 releaseId 一起换 */
   version: string;
   /** 唯一发布 id：换版本号时必须换它 */
   releaseId: string;
@@ -32,6 +32,12 @@ export type Release = {
   entries: UpdateEntry[];
   /** 这版还没完成或还没实测的事，如实写出来 */
   pending?: string[];
+  /**
+   * 只用于系统（总）日志：本次发布一起上线的书房版本 releaseId。
+   * 设置里的总日志和全局更新弹窗会把那一版书房条目原样合并进来，
+   * 书房条目只写在 studyroom-data.ts 一处，两边不会不一致。
+   */
+  includes?: { studyroom?: string };
 };
 
 export const CATEGORY_LABEL: Record<UpdateCategory, string> = {
