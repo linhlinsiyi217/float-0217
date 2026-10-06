@@ -1,11 +1,82 @@
 # 书房第四批：联网、分享与界面修复（进度记录）
 
-来源指令：`BookRoom-Batch4-Repair-Instructions.txt`（2026-10-06）。
+来源指令：`BookRoom-Batch4-Repair-Instructions.txt`（2026-10-06），原文已存为 `docs/requirements/2026-10-06-bookroom-batch4-instructions.txt`。
 工作方式：独立工作树 `../float-0217-b4`，分支 `feat/bookroom-batch4`，基于 `origin/main`（4d0cf7c）。
 主目录的工坊预览分支与两份微信助手未提交改动（`public/weixin-local-assistant/cloud-function.mjs`、
 `supabase/functions/weixin-assistant/index.ts`）属于其他任务，本批不碰。工坊、用户外部视频小窗不在本批范围。
 
 本次对话只做第 1 组；其他组记为待办，下一次新对话从这里继续。
+
+## 交接（新对话先读这一节）
+
+### 1. 完整需求
+- **完整原文**：[docs/requirements/2026-10-06-bookroom-batch4-instructions.txt](../requirements/2026-10-06-bookroom-batch4-instructions.txt)
+  （用户附件 `BookRoom-Batch4-Repair-Instructions.txt` 逐字节原样复制，共十节 + 参考来源）。
+  下面的分组只是摘要，**以原文为准**，每组开工前重读原文对应章节。
+- 用户在第 1 组发布时追加的「全项目统一更新规则」已写进 CLAUDE.md 第四节，每次发布都要遵守。
+
+### 2. 状态
+- 当前分支 `feat/bookroom-batch4`（工作树 `C:\Users\Administrator\Desktop\float-0217-b4`），已与 main 同步。
+- main 最新提交：`8108074`（只改进度文档）；最近一次产品发布提交：`17b5d39`（Vercel Production 成功）。
+  新对话开工先 `git fetch` 查真实状态，不要按这里的提交号重置。
+- 正式网址：https://float-0217.vercel.app （核对用 `/api/release` 看部署提交与发布标识）。
+- 当前发布标识：总日志 0.6.2 `system-2026-10-06-v062`、书房 0.7.1 `studyroom-2026-10-06-v071`。
+  下一次正式发布必须换新的（见 CLAUDE.md 第四节）。
+
+| 组 | 内容（原文章节） | 状态 |
+|---|---|---|
+| 1 | 联网搜书 + 完整内置书库（一、二） | 已完成并发布；手机未实测；Google Books 缺 `GOOGLE_BOOKS_API_KEY` |
+| 2 | 书房内容分享到聊天：卡片 + AI 读取（三） | 未开始 |
+| 3 | 头像状态气泡 + 书友圈发布按钮越界（五、六） | 未开始 |
+| 4 | 主题纯白 + 自有删除/排序面板 + 书友圈布局重做（四、七、八） | 未开始 |
+| 5 | 文风接入核查（九） | 未开始 |
+| 收尾 | 每组上线按第十节 + CLAUDE.md 第四节 | 每组做 |
+
+### 3. 截图现象的文字版（原文已把截图转成文字，这里再摘出关键要求）
+本批**没有随附截图文件**，项目里也没有保存任何截图；原文说明「已经把截图现象翻译成文字，不需要用户重新发送图片」。
+所以只按下列文字实施，不要声称比对过截图。
+- **分享到聊天（三）**：发书/帖子到聊天后显示「查看网页 HTTP 422」，错误里有 `SubmittedDataMalformedError`、
+  `path=url` 和一串异常长的域名；角色随后拿失败开玩笑，根本没看到内容。异常域名只是线索，要查载荷、链接生成、
+  URL 解析、读取工具（「查看网页」= Jina Reader）和角色上下文。
+- **默认主题（四）**：书城、书架、书桌、抽卡、书友圈、我的等主页面是大面积冷灰底 → 改为纯白 #FFFFFF 为底，
+  黑/炭黑做主按钮和主文字，灰做次要；绿/紫/黄/蓝只点缀分类、当前项、提示；无荧光/霓虹/刺眼渐变。
+- **头像状态气泡（五）**：现在是一个巨大气泡横跨头像和姓名上方；空状态「写点此刻的状态」撑起一整块。
+  → 气泡放在**头像左上方**、紧贴头像，尾巴轻压头像边缘一点；不旋转/翻转素材；可见宽度约头像直径 1–1.25 倍
+  （按裁掉留白后的可见轮廓算）；不盖脸、姓名、SVIP、统计，不撑出大片空白；尾巴与主体相连，没有断开的白圆点；
+  空状态只显示小「＋」；长文受限预览，点开编辑；360/390/430 宽测无内容/短句/长句/表情/长名字。
+- **书友圈发布越界（六）**：顶部一行「头像 + 搜索框 + 黑色发布按钮」，发布按钮右半截被屏幕裁掉。
+  → 容器不写死宽度，搜索区可收缩，发布按钮完整同一行（极窄可改图标或搜索下移），不能用 overflow:hidden 掩盖；
+  页面无横向滚动；键盘弹出时发布/保存仍可点。
+- **删除与排序面板（七）**：现在是浏览器风格的删除确认；排序面板（默认/最新/热门）字小、空白巨大、每行有无意义箭头。
+  先查实现（不一定是原生 select）。→ 书房自有确认弹窗（明确对象、取消/删除）；排序用紧凑锚点菜单或高度贴合三项的
+  底部面板，选中勾、去掉箭头、不被 overflow 或 Dock 裁掉。
+- **书友圈布局（八）**：顶部搜索 + 两排分类占很大面积，正文是一张张厚圆角大白卡片。→ 推荐/关注做主导航（短下划线），
+  全部/书评/讨论做次级筛选，排序为次要入口；正文连续列表、细分隔线，去掉厚边框/大圆角/大阴影；每帖右上的 X 和禁止符号
+  收进「更多」菜单（自己/他人不同）；最后一条不被 Dock 挡住。
+
+### 4. 已保存的素材与缺失
+- 气泡素材：`public/study-room/bubble/bubble-mask.png`、`bubble-rim.png`，来源说明 `public/study-room/bubble/SOURCE.md`
+  （据 SOURCE.md 记录，由用户云朵原图按 alpha 裁剪缩放得到；原图直链 statically 2026-10-05 返回 404，
+  用户仓库 `LinH-Pocket-YI` 的 `uploads/20261005_225043_tg4y.png` 是原图）。
+- 内置书库：`public/study-room/library/<id>/`，来源与许可见 NOTICE。
+- 缺失：原文提到的各张界面截图没有保存在项目里，本对话也没收到，只有上面的文字描述。
+
+### 5. 第 2 组（分享到聊天）先读的代码
+- `lib/study-room/share-to-chat.ts`：现有分享消息结构 → 改成带版本、类型、bookId/postId、标题、作者/封面、安全摘要、剧透标记。
+- `components/study-room/share-sheet.tsx`：预览 → 发送 / 取消、选好友、防重复。
+- `components/chat/message-bubble.tsx`（app_card 渲染）、`components/chat/chat-room.tsx`（发送、点卡片回跳、AI 读取）。
+- `lib/rich-message-parser.ts`、`lib/llm-prompt-assembler.ts`、`lib/short-term-assembler.ts`：卡片怎么进角色上下文。
+- `lib/tool-storage.ts`（第 567 行「查看网页」工具 = Jina Reader）、`lib/internal-capability-storage.ts`：查明为何抓了 SPA 路由 / 长域名。
+- `components/study-room/study-room-app.tsx`（回跳打开书/帖子）、`study-room-book-detail.tsx`、`study-room-forum-post.tsx`（分享入口、剧透）、
+  `components/study-room/spoiler.tsx`、`lib/study-room/forum.ts`、`lib/study-room/read-range.ts`（按章/选段读取）。
+
+### 6. 后面几组的入口
+- 第 3 组：`components/study-room/study-room-profile-parts.tsx`（用 bubble-mask 的气泡）、`study-room-mine.tsx`、`study-room-forum.tsx`（顶部发布栏）。
+- 第 4 组：`study-room-forum.tsx`、`study-room-forum-post.tsx`、`study-room-dock.tsx`、`lib/study-room/appearance.ts`；
+  用了 `confirm(` 的文件：study-room-backup / creative-editor / creative-panel / draw / forum-post / gifts / messages / notes / npc-panel / reading-memory。
+- 第 5 组：`app/api/study-room/style/route.ts`、`lib/study-room/writing-styles-client.ts`、`lib/study-room/creative.ts`、
+  `lib/study-room/writing-worldbook.ts`、`components/study-room/study-room-creative-editor.tsx`。
+- UI 组（3、4）开工前按 CLAUDE.md 第二·五节先读 DESIGN.md 并调用 apple-ui-designer 等 Skill。
 
 ## 分组与状态
 

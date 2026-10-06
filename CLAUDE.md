@@ -70,6 +70,7 @@
 优先级：用户当次指令与规格文件 > 参考图 > DESIGN.md > Skill 默认偏好。
 交付时说明实际用了哪些设计规则，不能只写「使用了 Skill」；设计分析不写进产品界面。
 长任务的阶段进度写在 [docs/progress/](./docs/progress/)，中断后从记录继续。
+**当前交接入口**：书房第四批 → [docs/progress/2026-10-06-bookroom-batch4.md](./docs/progress/2026-10-06-bookroom-batch4.md) 的「交接」一节（完整需求原文在 docs/requirements/）。
 
 ## 三、本项目既有的有效规则（保留）
 
