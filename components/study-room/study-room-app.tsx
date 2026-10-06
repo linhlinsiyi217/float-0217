@@ -67,6 +67,11 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
   // 冷启动播放一次启动画面；书房内部切页不重播（见 study-room-splash）
   const [splashDone, setSplashDone] = useState(() => shouldSkipStudyRoomSplash());
   const [tab, setTab] = useState<StudyRoomTab>("shelf");
+  // 记住最近一个不是书友圈的标签：剧透提示里选「不再观看」时回到那里
+  const prevTabRef = useRef<StudyRoomTab>("shelf");
+  useEffect(() => {
+    if (tab !== "forum") prevTabRef.current = tab;
+  }, [tab]);
   const [view, setView] = useState<StudyRoomView>({ kind: "tabs" });
   // 从阅读器返回时，让那本书先以「抽出」状态出现再放回架上
   const lastOpenedBookRef = useRef<string | null>(null);
@@ -275,6 +280,11 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
             <StudyRoomForum
               initialPostId={forumPostId ?? undefined}
               initialCompose={forumCompose}
+              onLeave={() => {
+                setForumPostId(null);
+                setForumCompose(false);
+                setTab(prevTabRef.current);
+              }}
               onOpenNpcPanel={() => setView({ kind: "npcPanel" })}
               onOpenMine={() => {
                 setView({ kind: "tabs" });

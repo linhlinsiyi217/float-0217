@@ -4,6 +4,7 @@ import { useRef, useState, type ReactNode } from "react";
 import { ChevronRight, Heart, MessageCircle } from "lucide-react";
 
 import { KIND_TEXT, type ForumPost } from "@/lib/study-room/forum";
+import { SPOILER_SUMMARY } from "./spoiler";
 
 /** 帖子时间的短格式：今天显示时刻，今年显示月日，更早显示年月日。 */
 export function shortTime(iso: string): string {
@@ -244,8 +245,9 @@ export function PostStrip({
       }}
     >
       {posts.map((post) => {
-        const cover = post.images?.[0];
-        const heading = post.title || (post.bookTitle ? `《${post.bookTitle}》` : "");
+        const cover = post.spoiler ? undefined : post.images?.[0];
+        // 剧透帖：标题与正文都不露，只给安全摘要
+        const heading = post.spoiler ? (post.bookTitle ? `《${post.bookTitle}》` : "") : post.title || (post.bookTitle ? `《${post.bookTitle}》` : "");
         return (
           <button
             key={post.id}
@@ -260,7 +262,7 @@ export function PostStrip({
             <span className="sr-pf-card-main">
               <span className="sr-pf-card-body">
                 {heading && <span className="sr-pf-card-title">{heading}</span>}
-                <span className="sr-pf-card-excerpt" data-lines={heading ? "2" : "3"}>{post.body}</span>
+                <span className="sr-pf-card-excerpt" data-lines={heading ? "2" : "3"}>{post.spoiler ? SPOILER_SUMMARY : post.body}</span>
               </span>
               {cover && (
                 /* eslint-disable-next-line @next/next/no-img-element */

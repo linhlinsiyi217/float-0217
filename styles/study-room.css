@@ -2374,7 +2374,6 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.sr-forum-body[data-spoiler="true"] { filter: blur(4px); user-select: none; }
 .sr-forum-spoiler {
   display: inline-flex;
   align-items: center;
@@ -2921,8 +2920,9 @@
 
 /* ── 书友圈重做：信息流 / 子页 / 抽屉 / 主页 / 生成规则 ── */
 .sr-forum { display: flex; flex-direction: column; gap: 10px; }
-.sr-forum-head { display: flex; align-items: center; gap: 8px; }
-.sr-forum-me { border: 0; background: transparent; padding: 0; cursor: pointer; }
+.sr-forum-head { display: flex; align-items: center; gap: 8px; min-height: 44px; margin-bottom: 0; }
+.sr-forum-me { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; border: 0; background: transparent; padding: 0; cursor: pointer; }
+.sr-forum-me .sr-forum-dot { top: 4px; right: 2px; box-shadow: 0 0 0 2px #fff; }
 .sr-forum-search {
   flex: 1;
   display: flex;
@@ -2993,26 +2993,6 @@
   text-align: left;
   cursor: pointer;
 }
-.sr-forum-fab {
-  position: absolute;
-  right: 16px;
-  bottom: calc(var(--sr-dock-space, 80px) + 12px);
-  z-index: 25;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 44px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--sr-accent) 88%, #1c1f24);
-  color: #fff;
-  font-size: 13.5px;
-  cursor: pointer;
-  box-shadow: 0 10px 24px rgba(20, 28, 45, 0.18);
-  transition: transform 0.15s ease;
-}
-.sr-forum-fab:active { transform: scale(0.97); }
 .sr-forum-images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .sr-forum-image { position: relative; width: 78px; height: 78px; border-radius: 10px; overflow: hidden; background: var(--c-input); }
 .sr-forum-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -3170,7 +3150,6 @@
 .sr-rule-body { padding: 0 12px 12px; border-top: 0.5px solid var(--c-card-border); padding-top: 10px; }
 @media (prefers-reduced-motion: reduce) {
   .sr-drawer, .sr-drawer-mask { animation: none; }
-  .sr-forum-fab { transition: none; }
 }
 
 /* ── 书架 V2：书型分级、生成封面、书立与纸签、统一光影、按设计稿的抽书动效 ── */
@@ -5584,3 +5563,148 @@ button.sr-pf-bubble:active .sr-pf-bubble-part[data-part="dot"] {
     font-size: max(16px, 1em);
   }
 }
+
+/* ── 书友圈第三批：三行头部（固定）、剧透遮罩、进入提示 ──
+ * 第一行：头像（抽屉 + 未读点）/ 搜索 / 发布；第二行：推荐·关注 下划线 + 排序；第三行：全部 / 书评 / 讨论 + 刷新。
+ * 头部吸顶，只有下面的帖子流在滚。 */
+.sr-forum-top {
+  position: sticky;
+  top: -14px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  margin: -14px -16px 0;
+  padding: 10px 16px 4px;
+  background: #fff;
+  border-bottom: 0.5px solid var(--c-card-border, #e7e9ee);
+}
+.sr-forum-search { height: 40px; }
+.sr-forum-publish {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 22px;
+  background: #111418;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.sr-forum-publish:active { transform: scale(0.97); }
+.sr-forum-row2 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sr-forum-sort select {
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--c-text, #3a3f47);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.sr-forum-row3 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sr-forum-kinds { display: flex; gap: 4px; }
+.sr-forum-kind {
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--c-text-sub, #8a919c);
+  cursor: pointer;
+}
+.sr-forum-kind[aria-pressed="true"] { color: var(--c-text-title, #1d1d1f); font-weight: 600; text-decoration: underline; text-underline-offset: 6px; text-decoration-thickness: 2px; }
+.sr-forum-refresh { color: var(--c-text, #3a3f47); }
+.sr-forum-foot { margin-top: 4px; }
+.sr-forum--gated { min-height: 60vh; }
+
+/* 剧透遮罩：原文没点开时根本不渲染，这里只是一块可点的浅灰面 */
+.sr-spoiler-mask {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 72px;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 0.5px dashed var(--c-card-border, #d9dde4);
+  border-radius: 12px;
+  background: #f4f6f9;
+  color: var(--c-text, #3a3f47);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.sr-spoiler-mask[data-compact="true"] { min-height: 44px; margin-top: 4px; font-size: 12.5px; border-radius: 10px; }
+.sr-spoiler-mask:focus-visible, .sr-spoiler-rehide:focus-visible { outline: 2px solid #4c7acc; outline-offset: 2px; }
+.sr-spoiler-open { display: flex; flex-direction: column; }
+.sr-spoiler-rehide {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--c-text-sub, #8a919c);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* 进入书友圈前的剧透提示 */
+.sr-spoiler-gate-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(18, 22, 30, 0.28);
+  animation: sr-gate-fade 0.2s ease both;
+}
+.sr-spoiler-gate {
+  width: min(340px, 100%);
+  padding: 22px 20px 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 0 0 0.5px rgba(30, 40, 60, 0.08), 0 18px 40px rgba(20, 28, 45, 0.18);
+  text-align: center;
+  outline: none;
+}
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sr-spoiler-gate { background: rgba(255, 255, 255, 0.86); backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2); }
+}
+.sr-spoiler-gate-icon { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; background: #eef2f8; color: #3f5f96; }
+.sr-spoiler-gate-title { margin: 10px 0 6px; font-size: 17px; font-weight: 600; color: var(--c-text-title, #1d1d1f); }
+.sr-spoiler-gate-text { margin: 0 0 16px; font-size: 14px; line-height: 1.6; color: var(--c-text, #3a3f47); }
+.sr-spoiler-gate-actions { display: flex; gap: 10px; }
+.sr-spoiler-gate-actions .sr-btn { flex: 1 1 0; min-height: 46px; justify-content: center; }
+.sr-spoiler-gate-actions .sr-btn-primary { background: #111418; border-color: #111418; color: #fff; }
+@keyframes sr-gate-fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .sr-spoiler-gate-mask { animation: none; }
+  .sr-forum-publish:active { transform: none; }
+}
+.sr-forum-comment-spoiler {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--c-text-sub, #8a919c);
+  cursor: pointer;
+}
+.sr-forum-comment-spoiler[aria-pressed="true"] { color: #3f5f96; background: #eef2f8; }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bell, ChevronLeft, Compass, Loader2, PenLine, RotateCw, Search, Square, X } from "lucide-react";
+import { ChevronLeft, Compass, Loader2, PenLine, RotateCw, Search, Square, X } from "lucide-react";
 
 import { loadBooks } from "@/lib/reading-storage";
 import type { Book } from "@/lib/reading-types";
@@ -20,10 +20,11 @@ import {
   type ForumState,
 } from "@/lib/study-room/forum";
 import {
-  CHANNEL_LABEL,
+  FEED_KIND_LABEL,
+  FEED_SORT_LABEL,
+  feedPosts,
   FEED_REFRESH_KEY,
   blockNpc,
-  channelPosts,
   dedupePosts,
   deleteOwnComment,
   ensureSeeded,
@@ -38,7 +39,9 @@ import {
   toggleStarNpc,
   isStarred,
   unreadNotifications,
-  type ForumChannel,
+  type FeedKind,
+  type FeedScope,
+  type FeedSort,
 } from "@/lib/study-room/forum-social";
 import { shortError, useForumReplyEngine, useMeCard } from "./forum-reply-engine";
 import { GiftSheet } from "./gift-sheet";
@@ -47,6 +50,7 @@ import { StudyRoomForumDrawer } from "./study-room-forum-drawer";
 import { StudyRoomForumPostCard, StudyRoomForumPostView } from "./study-room-forum-post";
 import { StudyRoomForumProfile } from "./study-room-forum-profile";
 import { StudyRoomForumSettings } from "./study-room-forum-settings";
+import { SpoilerGate, spoilerSafe } from "./spoiler";
 
 type StudyRoomForumProps = {
   onOpenNpcPanel: () => void;
@@ -57,6 +61,8 @@ type StudyRoomForumProps = {
   initialPostId?: string;
   /** 从「我的」点「发布第一条动态」进来时直接打开发帖 */
   initialCompose?: boolean;
+  /** 剧透提示里选「不再观看」：这一次不进书友圈，回到进来之前的页面 */
+  onLeave: () => void;
 };
 
 /**
@@ -64,9 +70,13 @@ type StudyRoomForumProps = {
  * 普通用户不需要先写话题或提示词：书友与内容会自己生成和维护；
  * 想看什么就搜、想说什么就发，其余交给书友按人设回应。
  */
-export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initialPostId, initialCompose }: StudyRoomForumProps) {
+export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initialPostId, initialCompose, onLeave }: StudyRoomForumProps) {
   const [state, setState] = useState<ForumState>(() => loadForum());
-  const [channel, setChannel] = useState<ForumChannel>("recommend");
+  // 每次进入书友圈都先问一次剧透；确认之前任何帖子都不渲染
+  const [gateOk, setGateOk] = useState(false);
+  const [scope, setScope] = useState<FeedScope>("recommend");
+  const [sort, setSort] = useState<FeedSort>("default");
+  const [kind, setKind] = useState<FeedKind>("all");
   const [view, setView] = useState<
     | { kind: "feed" }
     | { kind: "post"; postId: string }
@@ -230,14 +240,22 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
     });
   };
 
-  const posts = useMemo(() => channelPosts(state, channel), [state, channel]);
+  const posts = useMemo(() => feedPosts(state, scope, sort, kind), [state, scope, sort, kind]);
 
   const hiddenInFeed = useMemo(
-    () => channelPosts({ ...state, hiddenPostIds: [] }, channel).filter((post) => state.hiddenPostIds.includes(post.id)),
-    [state, channel],
+    () => feedPosts({ ...state, hiddenPostIds: [] }, scope, sort, kind).filter((post) => state.hiddenPostIds.includes(post.id)),
+    [state, scope, sort, kind],
   );
 
   const unread = unreadNotifications(state);
+
+  if (!gateOk) {
+    return (
+      <div className="sr-forum sr-forum--gated">
+        <SpoilerGate onContinue={() => setGateOk(true)} onLeave={onLeave} />
+      </div>
+    );
+  }
 
   // ── 子视图 ──
   if (view.kind === "compose") {
@@ -287,7 +305,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
         onBack={() => setView({ kind: "feed" })}
         onOpenBook={onOpenBook}
         onLike={() => engine.like(post)}
-        onComment={(body, replyToId) => engine.comment(post, body, replyToId)}
+        onComment={(body, replyToId, spoiler) => engine.comment(post, body, replyToId, spoiler)}
         onCollect={() => mutate((prev) => toggleCollect(prev, post.id))}
         onGift={() => setGiftTarget({ postId: post.id, npcId: post.authorKind === "npc" ? post.authorId : undefined })}
         onOpenAuthor={(npcId) => setView({ kind: "profile", npcId })}
@@ -456,12 +474,16 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
   // ── 信息流 ──
   return (
     <div className="sr-forum">
+      <div className="sr-forum-top">
       <div className="sr-forum-head">
         <button
           type="button"
           className="sr-forum-me"
-          onClick={() => setDrawerOpen(true)}
-          aria-label="打开个人菜单"
+          onClick={() => {
+            setDrawerOpen(true);
+            if (unread.length > 0) mutate((prev) => markNotificationsRead(prev, ["comment", "reply", "like", "mention"]));
+          }}
+          aria-label={`打开个人菜单${unread.length > 0 ? `（${unread.length} 条未读通知）` : ""}`}
         >
           <span className="sr-forum-avatar" aria-hidden>
             {me.avatar ? (
@@ -471,6 +493,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
               <span>我</span>
             )}
           </span>
+          {unread.length > 0 && <i className="sr-forum-dot" aria-hidden />}
         </button>
         <form
           className="sr-forum-search"
@@ -485,45 +508,64 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
           <Search size={15} strokeWidth={1.8} aria-hidden />
           <input name="q" placeholder="搜帖子、书友、书或话题" aria-label="搜索书友圈" />
         </form>
-        <button
-          type="button"
-          className="sr-forum-icon"
-          aria-label={`通知${unread.length > 0 ? `（${unread.length} 条未读）` : ""}`}
-          onClick={() => {
-            setDrawerOpen(true);
-            mutate((prev) => markNotificationsRead(prev, ["comment", "reply", "like", "mention"]));
-          }}
-        >
-          <Bell size={19} strokeWidth={1.7} />
-          {unread.length > 0 && <i className="sr-forum-dot" aria-hidden />}
+        <button type="button" className="sr-forum-publish" onClick={() => setView({ kind: "compose" })}>
+          <PenLine size={15} strokeWidth={1.9} aria-hidden />
+          发布
         </button>
       </div>
 
-      <div className="sr-chip-row sr-forum-channels">
-        {(Object.keys(CHANNEL_LABEL) as ForumChannel[]).map((key) => (
-          <button
-            key={key}
-            type="button"
-            className="sr-chip"
-            data-active={channel === key ? "true" : undefined}
-            onClick={() => setChannel(key)}
-          >
-            {CHANNEL_LABEL[key]}
-          </button>
-        ))}
+      <div className="sr-forum-row2">
+        <div className="sr-uline-tabs" role="tablist" aria-label="信息流范围">
+          {(["recommend", "following"] as FeedScope[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              className="sr-uline-tab"
+              aria-selected={scope === key}
+              onClick={() => setScope(key)}
+            >
+              {key === "recommend" ? "推荐" : "关注"}
+            </button>
+          ))}
+        </div>
+        <label className="sr-forum-sort">
+          <span className="sr-visually-hidden">排序</span>
+          <select value={sort} onChange={(event) => setSort(event.target.value as FeedSort)} aria-label="排序">
+            {(Object.keys(FEED_SORT_LABEL) as FeedSort[]).map((key) => (
+              <option key={key} value={key}>
+                {FEED_SORT_LABEL[key]}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="sr-forum-row3">
+        <div className="sr-forum-kinds" role="group" aria-label="内容类型">
+          {(Object.keys(FEED_KIND_LABEL) as FeedKind[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              className="sr-forum-kind"
+              aria-pressed={kind === key}
+              onClick={() => setKind(key)}
+            >
+              {FEED_KIND_LABEL[key]}
+            </button>
+          ))}
+        </div>
         <button
           type="button"
-          className="sr-btn sr-btn-sm"
+          className="sr-icon-btn sr-forum-refresh"
           onClick={() => void refreshFeed(false)}
           disabled={busy === "feed"}
           aria-label="请书友们发新帖"
+          title="请书友们发新帖"
         >
-          <RotateCw size={13} strokeWidth={1.8} />
-          刷新
+          <RotateCw size={17} strokeWidth={1.8} className={busy === "feed" ? "sr-spin" : undefined} />
         </button>
-        <button type="button" className="sr-btn sr-btn-sm" onClick={() => setView({ kind: "settings" })}>
-          生成规则
-        </button>
+      </div>
       </div>
 
       {notice && (
@@ -600,7 +642,11 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
           ) : (
             <>
               <PenLine size={24} strokeWidth={1.4} />
-              <p>这个频道还没有帖子。点右下角「写帖子」发一条，书友们会来回应。</p>
+              <p>
+                {scope === "following" && state.following.length === 0
+                  ? "还没有关注的书友。在帖子里点头像进入主页，就能关注。"
+                  : "这里还没有帖子。点右上角「发布」写一条，书友们会来回应。"}
+              </p>
             </>
           )}
         </div>
@@ -638,7 +684,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
         <div style={{ marginTop: 8 }}>
           {hiddenInFeed.map((post) => (
             <div key={post.id} className="sr-note-card">
-              <div className="sr-note-meta">{post.authorName}：{post.body.slice(0, 40)}…</div>
+              <div className="sr-note-meta">{post.authorName}：{spoilerSafe(post.body.slice(0, 40) + "…", post.spoiler)}</div>
               <button type="button" className="sr-btn sr-btn-sm" onClick={() => mutate((prev) => unhidePost(prev, post.id))}>
                 恢复显示
               </button>
@@ -646,11 +692,6 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
           ))}
         </div>
       )}
-
-      <button type="button" className="sr-forum-fab" onClick={() => setView({ kind: "compose" })} aria-label="写帖子">
-        <PenLine size={20} strokeWidth={1.9} />
-        <span>写帖子</span>
-      </button>
 
       {drawerOpen && (
         <StudyRoomForumDrawer

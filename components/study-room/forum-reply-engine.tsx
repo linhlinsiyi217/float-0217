@@ -114,8 +114,8 @@ export function useForumReplyEngine({
         }
         if (controller.signal.aborted) return;
         if (result.status === "ok") {
-          const body = result.body;
-          mutate((prev) => applyComment(prev, reply, body));
+          const { body, spoiler } = result;
+          mutate((prev) => applyComment(prev, reply, body, spoiler));
           setReplyIssue((issue) => (issue?.kind === "no-api" ? null : issue));
         } else if (result.status === "no-api") {
           setReplyIssue({ kind: "no-api" });
@@ -237,7 +237,7 @@ export function useForumReplyEngine({
     }
   };
 
-  const comment = (post: ForumPost, body: string, replyToId?: string) => {
+  const comment = (post: ForumPost, body: string, replyToId?: string, spoiler?: boolean) => {
     const text = body.trim();
     if (!text) return;
     const id = `fc_user_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
@@ -249,6 +249,7 @@ export function useForumReplyEngine({
         authorKind: "user",
         body: text,
         replyToId,
+        ...(spoiler ? { spoiler: true } : {}),
         createdAt: new Date().toISOString(),
       }),
     );
