@@ -780,8 +780,9 @@ export async function makeFriendFromNpc(
   }
 
   const alreadyFriend = loadChatContacts().some((contact) => contact.characterId === characterId);
-  const contact = addChatContact(characterId);
-  if (contact) createOrGetSession(contact.id);
+  addChatContact(characterId);
+  // 会话按角色 id 归档（与聊天应用一致）
+  createOrGetSession(characterId);
 
   // 把书友圈里的交流带进记忆库：聊天时能想起你们聊过什么
   const talked = state.posts

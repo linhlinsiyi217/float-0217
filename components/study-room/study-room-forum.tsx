@@ -235,7 +235,8 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
         flash("聊天里还没加上这位好友");
         return;
       }
-      const session = createOrGetSession(contact.id);
+      // 会话按角色 id 归档（与聊天应用一致），不是联系人记录的 id
+      const session = createOrGetSession(npc.characterId!);
       window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: "chat", sessionId: session.id } }));
     });
   };
