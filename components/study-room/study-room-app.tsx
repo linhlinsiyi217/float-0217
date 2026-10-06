@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, Library, Store, NotebookPen, User, Users, Shuffle } from "lucide-react";
 
-import { hydrateReadingStorage } from "@/lib/reading-storage";
+import { hydrateReadingStorage, loadBooks } from "@/lib/reading-storage";
 import { applyAppearance, loadAppearance } from "@/lib/study-room/appearance";
 import { loadForum } from "@/lib/study-room/forum";
+import { readStudyRoomTarget } from "@/lib/study-room/share-to-chat";
 import { STUDYROOM_SEARCH_EVENT } from "@/lib/study-room/events";
 import type { Book } from "@/lib/reading-types";
 import { StudyRoomShelf } from "./study-room-shelf";
@@ -32,6 +33,8 @@ import { StudyRoomGifts } from "./study-room-gifts";
 
 type StudyRoomAppProps = {
   onClose: () => void;
+  /** 从聊天里的书房分享卡点进来时带上要打开的书或帖子 */
+  launchContext?: Record<string, unknown> | null;
 };
 
 type StudyRoomTab = "shelf" | "store" | "desk" | "forum" | "mine";
@@ -62,7 +65,7 @@ const TAB_META: Record<StudyRoomTab, { label: string; icon: typeof Library; titl
 
 const TAB_ORDER: StudyRoomTab[] = ["shelf", "store", "desk", "forum", "mine"];
 
-export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
+export default function StudyRoomApp({ onClose, launchContext }: StudyRoomAppProps) {
   const [ready, setReady] = useState(false);
   // 冷启动播放一次启动画面；书房内部切页不重播（见 study-room-splash）
   const [splashDone, setSplashDone] = useState(() => shouldSkipStudyRoomSplash());
@@ -109,6 +112,37 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
   const [forumPostId, setForumPostId] = useState<string | null>(null);
   // 从「我的」点「发布第一条动态」：切到书友圈并直接打开发帖（只用一次）
   const [forumCompose, setForumCompose] = useState(false);
+
+  // 聊天分享卡点进来：书在书架上就直接打开阅读，帖子就切到书友圈打开原帖；每个启动对象只处理一次
+  const handledLaunchRef = useRef<Record<string, unknown> | null>(null);
+  const [launchNotice, setLaunchNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!ready || !launchContext || handledLaunchRef.current === launchContext) return;
+    handledLaunchRef.current = launchContext;
+    const target = readStudyRoomTarget(launchContext);
+    if (!target) return;
+    if (target.kind === "book") {
+      const book = loadBooks().find((item) => item.id === target.bookId);
+      if (book) {
+        lastOpenedBookRef.current = book.id;
+        setView({ kind: "reader", book });
+      } else {
+        setView({ kind: "tabs" });
+        setTab("shelf");
+        setLaunchNotice("这本书已经不在书架上了");
+      }
+      return;
+    }
+    setView({ kind: "tabs" });
+    setForumCompose(false);
+    setForumPostId(target.postId);
+    setTab("forum");
+  }, [ready, launchContext]);
+  useEffect(() => {
+    if (!launchNotice) return;
+    const timer = window.setTimeout(() => setLaunchNotice(null), 2400);
+    return () => window.clearTimeout(timer);
+  }, [launchNotice]);
 
   // 论坛名可以在书友管理里改，这里跟着刷新
   const [forumName, setForumName] = useState<string>(() => loadForum().name);
@@ -331,6 +365,12 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
           )}
         </div>
       </div>
+
+      {launchNotice && (
+        <div className="sr-toast" role="status">
+          {launchNotice}
+        </div>
+      )}
 
       <StudyRoomDock
         items={dockItems}

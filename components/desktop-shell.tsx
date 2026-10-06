@@ -2385,6 +2385,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
   const [activeChatSession, setActiveChatSession] = useState<ChatSession | null>(null);
   const [customAppLaunchContext, setCustomAppLaunchContext] = useState<CustomAppLaunchState | null>(null);
   const [appMarketLaunchContext, setAppMarketLaunchContext] = useState<Record<string, unknown> | null>(null);
+  // 聊天里的书房分享卡：打开书房后直接回到那本书或那条帖子（每次点开都是新对象，书房只处理一次）
+  const [studyRoomLaunchContext, setStudyRoomLaunchContext] = useState<Record<string, unknown> | null>(null);
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
@@ -2410,6 +2412,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
           }
           : null);
         setAppMarketLaunchContext(nextAppId === "appmarket" ? launchContextRecord : null);
+        setStudyRoomLaunchContext(nextAppId === "studyroom" ? launchContextRecord : null);
         if (detail.appId === "resources") {
           setResourcesInitialPage(detail.resourcePage === "vn_assets" || detail.resourcePage === "memory" ? detail.resourcePage : "main");
         }
@@ -4137,7 +4140,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     }
 
     if (activeApp === "studyroom") {
-      return <StudyRoomApp onClose={() => setActiveApp(null)} />;
+      return <StudyRoomApp onClose={() => setActiveApp(null)} launchContext={studyRoomLaunchContext} />;
     }
 
     if (activeApp === "mapmode") {

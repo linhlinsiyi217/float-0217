@@ -17,6 +17,7 @@ import {
   PenLine,
   Quote,
   RotateCcw,
+  Send,
   Trash2,
   X,
 } from "lucide-react";
@@ -28,6 +29,8 @@ import { loadCharacters } from "@/lib/character-storage";
 import { fileToCoverImage, UnsupportedBackgroundError } from "@/lib/study-room/background-image";
 import { StudyRoomStageSummary } from "./study-room-stage-summary";
 import { GiftSheet } from "./gift-sheet";
+import { ShareSheet } from "./share-sheet";
+import { shareItemFromBook } from "@/lib/study-room/share-to-chat";
 import { StudyRoomReview } from "./study-room-review";
 import { HelpTip } from "./help-tip";
 import { exportBookAsEpub, safeFileName } from "@/lib/study-room/export-epub";
@@ -91,6 +94,7 @@ export function StudyRoomBookDetail({
   const [exporting, setExporting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [gifting, setGifting] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [review, setReview] = useState<"quick" | "fine" | null>(null);
   const [coverOpen, setCoverOpen] = useState(false);
   const [coverUrl, setCoverUrl] = useState("");
@@ -544,6 +548,10 @@ export function StudyRoomBookDetail({
             <>
               <h3 className="sr-detail-h">分享与导出</h3>
               <div className="sr-detail-footer" style={{ marginTop: 0 }}>
+                <button type="button" className="sr-btn" onClick={() => setSharing(true)}>
+                  <Send size={16} strokeWidth={1.8} />
+                  分享给好友
+                </button>
                 <button type="button" className="sr-btn" onClick={() => setGifting(true)}>
                   <Gift size={16} strokeWidth={1.7} />
                   赠书 / 送礼
@@ -586,6 +594,8 @@ export function StudyRoomBookDetail({
         {review && (
           <StudyRoomReview book={book} onRead={onRead} onClose={() => setReview(null)} />
         )}
+
+        {sharing && <ShareSheet item={shareItemFromBook(book)} onClose={() => setSharing(false)} />}
 
         {gifting && (
           <GiftSheet

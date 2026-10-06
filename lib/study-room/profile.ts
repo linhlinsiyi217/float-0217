@@ -47,7 +47,7 @@ export const HANDLE_MIN = 3;
 export const HANDLE_MAX = 16;
 
 /** 标签建议：只是给个起点，可以自由输入。 */
-export const TAG_SUGGESTIONS = ["夜读派", "灵感捕手", "悬疑迷", "慢热书友", "故事收藏家", "纸书党", "重读爱好者"];
+export const TAG_SUGGESTIONS = ["夜读选手", "悬疑侦探", "灵感收集员", "慢热书友", "故事收藏家", "纸书党", "重读爱好者"];
 
 /** 标签小圆点的默认配色（与主题的冷白黑灰相容的低饱和色）。 */
 export const TAG_SWATCHES = [

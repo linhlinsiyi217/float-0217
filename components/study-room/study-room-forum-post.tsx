@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Ban, BookOpen, ChevronDown, ChevronLeft, EyeOff, Gift, Heart, MessageSquare, PenLine, Star, Trash2, X } from "lucide-react";
+import { Ban, BookOpen, ChevronDown, ChevronLeft, EyeOff, Gift, Heart, MessageSquare, PenLine, Send, Star, Trash2, X } from "lucide-react";
 
 import type { Book } from "@/lib/reading-types";
 import { avatarDataUrl } from "@/lib/study-room/npc-avatar";
 import { KIND_TEXT, type ForumPost, type ForumState } from "@/lib/study-room/forum";
 import { normalizeForMatch } from "@/lib/study-room/book-source";
 import { loadBooks } from "@/lib/reading-storage";
+import { shareItemFromPost } from "@/lib/study-room/share-to-chat";
+import { ShareSheet } from "./share-sheet";
 
 /** 帖子关联的书：先看 bookId，再按书名匹配书架上的书。 */
 export function findBookForPost(post: ForumPost): Book | undefined {
@@ -273,6 +275,7 @@ export function StudyRoomForumPostView({
   const [commentSpoiler, setCommentSpoiler] = useState(false);
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [draft, setDraft] = useState(post.body);
   // 回复默认折叠：只记录展开了哪几条一级评论
   const [openThreads, setOpenThreads] = useState<Set<string>>(() => new Set());
@@ -506,7 +509,12 @@ export function StudyRoomForumPostView({
             <Gift size={16} strokeWidth={1.8} />
             送礼物
           </button>
+          <button type="button" className="sr-forum-act" onClick={() => setSharing(true)}>
+            <Send size={16} strokeWidth={1.8} />
+            分享
+          </button>
         </div>
+        {sharing && <ShareSheet item={shareItemFromPost(post)} onClose={() => setSharing(false)} />}
 
         </div>
 
