@@ -7,6 +7,12 @@ import { kvGet, kvSet } from "@/lib/kv-db";
 
 const RECENT_KEY = "ai_phone_studyroom_recent_colors_v1";
 
+/** 常用色板：书房的冷白 / 黑灰 / 浅冷蓝为主，加几种柔和的点缀色。 */
+const PRESET_SWATCHES = [
+  "#ffffff", "#f4f6f9", "#d8dde5", "#8e939b", "#4a4a4a", "#1c1f24",
+  "#e8f0fb", "#9bb7d9", "#5b7db1", "#0a84ff", "#7aa58c", "#c98f8f",
+];
+
 type Rgba = { r: number; g: number; b: number; a: number };
 
 function clamp(n: number, min: number, max: number): number {
@@ -54,7 +60,7 @@ function parseColor(input: string): Rgba {
 function isParsableColor(input: string): boolean {
   const value = (input || "").trim();
   if (/^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value)) return true;
-  const rgb = value.match(/^rgba?(([^)]+))$/i);
+  const rgb = value.match(/^rgba?\(([^)]+)\)$/i);
   if (!rgb) return false;
   const parts = rgb[1].split(",").map((p) => Number(p.trim()));
   return parts.length >= 3 && parts.length <= 4 && parts.every((n) => Number.isFinite(n));
@@ -129,6 +135,8 @@ export function ColorSheet({ title, value, onChange, onClose }: ColorSheetProps)
   const [a, setA] = useState(initial.a);
   const [hexDraft, setHexDraft] = useState(toHex(initial));
   const [hexError, setHexError] = useState(false);
+  // 正在输入 HEX 时不跟着色块/滑杆改写输入框，免得打字被打断
+  const hexEditingRef = useRef(false);
   const [recent, setRecent] = useState<string[]>([]);
 
   useEffect(() => setRecent(loadRecent()), []);
@@ -190,6 +198,23 @@ export function ColorSheet({ title, value, onChange, onClose }: ColorSheetProps)
 
   const current = hsvToRgb(h, s, v, a);
   const hex = toHex(current);
+
+  // 拖色块、色相、RGB 时，HEX 输入框同步显示当前颜色
+  useEffect(() => {
+    if (!hexEditingRef.current) {
+      setHexDraft(hex);
+      setHexError(false);
+    }
+  }, [hex]);
+
+  const pickColor = (c: string) => {
+    const parsed = parseColor(c);
+    const hsv = rgbToHsv(parsed);
+    setH(hsv.h); setS(hsv.s); setV(hsv.v); setA(parsed.a);
+    setHexDraft(toHex(parsed));
+    setHexError(false);
+    onChange(c);
+  };
 
   const handleConfirm = () => {
     const final = toCss(hsvToRgb(h, s, v, a));
@@ -266,7 +291,8 @@ export function ColorSheet({ title, value, onChange, onClose }: ColorSheetProps)
             <input
               value={hexDraft}
               onChange={(e) => { setHexDraft(e.target.value); setHexError(false); }}
-              onBlur={handleHexCommit}
+              onFocus={() => { hexEditingRef.current = true; }}
+              onBlur={() => { hexEditingRef.current = false; handleHexCommit(); }}
               onKeyDown={(e) => { if (e.key === "Enter") handleHexCommit(); }}
               spellCheck={false}
               aria-label="HEX 颜色"
@@ -284,6 +310,23 @@ export function ColorSheet({ title, value, onChange, onClose }: ColorSheetProps)
           </div>
         </div>
 
+        <div className="sr-recent">
+          <span className="sr-recent-label">色板</span>
+          <div className="sr-recent-row">
+            {PRESET_SWATCHES.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className="sr-recent-chip"
+                data-active={hex === c ? "true" : undefined}
+                style={{ background: c }}
+                onClick={() => pickColor(c)}
+                aria-label={`使用颜色 ${c}`}
+              />
+            ))}
+          </div>
+        </div>
+
         {recent.length > 0 && (
           <div className="sr-recent">
             <span className="sr-recent-label">最近使用</span>
@@ -294,13 +337,7 @@ export function ColorSheet({ title, value, onChange, onClose }: ColorSheetProps)
                   type="button"
                   className="sr-recent-chip"
                   style={{ background: c }}
-                  onClick={() => {
-                    const parsed = parseColor(c);
-                    const hsv = rgbToHsv(parsed);
-                    setH(hsv.h); setS(hsv.s); setV(hsv.v); setA(parsed.a);
-                    setHexDraft(toHex(parsed));
-                    onChange(c);
-                  }}
+                  onClick={() => pickColor(c)}
                   aria-label={`使用颜色 ${c}`}
                 />
               ))}
