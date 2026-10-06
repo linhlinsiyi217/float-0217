@@ -815,7 +815,7 @@ export async function sendLLMStreamRequest(
     const request = buildProviderRequest(config, effectivePreset, requestMessages, { stream: true });
     publishDebugPromptSnapshot({ request, config, preset: effectivePreset, meta, options, requestKind: "completion" });
     const llmAbort = new AbortController();
-    const llmTimeout = setTimeout(() => llmAbort.abort(), 500_000);
+    const llmTimeout = setTimeout(() => llmAbort.abort(), 1_800_000);
     const detachExternalAbort = attachExternalAbort(llmAbort, options?.signal);
 
     try {
@@ -934,7 +934,7 @@ export async function sendLLMRequest(
     console.log("[ChatEngine] Request:", requestDebugInfo);
 
     const llmAbort = new AbortController();
-    const llmTimeout = setTimeout(() => llmAbort.abort(), 500_000);
+    const llmTimeout = setTimeout(() => llmAbort.abort(), 1_800_000);
     const detachExternalAbort = attachExternalAbort(llmAbort, options?.signal);
 
     try {

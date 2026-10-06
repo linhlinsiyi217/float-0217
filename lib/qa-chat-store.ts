@@ -19,16 +19,24 @@ const MAX_MESSAGES_PER_SESSION = 200;
 
 export type QaToolStatus = { name: string; running: boolean; success?: boolean; detail?: string; result?: string; subtitle?: string };
 
-export type QaTextAttachment = { name: string; content: string };
+export type QaTextAttachment = { 
+    name: string; 
+    content: string;
+    mimeType?: string;
+    size?: number;
+    hash?: string;
+};
 
-export const QA_TEXT_ATTACHMENT_MAX_BYTES = 1024 * 1024;
-export const QA_TEXT_ATTACHMENTS_MAX_COUNT = 6;
-export const QA_TEXT_ATTACHMENTS_MAX_CHARS = 200_000;
+// 增加文件类型白名单及大小限制配置
+export const QA_TEXT_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024; // 提升到 10MB
+export const QA_TEXT_ATTACHMENTS_MAX_COUNT = 20; // 提升批量数量
+export const QA_TEXT_ATTACHMENTS_MAX_CHARS = 2_000_000; // 提升解析字符上限
 
 export function validateQaTextAttachments(files?: QaTextAttachment[]): string | null {
     if (!files?.length) return null;
     if (files.length > QA_TEXT_ATTACHMENTS_MAX_COUNT) return `最多添加 ${QA_TEXT_ATTACHMENTS_MAX_COUNT} 个附件。`;
-    if (new Set(files.map((file) => file.name)).size !== files.length) return "不能添加同名附件。";
+    // 允许同名不同文件（通过额外属性如 size 或 hash 区分），这里暂简化为不阻断同名
+    // if (new Set(files.map((file) => file.name)).size !== files.length) return "不能添加同名附件。";
     const chars = files.reduce((sum, file) => sum + file.name.length + file.content.length, 0);
     if (chars > QA_TEXT_ATTACHMENTS_MAX_CHARS) {
         return `附件文本合计不能超过 ${Math.floor(QA_TEXT_ATTACHMENTS_MAX_CHARS / 1000)}K 字符。`;
@@ -423,6 +431,80 @@ function resendTurnIds(session: QaSession, messageIndex: number): Set<string> {
 }
 
 /** 返回无法安全重新生成的原因；null 表示这是一段无工具副作用的用户对话。 */
+/** 扫描会话历史提取最后一版完整的 JS 插件代码，确保跨会话结转无损 */
+function extractLatestPluginCode(messages: QaMsg[]): string | null {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i];
+        if (msg.role === "assistant" && msg.content) {
+            const matches = Array.from(msg.content.matchAll(/```(?:javascript|js)\n([\s\S]*?)```/g));
+            if (matches.length > 0) {
+                const code = matches[matches.length - 1][1].trim();
+                if (code.includes("window.__WORKSHOP_RUNTIME__") || code.includes("xf-qa-capsule") || code.includes("workshop-outline") || code.length > 200) {
+                    return code;
+                }
+            }
+        }
+    }
+    return null;
+}
+
+/** 将当前会话的记忆浓缩并结转到新会话，重置 Token 空间 */
+export async function carryOverQaSession(sessionId: string): Promise<string | null> {
+    const session = sessions.find((s) => s.id === sessionId);
+    if (!session || isGenerating || isCompacting) return null;
+    const entries = sessionContext(session);
+    if (entries.length === 0) return null;
+
+    isCompacting = true;
+    emit();
+    try {
+        const summary = await compactQaContext(entries);
+        if (!summary) throw new Error("无法提取有效摘要");
+
+        let finalSummary = summary;
+        const latestPlugin = extractLatestPluginCode(session.messages);
+        if (latestPlugin && !finalSummary.includes(latestPlugin.slice(0, 50))) {
+            finalSummary += `\n\n### 上一会话最后一版已落地的完整 JS 插件源码\n\`\`\`javascript\n${latestPlugin}\n\`\`\``;
+        }
+
+        const newId = makeId();
+        const newSession: QaSession = {
+            id: newId,
+            title: `${session.title} (接续)`,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            messages: [
+                {
+                    id: makeId(),
+                    role: "assistant",
+                    content: `已承接会话「${session.title}」的关键记忆与进展！\n\n **前情备忘**：\n${finalSummary}\n\n新窗口上下文已清空，Token 空间充足，我们可以继续下一步！`,
+                    ts: Date.now(),
+                },
+            ],
+            context: [
+                {
+                    role: "user",
+                    content: `[上一会话「${session.title}」的结转摘要备忘，供你延续上下文]\n${finalSummary}`,
+                },
+                {
+                    role: "assistant",
+                    content: `已承接上一会话「${session.title}」的全部关键记忆与进展。新会话上下文已重置清空，我们可以继续下一步！`,
+                },
+            ],
+        };
+
+        sessions = [newSession, ...sessions].slice(0, MAX_SESSIONS);
+        activeSessionId = newSession.id;
+        publish();
+        return newId;
+    } catch {
+        return null;
+    } finally {
+        isCompacting = false;
+        emit();
+    }
+}
+
 export function getQaEditAndResendBlockReason(sessionId: string, msgId: string): string | null {
     if (isGenerating || isCompacting) return "小坊正在执行或整理上下文，请等待当前任务完成。";
     const session = sessions.find((candidate) => candidate.id === sessionId);
@@ -505,13 +587,13 @@ export function updateQaMessageContent(
 }
 
 /** 修改用户消息并重新生成。只允许截断没有工具副作用的纯对话。 */
-export function editAndResendQaMessage(
+export async function editAndResendQaMessage(
     sessionId: string,
     msgId: string,
     content: string,
     images?: string[],
     files?: QaTextAttachment[],
-): QaMessageEditResult {
+): Promise<QaMessageEditResult> {
     if (!content.trim() && !images?.length && !files?.length) return { ok: false, reason: "消息内容不能为空。" };
     const filesError = validateQaTextAttachments(files);
     if (filesError) return { ok: false, reason: filesError };
@@ -522,6 +604,19 @@ export function editAndResendQaMessage(
     if (!session || activeSessionId !== sessionId) return { ok: false, reason: "当前会话已经切换，请重新操作。" };
     const messageIndex = session.messages.findIndex((message) => message.id === msgId);
     if (messageIndex < 0) return { ok: false, reason: "消息已不存在。" };
+    // 扫描被截断的消息中已 applied 的 GitHub Commit，并自动尝试回退
+    const discardedMessages = session.messages.slice(messageIndex);
+    for (const msg of discardedMessages) {
+        if (msg.pendingCommit?.status === "applied" && msg.pendingCommit.result?.commitSha) {
+            try {
+                // await 顺序执行，防止并发撤销报错，并保留记录不自动覆盖
+                await revertQaCommit(loadQaGithubConfig()!, msg.pendingCommit.result);
+            } catch {
+                // ignore
+            }
+        }
+    }
+
     const removedTurns = resendTurnIds(session, messageIndex);
     const prefixContext = session.context?.filter((entry) => !entry.turn || !removedTurns.has(entry.turn));
 
