@@ -117,17 +117,29 @@ function pushRecent(color: string): void {
   kvSet(RECENT_KEY, JSON.stringify(next));
 }
 
+/** 任意可识别的颜色写法 → 不透明的 #rrggbb */
+export function toOpaqueHex(input: string): string {
+  return toHex(parseColor(input));
+}
+
 type ColorSheetProps = {
   title: string;
   value: string;
   onChange: (value: string) => void;
   onClose: () => void;
+  /** 只要不透明色：隐藏透明度滑杆，输出一律 #RRGGBB */
+  opaque?: boolean;
 };
 
 /** 底部半屏调色面板：二维色块 + 色相/透明度滑杠 + HEX/RGB + 最近使用。 */
-export function ColorSheet({ title, value, onChange, onClose }: ColorSheetProps) {
+export function ColorSheet({ title, value, onChange: rawOnChange, onClose, opaque }: ColorSheetProps) {
   const original = useRef(value);
+  const onChange = useCallback(
+    (next: string) => rawOnChange(opaque ? toOpaqueHex(next) : next),
+    [rawOnChange, opaque],
+  );
   const initial = parseColor(value);
+  if (opaque) initial.a = 1;
   const initialHsv = rgbToHsv(initial);
   const [h, setH] = useState(initialHsv.h);
   const [s, setS] = useState(initialHsv.s);
@@ -181,9 +193,9 @@ export function ColorSheet({ title, value, onChange, onClose }: ColorSheetProps)
     setHexError(false);
     const parsed = parseColor(hexDraft);
     const hsv = rgbToHsv(parsed);
-    setH(hsv.h); setS(hsv.s); setV(hsv.v); setA(parsed.a);
-    emit(hsv.h, hsv.s, hsv.v, parsed.a);
-    onChange(toCss(parsed));
+    const na = opaque ? 1 : parsed.a;
+    setH(hsv.h); setS(hsv.s); setV(hsv.v); setA(na);
+    emit(hsv.h, hsv.s, hsv.v, na);
   };
 
   const handleRgb = (channel: "r" | "g" | "b", raw: string) => {
@@ -273,7 +285,7 @@ export function ColorSheet({ title, value, onChange, onClose }: ColorSheetProps)
               aria-label="色相"
             />
           </div>
-          <div className="sr-slider-row">
+          {!opaque && <div className="sr-slider-row">
             <span className="sr-slider-label">透明</span>
             <input
               type="range" min={0} max={100} step={1} value={Math.round(a * 100)}
@@ -281,7 +293,7 @@ export function ColorSheet({ title, value, onChange, onClose }: ColorSheetProps)
               className="sr-slider"
               aria-label="透明度"
             />
-          </div>
+          </div>}
         </div>
 
         <div className="sr-color-inputs">

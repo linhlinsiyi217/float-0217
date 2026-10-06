@@ -22,8 +22,10 @@ export type StyleMeta = {
   name: string;
   summary: string;
   tags: string[];
-  /** 出处短语，如「仪仪原创文风」「改编自《…》」 */
+  /** 署名：「AI 辅助创作」或「仪仪原创原创」 */
   origin?: string;
+  /** 一句规则要点（只用于展示） */
+  brief?: string;
 };
 
 /** 用户自建/导入的文风（只在本机使用，默认私人）。 */

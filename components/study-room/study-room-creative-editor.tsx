@@ -657,9 +657,10 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
                   </select>
                 </div>
               )}
-              {draft.writer.mode === "character" && draft.writer.characterId && (
+              {/* 世界书在这里关联/调整；写书时自动带上，不在生成前另外要求选择 */}
+              {(draft.writer.mode !== "character" || draft.writer.characterId) && (
                 <WorldBookPicker
-                  characterId={draft.writer.characterId}
+                  characterId={draft.writer.mode === "character" ? draft.writer.characterId : undefined}
                   value={draft.writer.worldBookIds}
                   onChange={(worldBookIds) => update({ writer: { ...draft.writer, worldBookIds } })}
                 />
@@ -812,8 +813,9 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
                           aria-pressed={active}
                         >
                           <span className="sr-style-name">{style.name}</span>
-                          <span className="sr-style-origin">{style.origin ?? "仪仪原创文风"}</span>
+                          <span className="sr-style-origin">{style.origin ?? "仪仪原创原创"}</span>
                           <span className="sr-note-meta">{style.summary}</span>
+                          {style.brief && <span className="sr-note-meta sr-style-brief">要点：{style.brief}</span>}
                           <span className="sr-chip-row" style={{ marginTop: 4 }}>
                             {style.tags.map((tag) => (
                               <span key={tag} className="sr-note-tag">{tag}</span>

@@ -2,7 +2,8 @@
 
 import { useEffect } from "react";
 
-const SCREEN_ROOTS = ".sr-app, .sr-reader, .sr-msg-app";
+// 外观页里的阅读预览也带 .sr-reader 类名，但它在 .sr-body 滚动区里面，不能算「屏幕根」
+const SCREEN_ROOTS = ".sr-app, .sr-reader:not(.sr-reader--preview), .sr-msg-app";
 
 /**
  * 书房整屏不被键盘「推歪」。
@@ -19,17 +20,17 @@ export function useStableStudyRoomScreen() {
   useEffect(() => {
     if (typeof document === "undefined") return;
 
-    const isClipped = (el: Element) => {
-      const style = window.getComputedStyle(el);
-      return /hidden|clip/.test(style.overflowX + style.overflowY);
-    };
+    // 按方向分别判断：.sr-body 是「纵向可滚、横向 hidden」，以前只要任一方向 hidden
+    // 就把 scrollTop 也拉回 0，外观页（内含阅读预览）一滚就跳回顶部
+    const clippedAxis = (value: string) => value === "hidden" || value === "clip";
 
     const resetChain = (from: Element | null) => {
       let el: Element | null = from;
       while (el && el !== document.body) {
-        if ((el.scrollTop !== 0 || el.scrollLeft !== 0) && isClipped(el)) {
-          el.scrollTop = 0;
-          el.scrollLeft = 0;
+        if (el.scrollTop !== 0 || el.scrollLeft !== 0) {
+          const style = window.getComputedStyle(el);
+          if (el.scrollTop !== 0 && clippedAxis(style.overflowY)) el.scrollTop = 0;
+          if (el.scrollLeft !== 0 && clippedAxis(style.overflowX)) el.scrollLeft = 0;
         }
         if (el.classList.contains("phone-shell")) break;
         el = el.parentElement;

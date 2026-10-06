@@ -71,13 +71,16 @@ import {
   type SpeakHandle,
 } from "@/lib/study-room/tts";
 import { getReaderMusicController } from "@/lib/study-room/reader-music";
+import { VolumeSlider } from "./volume-slider";
 import {
+  NOISE_HINTS,
   NOISE_LABELS,
   duckAmbient,
   getAmbientState,
   pauseAmbient,
   playNoise,
   resumeAmbient,
+  previewAmbientVolume,
   setAmbientVolume,
   setReadingVolume,
   stopAmbient,
@@ -187,6 +190,8 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   const [flash, setFlash] = useState<string | null>(null);
   const [coreadOpen, setCoreadOpen] = useState(false);
   const [coreadAnchor, setCoreadAnchor] = useState(0);
+  // 「询问角色」时带进共读侧栏的原文（选区在点按钮时会被清掉，要先记下来）
+  const [coreadQuote, setCoreadQuote] = useState<string | undefined>(undefined);
   // 顶/底栏：点正文空白处切换；外观里可设为默认隐藏
   const [barsHidden, setBarsHidden] = useState(() => loadAppearance().vars["--sr-bar-autohide"] === "1");
   const [showHint, setShowHint] = useState(false);
@@ -201,6 +206,11 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   const rootRef = useRef<HTMLDivElement>(null);
   const selbarRef = useRef<HTMLDivElement>(null);
   const [selbarPos, setSelbarPos] = useState<{ left: number; top: number } | null>(null);
+  // 手机上点工具条按钮时，系统会先把原生选区收起来；按下工具条后的短时间内、
+  // 以及「高亮配色 / 更多」展开期间，保留刚才选中的文字，按钮才拿得到正确的原文
+  const selbarTouchRef = useRef(0);
+  const selMenuOpenRef = useRef(false);
+  selMenuOpenRef.current = showMore || showMarkColors;
   const speakRef = useRef<SpeakHandle | null>(null);
   const playingRef = useRef(false);
   const rateRef = useRef(1);
@@ -234,14 +244,13 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
     duckAmbient(playing);
   }, [playing]);
 
-  // 离开阅读器时停掉朗读与背景声音（沿用原来的约定）
+  // 离开阅读器时停掉朗读；背景声音在书房里切页面继续播放，退出书房时由 StudyRoomApp 停止
   useEffect(() => {
     return () => {
       playingRef.current = false;
       speakRef.current?.abort();
       stopSpeaking();
       duckAmbient(false);
-      stopAmbient();
       if (sleepTimerRef.current !== null) window.clearTimeout(sleepTimerRef.current);
     };
   }, []);
@@ -494,21 +503,28 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
       return -1;
     };
 
+    // 正在点工具条（或配色 / 更多已展开）时，原生选区被收起不算「取消选择」
+    const sticky = () => selMenuOpenRef.current || Date.now() - selbarTouchRef.current < 1500;
+    const drop = () => {
+      if (sticky()) return;
+      setSelection(null);
+    };
+
     const compute = () => {
       const sel = window.getSelection();
       const root = bodyRef.current;
       if (!sel || sel.isCollapsed || sel.rangeCount === 0 || !root) {
-        setSelection(null);
+        drop();
         return;
       }
       const text = sel.toString().trim();
       if (!text) {
-        setSelection(null);
+        drop();
         return;
       }
       const range = sel.getRangeAt(0);
       if (!root.contains(range.commonAncestorContainer)) {
-        setSelection(null);
+        drop();
         return;
       }
       const pi = findParagraphIndex(range.startContainer);
@@ -525,12 +541,45 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
       debounce = window.setTimeout(compute, 220);
     };
 
+    // 滚动时工具条跟着选区走；原生选区已经没了就收起
+    const onScroll = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) {
+        selbarTouchRef.current = 0;
+        setShowMore(false);
+        setShowMarkColors(false);
+        setSelection(null);
+        return;
+      }
+      onChange();
+    };
+    // 点到工具条以外的地方：收起配色 / 更多，选区按原生状态走
+    const onPointerDown = (event: PointerEvent) => {
+      if (selbarRef.current?.contains(event.target as Node)) return;
+      selbarTouchRef.current = 0;
+      setShowMore(false);
+      setShowMarkColors(false);
+    };
+
+    const body = bodyRef.current;
     document.addEventListener("selectionchange", onChange);
+    document.addEventListener("pointerdown", onPointerDown, true);
+    body?.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       document.removeEventListener("selectionchange", onChange);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      body?.removeEventListener("scroll", onScroll);
       if (debounce !== null) window.clearTimeout(debounce);
     };
   }, [isPdf, chapterIndex]);
+
+  // 翻章：上一章的选区和菜单一并清掉
+  useEffect(() => {
+    selbarTouchRef.current = 0;
+    setSelection(null);
+    setShowMore(false);
+    setShowMarkColors(false);
+  }, [chapterIndex]);
 
   // 选区菜单：先渲染再量尺寸。优先放在选区下方（手机系统自带的复制菜单多在上方，避免叠在一起），
   // 下方放不下（靠近底栏）就放到上方；左右夹在阅读器内，不被屏幕边缘裁掉。
@@ -546,7 +595,8 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
     const H = root.clientHeight;
     const w = bar.offsetWidth;
     const h = bar.offsetHeight;
-    const gap = 12;
+    // 选字手柄（选区两端的圆点）大约伸出文字 20px，工具条再让开一点，不挡手柄
+    const gap = 26;
     const footer = root.querySelector<HTMLElement>(".sr-reader-footer");
     const header = root.querySelector<HTMLElement>(".sr-reader-header");
     const bottomLimit = H - (barsHidden ? 16 : (footer?.offsetHeight ?? 0) + 12);
@@ -559,6 +609,8 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   }, [selection, annotate, barsHidden, showMarkColors, showMore]);
 
   const clearSelection = () => {
+    selbarTouchRef.current = 0;
+    selMenuOpenRef.current = false;
     window.getSelection()?.removeAllRanges();
     setSelection(null);
   };
@@ -644,6 +696,7 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   /** 就这段原文去问角色（打开共读侧栏，带着选中文字）。 */
   const handleAskCharacter = () => {
     setCoreadAnchor(selection?.paragraphIndex ?? visibleParagraphIndex());
+    setCoreadQuote(selection?.text);
     setCoreadOpen(true);
     clearSelection();
     setShowMore(false);
@@ -654,10 +707,17 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
     // 从批注面板里点「AI 写一句」时，selection 可能已经清掉，用面板里的原文
     const source = selection?.text ?? annotate?.quote ?? "";
     const sourceParagraph = selection?.paragraphIndex ?? annotate?.paragraphIndex ?? 0;
-    if (!source) return;
+    if (!source) {
+      showFlash("没拿到选中的文字，请重新长按选一段");
+      return;
+    }
     const apiConfig = resolveForumApiConfig();
     if (!apiConfig) {
-      showFlash("还没有配置 API：先在设置里绑定模型");
+      showFlash("还没有配置 API：到「设置 → API 配置」添加一个并设为默认");
+      return;
+    }
+    if (!apiConfig.apiKey || !apiConfig.baseUrl) {
+      showFlash(`API「${apiConfig.name || "默认"}」缺地址或密钥，到「设置 → API 配置」补上`);
       return;
     }
     setAiDrafting(true);
@@ -685,9 +745,11 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
           : { quote: source, paragraphIndex: sourceParagraph, draft },
       );
       setShowMore(false);
-      showFlash("已写进批注草稿，可以再改");
-    } catch {
-      showFlash("AI 起草失败，可以自己写或稍后再试");
+      clearSelection();
+      showFlash("已写进批注草稿，可以再改；保存前不会写进书里");
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      showFlash(`AI 起草失败：${reason.slice(0, 60)}`);
     } finally {
       setAiDrafting(false);
     }
@@ -1038,7 +1100,16 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
         </div>
       </header>
 
-      <div ref={bodyRef} className="sr-reader-body" onClick={handleBodyClick}>
+      <div
+        ref={bodyRef}
+        className="sr-reader-body"
+        onClick={handleBodyClick}
+        // 只在正文里拦浏览器的右键 / 长按菜单（安卓 Chrome、电脑有效）；iOS 与部分第三方浏览器的
+        // 选字菜单网页无法关掉，书房工具条放在选区另一侧并让开手柄
+        onContextMenu={(event) => {
+          if (window.getSelection()?.toString().trim()) event.preventDefault();
+        }}
+      >
         {chapters === null ? (
           <div className="sr-empty" style={{ paddingTop: 60 }}>
             <p>正在载入正文…</p>
@@ -1159,7 +1230,11 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
           aria-label="选中文字的操作"
           style={selbarPos ? { left: selbarPos.left, top: selbarPos.top } : { left: 8, top: Math.max(selection.bottom + 12, 0), visibility: "hidden" }}
           onMouseDown={(e) => e.preventDefault()}
+          onPointerDown={() => {
+            selbarTouchRef.current = Date.now();
+          }}
         >
+          <span className="sr-selbar-row">
           <button type="button" className="sr-selbar-btn" onClick={handleCopy}>
             <Copy size={16} strokeWidth={1.7} /> 复制
           </button>
@@ -1167,7 +1242,10 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
             type="button"
             className="sr-selbar-btn"
             data-active={showMarkColors ? "true" : undefined}
-            onClick={() => setShowMarkColors((value) => !value)}
+            onClick={() => {
+              setShowMore(false);
+              setShowMarkColors((value) => !value);
+            }}
             aria-expanded={showMarkColors}
           >
             <Highlighter size={16} strokeWidth={1.7} /> 高亮
@@ -1189,11 +1267,15 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
             type="button"
             className="sr-selbar-btn"
             data-active={showMore ? "true" : undefined}
-            onClick={() => setShowMore((value) => !value)}
+            onClick={() => {
+              setShowMarkColors(false);
+              setShowMore((value) => !value);
+            }}
             aria-expanded={showMore}
           >
             <MoreHorizontal size={16} strokeWidth={1.7} /> 更多
           </button>
+          </span>
           {showMarkColors && (
             <span className="sr-selbar-colors" role="group" aria-label="高亮颜色">
               {MARK_COLORS.map((item) => (
@@ -1503,20 +1585,7 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
                   <p className="sr-note-meta">将在 {new Date(sleepUntil).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} 停止朗读。</p>
                 )}
 
-                <div className="sr-appear-row sr-appear-row--slider">
-                  <span className="sr-appear-label">朗读音量</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={ambient.readingVolume}
-                    onChange={(event) => setReadingVolume(Number(event.target.value))}
-                    className="sr-slider"
-                    aria-label="朗读音量"
-                  />
-                  <span className="sr-appear-value">{Math.round(ambient.readingVolume * 100)}%</span>
-                </div>
+                <VolumeSlider label="朗读音量" value={ambient.readingVolume} onCommit={setReadingVolume} />
                 <p className="sr-note-meta">朗读音量从下一段开始生效，只管朗读，不影响背景声音。</p>
               </>
             )}
@@ -1575,6 +1644,7 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
                   </button>
                 ))}
               </div>
+              <p className="sr-note-meta">{NOISE_HINTS[pickedNoise]}</p>
 
               <p className="sr-ambient-status" data-status={ambient.status} role="status" aria-live="polite">
                 {ambient.status === "error"
@@ -1618,21 +1688,13 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
                 </button>
               </div>
 
-              <div className="sr-appear-row sr-appear-row--slider">
-                <span className="sr-appear-label">背景音量</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={ambient.volume}
-                  onChange={(event) => setAmbientVolume(Number(event.target.value))}
-                  className="sr-slider"
-                  aria-label="背景音量"
-                />
-                <span className="sr-appear-value">{Math.round(ambient.volume * 100)}%</span>
-              </div>
-              <p className="sr-note-meta">朗读时自动调低，停下后回到这个音量；离开阅读页会停止。</p>
+              <VolumeSlider
+                label="背景音量"
+                value={ambient.volume}
+                onPreview={previewAmbientVolume}
+                onCommit={setAmbientVolume}
+              />
+              <p className="sr-note-meta">朗读时自动调低，停下后回到这个音量；在书房里切换页面会继续播放，退出书房才停止。锁屏或切到后台时是否继续由系统决定。</p>
             </section>
 
             <section className="sr-ambient-sec">
@@ -1682,8 +1744,11 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
           chapter={chapter}
           chapterIndex={chapterIndex}
           readParagraphIndex={coreadAnchor}
-          selectedText={selection?.text}
-          onClose={() => setCoreadOpen(false)}
+          selectedText={coreadQuote ?? selection?.text}
+          onClose={() => {
+            setCoreadOpen(false);
+            setCoreadQuote(undefined);
+          }}
         />
       )}
     </div>

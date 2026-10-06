@@ -10,6 +10,29 @@ import type { Release } from "./types";
 
 export const SYSTEM_RELEASES: Release[] = [
   {
+    version: "0.6.6",
+    releaseId: "system-2026-10-07-v066",
+    date: "2026-10-07",
+    name: "书房第六轮：导入、长按菜单、白噪音、写书规则",
+    summary: "书房：内置书导入、长按菜单、外观页滚动修好；白噪音加三种、换页面不停；状态气泡可换底色；文风署名更正；AI 写书自动带世界书和防八股规则；更正上一版的说法；更新应用：书房",
+    includes: { studyroom: "studyroom-2026-10-07-v075" },
+    entries: [
+      {
+        id: "sys-066-style-api",
+        category: "tweak",
+        app: "书房 · 文风接口",
+        title: "文风列表返回署名和要点",
+        items: [
+          "服务端返回的文风列表带上新的署名和一行要点；完整写作规则仍只在服务端，不下发到浏览器",
+        ],
+      },
+    ],
+    pending: [
+      "书房部分全部没有在浏览器或手机上实测，详见书房 0.7.5 的待确认",
+      "上一版 0.6.5 / 书房 0.7.4 说的「已完成」不准确：内置书导入、长按菜单、外观页滚动当时有问题，背景音乐不可用，本版已更正",
+    ],
+  },
+  {
     version: "0.6.5",
     releaseId: "system-2026-10-07-v065",
     date: "2026-10-07",

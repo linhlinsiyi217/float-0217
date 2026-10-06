@@ -7,7 +7,8 @@ import { getCharacterWorldGroup } from "@/lib/character-world-storage";
 import { loadBindingConfig, loadWorldBooks, resolveBinding } from "@/lib/settings-storage";
 
 type WorldBookPickerProps = {
-  characterId: string;
+  /** 角色写作时传角色 id（默认跟随角色绑定）；写作助手模式不传 */
+  characterId?: string;
   /** undefined = 跟随角色在「共创」里的绑定 */
   value: string[] | undefined;
   onChange: (next: string[] | undefined) => void;
@@ -19,21 +20,28 @@ type WorldBookPickerProps = {
  */
 export function WorldBookPicker({ characterId, value, onChange }: WorldBookPickerProps) {
   const books = useMemo(() => loadWorldBooks(), []);
-  const bound = useMemo(() => resolveBinding(loadBindingConfig(), characterId, "cocreate").worldBookIds ?? [], [characterId]);
-  const worldGroup = useMemo(() => getCharacterWorldGroup(characterId), [characterId]);
+  const bound = useMemo(
+    () => (characterId ? resolveBinding(loadBindingConfig(), characterId, "cocreate").worldBookIds ?? [] : []),
+    [characterId],
+  );
+  const worldGroup = useMemo(() => (characterId ? getCharacterWorldGroup(characterId) : undefined), [characterId]);
   const following = value === undefined;
   const selected = following ? bound : value;
 
   const toggle = (id: string) => {
     const base = following ? bound : value;
-    onChange(base.includes(id) ? base.filter((item) => item !== id) : [...base, id]);
+    const next = base.includes(id) ? base.filter((item) => item !== id) : [...base, id];
+    // 写作助手模式：一本都不选 = 不带世界书
+    onChange(!characterId && next.length === 0 ? undefined : next);
   };
 
   return (
     <div className="sr-wb-picker">
       <div className="sr-wb-head">
         <span className="sr-filter-label">世界书</span>
-        {following ? (
+        {!characterId ? (
+          <span className="sr-note-meta">{selected.length > 0 ? `这部作品关联了 ${selected.length} 本` : "不带也能写"}</span>
+        ) : following ? (
           <span className="sr-note-meta">{bound.length > 0 ? `跟随角色绑定（${bound.length} 本）` : "角色没有绑定世界书"}</span>
         ) : (
           <button type="button" className="sr-btn-text" onClick={() => onChange(undefined)}>
@@ -63,12 +71,12 @@ export function WorldBookPicker({ characterId, value, onChange }: WorldBookPicke
           })}
         </div>
       )}
-      <div className="sr-wb-head">
+      {characterId && <div className="sr-wb-head">
         <span className="sr-filter-label">世界卷宗</span>
         <span className="sr-note-meta">
           {worldGroup ? `${worldGroup.name} · ${worldGroup.relations.length} 条角色关系` : "未归入卷宗"}
         </span>
-      </div>
+      </div>}
     </div>
   );
 }

@@ -26,6 +26,8 @@ export type UserProfile = {
   signature: string;
   /** 常驻状态气泡（如「在读《简·爱》」），留空不显示 */
   status: string;
+  /** 状态气泡底色（#RRGGBB）；没有就用原来的玻璃白 */
+  statusColor?: string;
   tags: string[];
   /** 标签前小圆点的颜色，按标签文字记 */
   tagColors: Record<string, string>;
@@ -62,6 +64,13 @@ const COLOR_RE = /^(#[0-9a-f]{6}([0-9a-f]{2})?|rgba?\([\d\s.,]+\))$/i;
 
 export function isValidColor(value: string): boolean {
   return COLOR_RE.test(value.trim());
+}
+
+const HEX6_RE = /^#[0-9a-f]{6}$/i;
+
+/** 状态气泡底色只认 #RRGGBB，其他写法一律当作「没设置」 */
+export function isStatusColor(value: unknown): value is string {
+  return typeof value === "string" && HEX6_RE.test(value.trim());
 }
 
 /** 展示 ID 校验：3–16 位，字母、数字、下划线、点或中文。返回错误文字，合法返回 null。 */
@@ -116,6 +125,7 @@ export function normalizeProfile(parsed: Partial<UserProfile>, fallbackId?: stri
     handle,
     signature: typeof parsed.signature === "string" ? parsed.signature.slice(0, SIGNATURE_MAX) : "",
     status: typeof parsed.status === "string" ? parsed.status.slice(0, STATUS_MAX) : "",
+    ...(isStatusColor(parsed.statusColor) ? { statusColor: parsed.statusColor.trim().toLowerCase() } : {}),
     tags,
     tagColors: cleanColors(parsed.tagColors, tags),
     avatar: parsed.avatar && typeof parsed.avatar === "object" ? (parsed.avatar as NpcAvatar) : avatarFromKey(id),

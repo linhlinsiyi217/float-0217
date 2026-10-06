@@ -5,6 +5,7 @@ import { Check, ChevronDown, ChevronLeft, FileUp, LayoutTemplate, PenLine, Spark
 
 import type { Character } from "@/lib/character-types";
 import type { WorldBookConfig } from "@/lib/settings-types";
+import { loadBindingConfig, resolveBinding } from "@/lib/settings-storage";
 import { CREATIVE_TEMPLATES, createDraft, type CreativeDraft, type WorkKind } from "@/lib/study-room/creative";
 import {
   STRENGTH_LABEL,
@@ -15,12 +16,11 @@ import {
 } from "@/lib/study-room/writing-styles-client";
 import type { InspirationNote } from "@/lib/study-room/inspiration";
 import { HelpTip } from "./help-tip";
-import { WorldBookPicker } from "./study-room-worldbook-picker";
 
 /** 创作方式：导入在第一步直接选文件，不走后面三步 */
 export type StartMode = "ai" | "hand" | "template";
 type Form = "novel" | "short" | "script" | "essay";
-type Resource = "cast" | "world" | "outline" | "material" | "idea";
+type Resource = "cast" | "outline" | "material" | "idea";
 
 const MODES: Array<{ key: StartMode | "import"; label: string; desc: string; icon: React.ReactNode }> = [
   { key: "ai", label: "AI 帮我写", desc: "先定大纲，AI 一章章写，你随时改", icon: <Sparkles size={18} strokeWidth={1.7} /> },
@@ -96,8 +96,6 @@ export function StudyRoomDeskStart({ characters, worldBooks, inspirations, initi
   const [customGenre, setCustomGenre] = useState("");
   const [openResource, setOpenResource] = useState<Resource | null>(initial?.characterId ? "cast" : null);
   const [characterId, setCharacterId] = useState<string | undefined>(initial?.characterId);
-  const [castWorldBooks, setCastWorldBooks] = useState<string[] | undefined>(undefined);
-  const [assistantWorldBooks, setAssistantWorldBooks] = useState<string[]>([]);
   const [outline, setOutline] = useState("");
   const [material, setMaterial] = useState("");
   const [ideaIds, setIdeaIds] = useState<string[]>([]);
@@ -108,6 +106,13 @@ export function StudyRoomDeskStart({ characters, worldBooks, inspirations, initi
   const [strength, setStrength] = useState<StyleStrength>("standard");
   const fileRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+
+  // 角色来写时自动带上的世界书（角色在「共创」里的绑定），这里只显示，不用再选
+  const castWorldBookNote = (id: string) => {
+    const ids = resolveBinding(loadBindingConfig(), id, "cocreate").worldBookIds ?? [];
+    const names = worldBooks.filter((book) => ids.includes(book.id)).map((book) => book.name);
+    return names.length > 0 ? `会自动带上 TA 绑定的世界书：${names.join("、")}` : "TA 没有绑定世界书，不带也能写";
+  };
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -186,8 +191,9 @@ export function StudyRoomDeskStart({ characters, worldBooks, inspirations, initi
       userStyleId: stylePick?.kind === "user" ? stylePick.id : undefined,
       styleStrength: stylePick ? strength : undefined,
       writer: castMode
-        ? { ...base.writer, mode: "character", characterId, worldBookIds: castWorldBooks }
-        : { ...base.writer, mode: "assistant", worldBookIds: assistantWorldBooks.length > 0 ? assistantWorldBooks : undefined },
+        ? // 世界书不在这里选：自动跟随角色在「共创」里的绑定；作品里的「写作设置」可以再改
+          { ...base.writer, mode: "character", characterId, worldBookIds: undefined }
+        : { ...base.writer, mode: "assistant", worldBookIds: undefined },
     };
     onCreate(draft);
   };
@@ -444,8 +450,8 @@ export function StudyRoomDeskStart({ characters, worldBooks, inspirations, initi
                       >
                         <span className="sr-dstart-option-main">
                           <span className="sr-dstart-option-name">{style.name}</span>
-                          <span className="sr-note-meta">{style.summary}</span>
-                          <span className="sr-note-meta">{style.origin ?? "仪仪原创文风"}</span>
+                          <span className="sr-note-meta">{style.brief ?? style.summary}</span>
+                          <span className="sr-note-meta">{style.origin ?? "仪仪原创原创"}</span>
                         </span>
                       </button>
                     );
@@ -489,7 +495,8 @@ export function StudyRoomDeskStart({ characters, worldBooks, inspirations, initi
               <div className="sr-dstart-label">
                 参考资料（都可以不选）
                 <HelpTip id="desk-step-resource" label="参考资料说明">
-                  这一步是写的时候参考哪些设定。角色：让一位角色以作者身份来写，会带上 TA 的人设与绑定的世界书；世界书：给写作助手的设定资料；
+                  这一步是写的时候参考哪些设定。角色：让一位角色以作者身份来写，会自动带上 TA 的人设与绑定的世界书，不用再选；
+                  写作助手默认不带世界书，需要时进作品后在「写作设置」里关联；
                   大纲：已经有就贴进来，没有进去可以让 AI 先给一版；素材与灵感：会写进「补充要求」，生成时参考。
                   这些设定只在书房写书时使用，不会带进平时的聊天。
                 </HelpTip>
@@ -513,10 +520,7 @@ export function StudyRoomDeskStart({ characters, worldBooks, inspirations, initi
                               key={character.id}
                               type="button"
                               className="sr-desk-cast-item"
-                              onClick={() => {
-                                setCharacterId(characterId === character.id ? undefined : character.id);
-                                setCastWorldBooks(undefined);
-                              }}
+                              onClick={() => setCharacterId(characterId === character.id ? undefined : character.id)}
                               aria-pressed={characterId === character.id}
                               data-active={characterId === character.id ? "true" : undefined}
                             >
@@ -533,39 +537,13 @@ export function StudyRoomDeskStart({ characters, worldBooks, inspirations, initi
                           ))}
                         </div>
                         {characterId && (
-                          <WorldBookPicker characterId={characterId} value={castWorldBooks} onChange={setCastWorldBooks} />
+                          <p className="sr-note-meta">{castWorldBookNote(characterId)}</p>
                         )}
                       </>
                     )}
                   </div>
                 )}
 
-                {!(ai && characterId) && (
-                  <>
-                    {resourceRow("world", "世界书", assistantWorldBooks.length > 0 ? `已选 ${assistantWorldBooks.length} 本` : "不带")}
-                    {openResource === "world" && (
-                      <div className="sr-dstart-panel">
-                        {worldBooks.length === 0 ? (
-                          <p className="sr-note-meta">小手机里还没有世界书。</p>
-                        ) : (
-                          <div className="sr-chip-row">
-                            {worldBooks.map((book) =>
-                              chip(
-                                assistantWorldBooks.includes(book.id),
-                                book.name,
-                                () =>
-                                  setAssistantWorldBooks((list) =>
-                                    list.includes(book.id) ? list.filter((id) => id !== book.id) : [...list, book.id],
-                                  ),
-                                book.id,
-                              ),
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
 
                 {resourceRow("outline", "大纲", outline.trim() ? `${outline.trim().length} 字` : ai ? "进去再写或让 AI 给一版" : "进去再写")}
                 {openResource === "outline" && (

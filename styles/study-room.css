@@ -6445,3 +6445,78 @@ button.sr-pf-bubble:active { transform: scale(0.95); }
   .sr-forum-hot-chip { transition: none; }
   .sr-forum-hot-chip:active { transform: none; }
 }
+
+/* 第六轮 R02：选字工具条——主按钮一行（图标在上、文字在下），配色 / 更多展开成第二行，不再被裁掉 */
+.sr-selbar.sr-selbar--anchored {
+  flex-direction: column;
+  align-items: stretch;
+  overflow: visible;
+  max-width: calc(100% - 16px);
+}
+.sr-selbar--anchored .sr-selbar-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 2px;
+}
+.sr-selbar--anchored .sr-selbar-row > .sr-selbar-btn,
+.sr-selbar--anchored .sr-selbar-more > .sr-selbar-btn {
+  flex-direction: column;
+  gap: 2px;
+  min-width: 46px;
+  min-height: 44px;
+  font-size: 11px;
+  justify-content: center;
+}
+.sr-selbar--anchored .sr-selbar-colors,
+.sr-selbar--anchored .sr-selbar-more {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-around;
+  gap: 4px;
+  margin: 4px 0 0;
+  padding: 6px 0 0;
+  border-left: none;
+  border-top: 1px solid rgba(60, 60, 67, 0.12);
+  position: static;
+}
+.sr-selbar--anchored .sr-selbar-color {
+  width: 26px;
+  height: 26px;
+}
+.sr-reader-body {
+  -webkit-touch-callout: none;
+}
+
+/* 第六轮 R05：状态气泡自定义底色（位置、大小、尾巴不变，只换玻璃底色） */
+.sr-pf-bubble[data-colored="true"] .sr-pf-bubble-glass {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--sr-pf-bubble-bg) 94%, #ffffff),
+    color-mix(in srgb, var(--sr-pf-bubble-bg) 82%, transparent)
+  );
+}
+@supports not (background: color-mix(in srgb, red 50%, blue)) {
+  .sr-pf-bubble[data-colored="true"] .sr-pf-bubble-glass { background: var(--sr-pf-bubble-bg); }
+}
+.sr-pf-bubble[data-tone="dark"] { color: #ffffff; }
+.sr-pf-bubble[data-tone="dark"] .sr-pf-bubble-rim { opacity: 0.45; }
+.sr-pf-bubble-color {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.sr-pf-bubble-color-label { font-size: 13px; color: var(--c-text-secondary, #6b717b); margin-right: 2px; }
+.sr-pf-bubble-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid rgba(60, 60, 67, 0.16);
+  padding: 0;
+  cursor: pointer;
+}
+.sr-pf-bubble-swatch[data-active="true"] {
+  outline: 2px solid color-mix(in srgb, var(--sr-accent, #0a84ff) 70%, transparent);
+  outline-offset: 2px;
+}

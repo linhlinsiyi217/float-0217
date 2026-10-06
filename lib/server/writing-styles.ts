@@ -21,8 +21,10 @@ export type WritingStyle = {
   name: string;
   summary: string;
   tags: string[];
-  /** 列表里显示的出处短语 */
+  /** 列表里显示的署名（不写就是「仪仪原创原创」） */
   origin?: string;
+  /** 卡片上的一句规则要点（从 rules 概括，只用于展示，不替代下发给模型的完整规则） */
+  brief: string;
   /** 来源与署名（作者、原标题、使用条件）；只在服务端与审计里使用 */
   source?: string;
   /** 强度档用通用说法（新文风没有「句法标记、偏开半寸」这类专属技法） */
@@ -38,6 +40,7 @@ export type WritingStyle = {
 export const WRITING_STYLES: WritingStyle[] = [
   {
     id: "skylight-shift",
+    brief: "开阔的景＋一句发亮的意象＋一处偏开半寸；长句为主，不用「像、仿佛」搭比喻。",
     name: "天光偏移",
     summary: "开阔远景、清透颜色、情绪偏开半寸",
     tags: ["开阔", "清透", "克制"],
@@ -127,6 +130,7 @@ export const WRITING_STYLES: WritingStyle[] = [
   },
   {
     id: "tide-trace",
+    brief: "旁白游离、贴着温度与湿度走；情绪不点名，只借身体、物件和时间显出来。",
     name: "潮痕入镜",
     summary: "水汽、温度、感官与时间痕迹",
     tags: ["感官", "潮湿", "时间"],
@@ -169,6 +173,7 @@ export const WRITING_STYLES: WritingStyle[] = [
   },
   {
     id: "ordinary-aftershock",
+    brief: "写场景不写诠释：观察→动作→对话→后果，痛感从玩笑和琐事里浮出来。",
     name: "寻常余震",
     summary: "日常表面、钝痛、荒诞与黑色幽默",
     tags: ["日常", "荒诞", "钝痛"],
@@ -210,6 +215,7 @@ export const WRITING_STYLES: WritingStyle[] = [
   },
   {
     id: "old-print-scorch",
+    brief: "翻译体长句层层递进，自由间接体滑进内心；只用暗喻，不用感叹号。",
     name: "旧译灼痕",
     summary: "翻译体长句、浓烈内心、旧书般的质感",
     tags: ["翻译体", "长句", "浓烈"],
@@ -259,10 +265,10 @@ export const WRITING_STYLES: WritingStyle[] = [
   // ── 第三批新增（2026-10-06）：id 固定，名称只是显示名；来源与作者记在 source 里 ──
   {
     id: "fuguang-daily-narrative",
+    brief: "自然语流写人物与日常，句号只在真正收束处；不逢事升华，不自动读心。",
     name: "浮光·日常叙事",
     summary: "以人物与日常细节为中心，表达自然，语气随人物和情境变化。",
     tags: ["日常", "自然", "人物"],
-    origin: "改编自《今日亦昨日之明》· 余涟涟",
     source: "《今日亦昨日之明》By 余涟涟（书房按原意精简改写，保留署名）",
     plainStrength: true,
     rules: `【核心】以人物为中心，写自然、有生命力的叙事。文风随人物、关系、情境与情绪变化：白描、抒情、口语、幽默、荒诞、克制、浓烈都可以，没有哪一种天然更高级。文学性与生活感并存，宏大的念头可以挨着吃饭、游戏、网络、玩笑和琐事；允许漂亮，也允许普通。语言属于当前人物与文本，不模仿、不拼贴特定作者。
@@ -277,10 +283,11 @@ export const WRITING_STYLES: WritingStyle[] = [
   },
   {
     id: "yuwen-intimate-narrative",
+    brief: "有限视角写含蓄亲密，靠少量日常细节与迟疑推进，不替人物确认感情。",
     name: "余温·亲密叙事",
     summary: "把喜欢写在日常的细节里，让靠近有迟疑，让回应有分量。",
     tags: ["爱情", "含蓄", "关系"],
-    origin: "书房原创",
+    origin: "AI 辅助创作",
     source: "书房原创文风（第三批附录C），不是从任何作者作品蒸馏而来",
     plainStrength: true,
     rules: `使用「余温·亲密叙事」：以人物和关系为中心，用自然现代汉语写成年人物之间含蓄的爱情与亲密感。保持有限视角，借少量真实日常细节、对白、迟疑与具体选择表达靠近；让双方保有独立性与回应空间。句群随语义流动，短句用于真实的回答与决定，减少库存比喻、形容词堆砌、自动读心、金句接龙和段末升华。人物设定、关系阶段及本次任务要求优先；风格不替人物确认感情，不强行制造误会，不写露骨性行为。仅用于选中的叙事任务，不改变普通聊天格式和界面主题。
@@ -295,10 +302,10 @@ export const WRITING_STYLES: WritingStyle[] = [
   },
   {
     id: "liubai-lens-narrative",
+    brief: "少写心理旁白，用光线、动作和停顿传情绪，避开网文高频套话。",
     name: "留白·镜头叙事",
     summary: "少写旁白，把情绪交给画面、动作和停顿。",
     tags: ["镜头", "克制", "留白"],
-    origin: "改编自《审美重构：去八股化意识流》",
     source: "《审美重构：去八股化意识流》（书房按原意精简改写为可选文风，不常驻）",
     plainStrength: true,
     rules: `【定位】镜头化、少旁白的叙事：情绪交给画面、动作与物的变化，克制，但不干瘪。
@@ -311,10 +318,10 @@ export const WRITING_STYLES: WritingStyle[] = [
   },
   {
     id: "xingdeng-tender-retrospect",
+    brief: "叙述者替角色找措辞，每句概括都归属某个人物；情绪最浓时只写一个小动作。",
     name: "星灯·温柔回望",
     summary: "叙述者住在角色心里，替说不出口的喜欢找到措辞。",
     tags: ["爱情", "温柔", "回望"],
-    origin: "改编自《文风：爱情童话》",
     source: "《文风：爱情童话》（来源文件未署作者；书房按原意精简改写，未复用其示例）",
     plainStrength: true,
     rules: `【定位】温柔回望的爱情叙事。叙述者像住在角色意识里的译者，替角色说不出口的感受找到更好的措辞；语调温柔回溯，痛苦被诗化但不被美化，强度不减，只用克制让情感更深。
@@ -339,6 +346,9 @@ export const STYLES_NOT_ADOPTED: { name: string; source: string; reason: string 
   { name: "旧雨·幽微叙事", source: "《东京旧札J1.1》风格指导 · 野草莓", reason: "来源声明禁止商用、商业平台使用与二转" },
 ];
 
+/** 内置文风的默认署名（按用户第六轮要求原样保留两个「原创」） */
+export const DEFAULT_STYLE_ORIGIN = "仪仪原创原创";
+
 export function findStyle(id: string | undefined): WritingStyle | null {
   if (!id) return null;
   return WRITING_STYLES.find((style) => style.id === id) ?? null;
@@ -351,7 +361,8 @@ export function styleMeta() {
     name: style.name,
     summary: style.summary,
     tags: style.tags,
-    origin: style.origin ?? "仪仪原创文风",
+    origin: style.origin ?? DEFAULT_STYLE_ORIGIN,
+    brief: style.brief,
     strengths: Object.keys(STRENGTH_LABEL),
   }));
 }

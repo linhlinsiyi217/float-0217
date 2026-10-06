@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode, type CSSProperties } from "react";
 import { ChevronRight, Heart, MessageCircle, Plus } from "lucide-react";
 
 import { KIND_TEXT, type ForumPost } from "@/lib/study-room/forum";
@@ -24,7 +24,26 @@ export function shortTime(iso: string): string {
  * 只显示素材的云朵主体和相连的尾巴，素材底部那颗独立小圆点用蒙版裁掉，不另画白球；
  * 按原比例缩放，不拉伸。文字只放在主体安全区内，尾巴不放字。
  */
-function ThoughtBubble({ text, onEdit }: { text: string; onEdit?: () => void }) {
+/** 底色偏深就用白字，保证气泡里的字看得清 */
+function bubbleTone(hex: string): "dark" | "light" {
+  const n = parseInt(hex.slice(1), 16);
+  const lin = (c: number) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  const l = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  return l < 0.36 ? "dark" : "light";
+}
+
+function ThoughtBubble({ text, onEdit, color }: { text: string; onEdit?: () => void; color?: string }) {
+  const colored = color && /^#[0-9a-f]{6}$/i.test(color) ? color : undefined;
+  const look = colored
+    ? {
+        "data-colored": "true",
+        "data-tone": bubbleTone(colored),
+        style: { "--sr-pf-bubble-bg": colored } as CSSProperties,
+      }
+    : {};
   const inner = (
     <>
       <span className="sr-pf-bubble-shadow" aria-hidden />
@@ -37,13 +56,13 @@ function ThoughtBubble({ text, onEdit }: { text: string; onEdit?: () => void }) 
   );
   if (onEdit) {
     return (
-      <button type="button" className="sr-pf-bubble" onClick={onEdit} aria-label={`状态：${text}，点按修改`}>
+      <button type="button" className="sr-pf-bubble" onClick={onEdit} aria-label={`状态：${text}，点按修改`} {...look}>
         {inner}
       </button>
     );
   }
   return (
-    <div className="sr-pf-bubble" role="note" aria-label={`状态：${text}`}>
+    <div className="sr-pf-bubble" role="note" aria-label={`状态：${text}`} {...look}>
       {inner}
     </div>
   );
@@ -62,6 +81,7 @@ export function ProfileHero({
   subText,
   stats,
   bubble,
+  bubbleColor,
   onEditBubble,
   corner,
 }: {
@@ -72,6 +92,8 @@ export function ProfileHero({
   subText?: string;
   stats: Array<{ label: string; value: number }>;
   bubble: string;
+  /** 气泡底色 #RRGGBB；不传保持原来的玻璃白 */
+  bubbleColor?: string;
   /** 只有自己的主页可编辑气泡 */
   onEditBubble?: () => void;
   /** 右上角的小按钮（如设置） */
@@ -89,7 +111,7 @@ export function ProfileHero({
             <img src={avatarSrc} alt="" />
           </span>
           {text ? (
-            <ThoughtBubble text={text} onEdit={onEditBubble} />
+            <ThoughtBubble text={text} onEdit={onEditBubble} color={bubbleColor} />
           ) : (
             onEditBubble && (
               <button type="button" className="sr-pf-status-add" onClick={onEditBubble} aria-label="设置状态">

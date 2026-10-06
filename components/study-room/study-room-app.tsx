@@ -31,6 +31,7 @@ import { StudyRoomWishlist } from "./study-room-wishlist";
 import { StudyRoomNpcPanel } from "./study-room-npc-panel";
 import { StudyRoomGifts } from "./study-room-gifts";
 import { ImportSuccessHost } from "./import-success";
+import { duckAmbient, stopAmbient } from "@/lib/study-room/ambient";
 
 type StudyRoomAppProps = {
   onClose: () => void;
@@ -67,6 +68,14 @@ const TAB_META: Record<StudyRoomTab, { label: string; icon: typeof Library; titl
 const TAB_ORDER: StudyRoomTab[] = ["shelf", "store", "desk", "forum", "mine"];
 
 export default function StudyRoomApp(props: StudyRoomAppProps) {
+  // 背景声音在书房各页面间一直播放，只有退出书房（整个书房卸载）时才停
+  useEffect(
+    () => () => {
+      duckAmbient(false);
+      stopAmbient();
+    },
+    [],
+  );
   // 导入成功弹窗挂在书房最外层：从详情页导入后会马上切到阅读器，弹窗不能跟着详情页一起消失
   return (
     <>

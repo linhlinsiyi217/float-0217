@@ -39,6 +39,10 @@ import { loadWishlist } from "@/lib/study-room/wishlist";
 import { loadDrafts, draftWordCount } from "@/lib/study-room/creative";
 import { useForumReplyEngine, useMeCard } from "./forum-reply-engine";
 import { GiftSheet } from "./gift-sheet";
+import { ColorSheet } from "./color-sheet";
+
+/** 气泡底色常用色：浅色为主，深色时气泡里的字自动变白 */
+const BUBBLE_SWATCHES = ["#e8f0fb", "#fde8ee", "#fff4d6", "#e6f4ea", "#efe8fb", "#2b313b"];
 import { StudyRoomForumPostView } from "./study-room-forum-post";
 import { ProfileEditSheet, SvipSheet } from "./study-room-profile-edit";
 import {
@@ -115,6 +119,9 @@ export function StudyRoomMine({
   const [svipOpen, setSvipOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const [statusDraft, setStatusDraft] = useState("");
+  // 气泡底色草稿：undefined = 默认玻璃白；只在点「保存」时写进资料
+  const [colorDraft, setColorDraft] = useState<string | undefined>(undefined);
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [openPostId, setOpenPostId] = useState<string | null>(null);
@@ -202,16 +209,17 @@ export function StudyRoomMine({
 
   const openStatus = () => {
     setStatusDraft(profile.status);
+    setColorDraft(profile.statusColor);
     setStatusError(null);
     setStatusOpen(true);
   };
 
   /** 气泡单独保存：真的写进存储才关；失败保留输入并说明原因。 */
-  const saveStatus = async (value: string) => {
+  const saveStatus = async (value: string, color: string | undefined = colorDraft) => {
     setStatusSaving(true);
     setStatusError(null);
     try {
-      const next = await saveProfileAsync({ ...profile, status: value.trim().slice(0, STATUS_MAX) });
+      const next = await saveProfileAsync({ ...profile, status: value.trim().slice(0, STATUS_MAX), statusColor: color });
       setProfile(next);
       setStatusOpen(false);
     } catch (error) {
@@ -263,6 +271,8 @@ export function StudyRoomMine({
           { label: "获赞", value: myLikes },
         ]}
         bubble={profile.status}
+        // 面板开着时，背后的气泡实时预览草稿颜色；关掉不保存就回到原来的颜色
+        bubbleColor={statusOpen ? colorDraft : profile.statusColor}
         onEditBubble={openStatus}
         corner={
           <button type="button" className="sr-icon-btn" onClick={() => setSettingsOpen(true)} aria-label="主页设置">
@@ -403,9 +413,42 @@ export function StudyRoomMine({
                 </button>
               ))}
             </div>
+            <div className="sr-pf-bubble-color" role="group" aria-label="气泡底色">
+              <span className="sr-pf-bubble-color-label">气泡底色</span>
+              <button
+                type="button"
+                className="sr-chip"
+                data-active={!colorDraft ? "true" : undefined}
+                onClick={() => setColorDraft(undefined)}
+              >
+                默认
+              </button>
+              {BUBBLE_SWATCHES.map((swatch) => (
+                <button
+                  key={swatch}
+                  type="button"
+                  className="sr-pf-bubble-swatch"
+                  data-active={colorDraft === swatch ? "true" : undefined}
+                  style={{ background: swatch }}
+                  onClick={() => setColorDraft(swatch)}
+                  aria-label={`气泡底色 ${swatch}`}
+                />
+              ))}
+              <button type="button" className="sr-chip" onClick={() => setColorPickerOpen(true)}>
+                {colorDraft && !BUBBLE_SWATCHES.includes(colorDraft) ? colorDraft.toUpperCase() : "自定义"}
+              </button>
+            </div>
             {statusError && <p className="sr-pf-form-error" role="alert" style={{ marginTop: 10 }}>{statusError}</p>}
             <div className="sr-sheet-actions">
-              <button type="button" className="sr-btn" onClick={() => void saveStatus("")} disabled={!profile.status || statusSaving}>
+              <button
+                type="button"
+                className="sr-btn"
+                onClick={() => {
+                  // 清空只清文字，底色保持已保存的值
+                  void saveStatus("", profile.statusColor);
+                }}
+                disabled={!profile.status || statusSaving}
+              >
                 清空
               </button>
               <button
@@ -420,6 +463,16 @@ export function StudyRoomMine({
             </div>
           </div>
         </div>
+      )}
+
+      {statusOpen && colorPickerOpen && (
+        <ColorSheet
+          title="气泡底色"
+          value={colorDraft ?? "#ffffff"}
+          opaque
+          onChange={(value) => setColorDraft(value)}
+          onClose={() => setColorPickerOpen(false)}
+        />
       )}
 
       {editing && (
