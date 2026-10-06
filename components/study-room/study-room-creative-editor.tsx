@@ -5,6 +5,7 @@ import {
   BookOpen,
   ChevronRight,
   FileDown,
+  ListChecks,
   Lightbulb,
   Loader2,
   PenLine,
@@ -43,6 +44,8 @@ import {
   buildChapterBrief,
   buildChapterMemoryPrompt,
   buildChapterPrompt,
+  buildContinuityReviewPrompt,
+  draftNextStep,
   draftWordCount,
   generateChapter,
   generateOutline,
@@ -50,7 +53,9 @@ import {
   makeChapter,
   parseChapterMemory,
   parseChapterOutput,
+  parseContinuityReview,
   publishDraft,
+  resolveWriterApiConfig,
   resolveWriterConfig,
   toParagraphs,
   upsertDraft,
@@ -75,6 +80,7 @@ type BusyState =
   | { kind: "outline" }
   | { kind: "chapter"; chapterNumber: number }
   | { kind: "memory"; chapterId: string }
+  | { kind: "review"; chapterId: string }
   | { kind: "proof" }
   | { kind: "publish" }
   | { kind: "export" };
@@ -161,9 +167,7 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
     try {
       let result: { title: string; content: string };
       const styleBlock = activeStyleBlock();
-      const configs = loadApiConfigs();
-      const { apiConfigId } = resolveWriterConfig(draft);
-      const activeConfig = (apiConfigId ? configs.find((c) => c.id === apiConfigId) : undefined) ?? configs[0];
+      const activeConfig = resolveWriterApiConfig(draft);
       if (draft.styleId && !draft.userStyleId && activeConfig) {
         // 内置文风：交给服务端组词（完整规则不下发到浏览器）
         const styled = await requestStyledText({
@@ -214,9 +218,8 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
   /** 章末结构化记忆：只发这一章，返回固定字段，存回该章。 */
   const runChapterMemory = async (chapter: CreativeChapter) => {
     if (!draft) return;
-    const { apiConfigId } = resolveWriterConfig(draft);
-    const configs = loadApiConfigs();
-    const config = apiConfigId ? configs.find((c) => c.id === apiConfigId) : undefined;
+    // 以前作品没单独指定模型时会静默跳过，记忆永远生成不出来；现在跟正文生成用同一份配置
+    const config = resolveWriterApiConfig(draft);
     if (!config) return;
     setBusy({ kind: "memory", chapterId: chapter.id });
     try {
@@ -243,12 +246,45 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
     }
   };
 
+  /** 连贯检查：对照大纲、前文记忆与上一章结尾，挑这一章的前后矛盾，结果存回该章。 */
+  const runContinuityReview = async (chapter: CreativeChapter) => {
+    if (!draft || busy.kind !== "idle") return;
+    const config = resolveWriterApiConfig(draft);
+    if (!config) {
+      flash("还没有可用的模型：先在设置里绑定 API", 3200);
+      return;
+    }
+    if (!chapter.content.trim()) {
+      flash("这一章还没有正文，写完再检查");
+      return;
+    }
+    setBusy({ kind: "review", chapterId: chapter.id });
+    try {
+      const result = await simpleLLMCall(config, [{ role: "user", content: buildContinuityReviewPrompt(draft, chapter.id) }], {
+        temperature: 0.3,
+        max_tokens: 800,
+        label: "studyroom-continuity-review",
+      });
+      if (result.error || !result.content?.trim()) throw new Error(result.error || "没有返回内容");
+      const review = parseContinuityReview(result.content);
+      setDraft((prev) => {
+        if (!prev) return prev;
+        const next = { ...prev, chapters: prev.chapters.map((item) => (item.id === chapter.id ? { ...item, review } : item)) };
+        setDrafts((list) => upsertDraft(list, next));
+        return next;
+      });
+      flash(review.issues.length === 0 ? "没查出明显的前后矛盾" : `查出 ${review.issues.length} 处可以看看`);
+    } catch (error) {
+      flash(error instanceof Error && error.message ? `连贯检查没完成：${error.message}` : "连贯检查没完成，稍后再试", 3400);
+    } finally {
+      setBusy((prev) => (prev.kind === "review" ? { kind: "idle" } : prev));
+    }
+  };
+
   /** 校对：让助手挑一致性问题（只给建议，不自动改稿）。 */
   const runProofread = async () => {
     if (!draft) return;
-    const { apiConfigId } = resolveWriterConfig(draft);
-    const configs = loadApiConfigs();
-    const config = apiConfigId ? configs.find((c) => c.id === apiConfigId) : undefined;
+    const config = resolveWriterApiConfig(draft);
     if (!config) {
       flash("还没有可用的模型：先在设置里绑定 API，或用「校对」里的手动清单自查", 3400);
       return;
@@ -328,9 +364,7 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
   /** 试写预览：内置文风交给服务端组词，返回的只有正文。 */
   const runStylePreview = async (styleId: string) => {
     if (!draft) return;
-    const { apiConfigId } = resolveWriterConfig(draft);
-    const configs = loadApiConfigs();
-    const config = apiConfigId ? configs.find((c) => c.id === apiConfigId) : configs[0];
+    const config = resolveWriterApiConfig(draft);
     const userStyle = userStyles.find((item) => item.id === styleId);
     if (!config) {
       flash("还没有可用的模型：先在设置里绑定 API", 3200);
@@ -426,6 +460,7 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
   const words = draftWordCount(draft);
   const nextChapterNumber = draft.chapters.length + 1;
   const writer = resolveWriterConfig(draft);
+  const nextStep = draftNextStep(draft);
   const generating = busy.kind === "chapter" || busy.kind === "outline";
 
   const field = (
@@ -496,6 +531,15 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
                 <span><strong>{draft.chapters.filter((c) => c.memory).length}</strong> 章有记忆</span>
                 <span><strong>{draft.serialization === "finished" ? "完结" : "连载"}</strong></span>
               </div>
+              <div className="sr-desk-nextcard">
+                <span className="sr-desk-next">下一步：{nextStep.label}</span>
+                <button type="button" className="sr-btn sr-btn-sm" onClick={() => setSection(nextStep.section)}>
+                  去{nextStep.section === "outline" ? "大纲" : "写作"}
+                </button>
+                <HelpTip id="creative-progress-about" label="关于写作进度">
+                  流程是「大纲 → 一章章写 → 章末记忆 → 连贯检查」。每一步都存在作品里，关掉再回来会从这里接着提示下一步。
+                </HelpTip>
+              </div>
               <div className="sr-css-actions" style={{ marginTop: 10, flexWrap: "wrap" }}>
                 {generating ? (
                   <button type="button" className="sr-btn" onClick={stopGeneration}>
@@ -560,7 +604,13 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
               </div>
               {field("outline", "大纲（分幕与推进）", 6, "一幕：……")}
               <div className="sr-css-actions">
-                <button type="button" className="sr-btn" onClick={() => void generateOutline(draft).then((text) => update({ outline: text })).catch(() => flash("生成失败，请稍后再试", 3000))} disabled={generating}>
+                <button type="button" className="sr-btn" onClick={() => {
+                  setBusy({ kind: "outline" });
+                  void generateOutline(draft)
+                    .then((text) => update({ outline: text }))
+                    .catch((error: unknown) => flash(error instanceof Error && error.message ? error.message : "生成失败，请稍后再试", 3000))
+                    .finally(() => setBusy((prev) => (prev.kind === "outline" ? { kind: "idle" } : prev)));
+                }} disabled={generating}>
                   {busy.kind === "outline" ? <Loader2 size={15} className="sr-spin" /> : <RefreshCw size={15} strokeWidth={1.7} />}
                   让 AI 先给一版
                 </button>
@@ -658,6 +708,7 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
                         <span className="sr-creative-chapter-title">{chapter.title || `第 ${index + 1} 章`}</span>
                         <span className="sr-note-meta">
                           {wordCount(chapter.content)} 字{chapter.memory ? " · 有记忆" : ""}
+                          {chapter.review ? (chapter.review.issues.length > 0 ? ` · ${chapter.review.issues.length} 处待看` : " · 已检查") : ""}
                         </span>
                         <ChevronRight size={16} strokeWidth={1.7} style={{ transform: openChapterId === chapter.id ? "rotate(90deg)" : undefined, transition: "transform .15s" }} />
                       </button>
@@ -672,6 +723,10 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
                             <button type="button" className="sr-btn sr-btn-sm" disabled={busy.kind === "memory"} onClick={() => void runChapterMemory(chapter)}>
                               {busy.kind === "memory" && busy.chapterId === chapter.id ? <Loader2 size={13} className="sr-spin" /> : <Sparkles size={13} strokeWidth={1.8} />}
                               生成本章记忆
+                            </button>
+                            <button type="button" className="sr-btn sr-btn-sm" disabled={busy.kind !== "idle"} onClick={() => void runContinuityReview(chapter)}>
+                              {busy.kind === "review" && busy.chapterId === chapter.id ? <Loader2 size={13} className="sr-spin" /> : <ListChecks size={13} strokeWidth={1.8} />}
+                              连贯检查
                             </button>
                             <button type="button" className="sr-btn sr-btn-sm" onClick={() => {
                               if (!confirm(`删除「${chapter.title || `第 ${index + 1} 章`}」？`)) return;
@@ -689,6 +744,22 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
                               <Plus size={13} strokeWidth={1.8} /> 复制一份
                             </button>
                           </div>
+                          {chapter.review && (
+                            <div className="sr-note-card">
+                              <div className="sr-note-meta" style={{ fontWeight: 600, color: "var(--c-text-title)" }}>
+                                连贯检查 · {new Date(chapter.review.createdAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                              </div>
+                              {chapter.review.issues.length === 0 ? (
+                                <div className="sr-note-meta">没查出明显的前后矛盾。</div>
+                              ) : (
+                                <ul className="sr-desk-review">
+                                  {chapter.review.issues.map((line, i) => (
+                                    <li key={i} className="sr-note-meta">{line}</li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          )}
                           {chapter.memory && (
                             <div className="sr-note-card">
                               <div className="sr-note-meta" style={{ fontWeight: 600, color: "var(--c-text-title)" }}>章末记忆</div>

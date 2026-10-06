@@ -3317,6 +3317,122 @@ html[data-theme="dark"] .sr3-tag { background: #34322e; color: #cfc8bb; }
   .sr3-spine, .sr3-cover-front { transition: opacity 0.16s ease; }
 }
 
+/* ── 书桌 V3：开始创作四步面板、下一步提示、连贯检查 ── */
+.sr-desk-hero { flex-direction: row; align-items: center; justify-content: space-between; }
+.sr-desk-hero-main { min-width: 0; }
+.sr-desk-start-btn { flex: 0 0 auto; }
+.sr-desk-next { display: block; font-size: 12.5px; font-weight: 500; color: var(--c-text-title); }
+.sr-desk-nextcard {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 10px 8px 12px;
+  border-radius: 12px;
+  border: 0.5px solid var(--c-card-border);
+}
+.sr-desk-nextcard .sr-desk-next { flex: 1 1 auto; min-width: 0; }
+.sr-desk-review { margin: 4px 0 0; padding-left: 18px; line-height: 1.75; }
+
+.sr-dstart { gap: 10px; outline: none; }
+.sr-dstart-head { display: flex; align-items: center; justify-content: space-between; min-height: 44px; margin: -6px -6px 0; }
+.sr-dstart-title { font-size: 17px; font-weight: 600; color: var(--c-text-title); }
+.sr-dstart-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sr-dstart-steps li { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.sr-dstart-bar { height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--c-text-title, #1d1d1f) 12%, transparent); transition: background-color 0.2s ease; }
+.sr-dstart-steps li[data-state] .sr-dstart-bar { background: var(--c-text-title, #1d1d1f); }
+.sr-dstart-step-name { font-size: 12px; color: var(--c-text-sub, #8a919c); white-space: nowrap; }
+.sr-dstart-steps li[data-state="now"] .sr-dstart-step-name { color: var(--c-text-title, #1d1d1f); font-weight: 600; }
+.sr-dstart-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 0 4px;
+}
+.sr-dstart-label { display: flex; align-items: center; gap: 2px; font-size: 14px; font-weight: 600; color: var(--c-text-title); }
+.sr-dstart-options { display: flex; flex-direction: column; gap: 8px; }
+.sr-dstart-options--grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sr-dstart-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 0.5px solid var(--c-card-border);
+  background: #fff;
+  font: inherit;
+  text-align: left;
+  color: var(--c-text-title);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.sr-dstart-option[data-active="true"] { border-color: var(--c-text-title, #1d1d1f); box-shadow: inset 0 0 0 1px var(--c-text-title, #1d1d1f); }
+.sr-dstart-option:active { transform: scale(0.99); }
+.sr-dstart-option-icon { flex: 0 0 auto; display: inline-flex; color: var(--c-icon, var(--c-text)); }
+.sr-dstart-option-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sr-dstart-option-name { font-size: 15px; font-weight: 600; }
+.sr-dstart-input { width: 100%; font-size: 16px; }
+.sr-dstart-resources { display: flex; flex-direction: column; border-top: 0.5px solid var(--c-card-border); }
+.sr-dstart-res {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 0.5px solid var(--c-card-border);
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sr-dstart-res-label { flex: 0 0 auto; font-size: 15px; color: var(--c-text-title); }
+.sr-dstart-res-value { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-size: 13px; color: var(--c-text-sub, #8a919c); }
+.sr-dstart-res svg { flex: 0 0 auto; color: var(--c-icon, var(--c-text)); transition: transform 0.2s ease; }
+.sr-dstart-res svg[data-open] { transform: rotate(180deg); }
+.sr-dstart-panel { padding: 10px 0 12px; border-bottom: 0.5px solid var(--c-card-border); }
+.sr-dstart-panel .sr-desk-cast { margin: 0; padding: 2px 0 6px; }
+.sr-dstart-ideas { margin: 0; padding: 0; list-style: none; }
+.sr-dstart-idea {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  min-height: 44px; padding: 4px 0; border: 0; background: none; font: inherit; text-align: left; cursor: pointer;
+}
+.sr-dstart-check {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--c-text-title, #1d1d1f) 30%, transparent);
+  color: #fff;
+}
+.sr-dstart-idea[data-on] .sr-dstart-check { background: var(--c-text-title, #1d1d1f); border-color: var(--c-text-title, #1d1d1f); }
+.sr-dstart-idea-text { flex: 1 1 auto; min-width: 0; font-size: 14px; color: var(--c-text-title); }
+.sr-dstart-foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 0.5px solid var(--c-card-border);
+}
+.sr-dstart-summary { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-dstart-foot .sr-btn-primary { flex: 0 0 auto; min-width: 112px; justify-content: center; }
+@media (prefers-reduced-motion: reduce) {
+  .sr-dstart-bar, .sr-dstart-option, .sr-dstart-res svg { transition: none; }
+  .sr-dstart-option:active { transform: none; }
+}
+
 /* ── 书架 V3：真实体积 ──
    filter 会让 preserve-3d 的元素被「拍平」成一张图，书看起来像薄卡片；
    阴影改落在各个面上（box-shadow），书本身不再用 filter。
