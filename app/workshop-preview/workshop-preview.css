@@ -129,7 +129,7 @@
 
 /* ── 欢迎页 ── */
 .wc-welcome {
-  padding: 48px 24px 32px;
+  padding: 48px 24px 48px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -196,7 +196,7 @@
 
 /* ── 消息流 ── */
 .wc-msglist {
-  padding: 20px 16px 24px;
+  padding: 20px 16px 40px;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -604,7 +604,7 @@
 .wc-filecard-open:hover { color: var(--wc-text); background: rgba(20, 20, 19, 0.06); }
 
 /* ── 状态页 ── */
-.wc-states { padding: 20px 16px 32px; display: flex; flex-direction: column; gap: 20px; }
+.wc-states { padding: 20px 16px 48px; display: flex; flex-direction: column; gap: 20px; }
 .wc-state-h {
   font-size: 13px;
   font-weight: 500;
