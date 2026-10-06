@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Ban, BookOpen, ChevronLeft, Gift, Heart, MessageSquare, PenLine, Star, Trash2, X } from "lucide-react";
+import { Ban, BookOpen, ChevronDown, ChevronLeft, Gift, Heart, MessageSquare, PenLine, Star, Trash2, X } from "lucide-react";
 
 import type { Book } from "@/lib/reading-types";
 import { avatarDataUrl } from "@/lib/study-room/npc-avatar";
@@ -56,6 +56,37 @@ function shortTime(iso: string): string {
   if (date.toDateString() === now.toDateString()) return hm;
   if (date.getFullYear() === now.getFullYear()) return `${date.getMonth() + 1}月${date.getDate()}日 ${hm}`;
   return date.toLocaleDateString("zh-CN");
+}
+
+type ForumComment = ForumPost["comments"][number];
+
+/**
+ * 把评论整理成「一级评论 + 它下面的全部回复」：回复顺着 replyToId 找到最上层那条评论，
+ * 找不到（被删了）就当一级评论。按时间顺序，不改原数据。
+ */
+export function threadComments(comments: ForumComment[]): { root: ForumComment; replies: ForumComment[] }[] {
+  const byId = new Map(comments.map((item) => [item.id, item]));
+  const rootOf = (item: ForumComment) => {
+    let current = item;
+    const seen = new Set<string>();
+    while (current.replyToId && byId.has(current.replyToId) && !seen.has(current.id)) {
+      seen.add(current.id);
+      current = byId.get(current.replyToId)!;
+    }
+    return current;
+  };
+  const threads = new Map<string, { root: ForumComment; replies: ForumComment[] }>();
+  for (const item of comments) {
+    const root = rootOf(item);
+    if (root.id === item.id) {
+      if (!threads.has(item.id)) threads.set(item.id, { root: item, replies: [] });
+    } else {
+      const thread = threads.get(root.id) ?? { root, replies: [] };
+      thread.replies.push(item);
+      threads.set(root.id, thread);
+    }
+  }
+  return [...threads.values()];
 }
 
 export function StudyRoomForumPostCard({
@@ -240,6 +271,15 @@ export function StudyRoomForumPostView({
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(post.body);
+  // 回复默认折叠：只记录展开了哪几条一级评论
+  const [openThreads, setOpenThreads] = useState<Set<string>>(() => new Set());
+  const toggleThread = (id: string) =>
+    setOpenThreads((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const liked = post.likedBy.includes(ME);
   const collected = isCollected(post);
   const book = post.bookId ? books[post.bookId] : findBookForPost(post);
@@ -250,9 +290,66 @@ export function StudyRoomForumPostView({
 
   const send = () => {
     if (!comment.trim()) return;
+    // 回复某条评论后，把那条所在的楼展开，方便看到自己刚发的
+    if (replyTo) {
+      const root = threadComments(post.comments).find(
+        (thread) => thread.root.id === replyTo || thread.replies.some((item) => item.id === replyTo),
+      );
+      if (root) setOpenThreads((prev) => new Set(prev).add(root.root.id));
+    }
     onComment(comment, replyTo ?? undefined);
     setComment("");
     setReplyTo(null);
+  };
+
+  const renderComment = (item: ForumComment) => {
+    const target = item.replyToId ? post.comments.find((entry) => entry.id === item.replyToId) : undefined;
+    const asking = pendingReplyIds?.has(item.id) ?? false;
+    return (
+      <>
+        <div className="sr-forum-comment-head">
+          <button
+            type="button"
+            className="sr-forum-comment-author sr-forum-name--link"
+            onClick={() => item.authorKind === "npc" && onOpenAuthor(item.authorId)}
+          >
+            {nameOf(item.authorId, item.authorName)}
+          </button>
+          {target && <span className="sr-note-meta">回复 {nameOf(target.authorId, target.authorName)}</span>}
+          <span className="sr-note-meta" style={{ marginLeft: "auto" }}>
+            {new Date(item.createdAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        </div>
+        <p className="sr-forum-comment-body">{item.body}</p>
+        <div className="sr-forum-comment-tools">
+          <button type="button" className="sr-forum-reply" onClick={() => setReplyTo(item.id)}>
+            回复
+          </button>
+          {onAskReply && (
+            <button
+              type="button"
+              className="sr-forum-reply"
+              onClick={() => onAskReply(item.id)}
+              disabled={asking}
+              aria-busy={asking || undefined}
+            >
+              {asking ? "书友回复中…" : "请书友回复这条"}
+            </button>
+          )}
+          {item.authorId === ME && (
+            <button
+              type="button"
+              className="sr-forum-reply"
+              onClick={() => {
+                if (confirm("删除这条评论？")) onDeleteComment(item.id);
+              }}
+            >
+              删除
+            </button>
+          )}
+        </div>
+      </>
+    );
   };
 
   return (
@@ -314,6 +411,8 @@ export function StudyRoomForumPostView({
       </div>
 
       <div className="sr-forum-sub-body">
+        {/* 帖子上半部：作者、正文、操作。浮层里它单独滚，评论区另外滚，互不带动 */}
+        <div className="sr-post-top">
         <div className="sr-forum-author">
           <span className="sr-forum-avatar" aria-hidden>
             {avatar ? (
@@ -405,63 +504,46 @@ export function StudyRoomForumPostView({
           </button>
         </div>
 
+        </div>
+
+        <div className="sr-post-replies">
         <div className="sr-forum-detail-label">评论 {post.comments.length > 0 ? post.comments.length : ""}</div>
         {replyPanel}
         {post.comments.length === 0 ? (
           <p className="sr-note-meta">还没有评论。说点什么，或点「生成评论」请书友来聊。</p>
         ) : (
           <ul className="sr-forum-comments">
-            {post.comments.map((item) => {
-              const target = item.replyToId ? post.comments.find((entry) => entry.id === item.replyToId) : undefined;
-              const asking = pendingReplyIds?.has(item.id) ?? false;
+            {threadComments(post.comments).map(({ root, replies }) => {
+              const open = openThreads.has(root.id);
               return (
-                <li key={item.id}>
-                  <div className="sr-forum-comment-head">
-                    <button
-                      type="button"
-                      className="sr-forum-comment-author sr-forum-name--link"
-                      onClick={() => item.authorKind === "npc" && onOpenAuthor(item.authorId)}
-                    >
-                      {nameOf(item.authorId, item.authorName)}
-                    </button>
-                    {target && <span className="sr-note-meta">回复 {nameOf(target.authorId, target.authorName)}</span>}
-                    <span className="sr-note-meta" style={{ marginLeft: "auto" }}>
-                      {new Date(item.createdAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  </div>
-                  <p className="sr-forum-comment-body">{item.body}</p>
-                  <div className="sr-forum-comment-tools">
-                    <button type="button" className="sr-forum-reply" onClick={() => setReplyTo(item.id)}>
-                      回复
-                    </button>
-                    {onAskReply && (
+                <li key={root.id}>
+                  {renderComment(root)}
+                  {replies.length > 0 && (
+                    <>
                       <button
                         type="button"
-                        className="sr-forum-reply"
-                        onClick={() => onAskReply(item.id)}
-                        disabled={asking}
-                        aria-busy={asking || undefined}
+                        className="sr-forum-thread-toggle"
+                        aria-expanded={open}
+                        onClick={() => toggleThread(root.id)}
                       >
-                        {asking ? "书友回复中…" : "请书友回复这条"}
+                        <ChevronDown size={14} strokeWidth={1.8} aria-hidden data-open={open || undefined} />
+                        {open ? "收起回复" : `展开回复 ${replies.length}`}
                       </button>
-                    )}
-                    {item.authorId === ME && (
-                      <button
-                        type="button"
-                        className="sr-forum-reply"
-                        onClick={() => {
-                          if (confirm("删除这条评论？")) onDeleteComment(item.id);
-                        }}
-                      >
-                        删除
-                      </button>
-                    )}
-                  </div>
+                      {open && (
+                        <ul className="sr-forum-thread">
+                          {replies.map((item) => (
+                            <li key={item.id}>{renderComment(item)}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
+                  )}
                 </li>
               );
             })}
           </ul>
         )}
+        </div>
       </div>
 
       <form

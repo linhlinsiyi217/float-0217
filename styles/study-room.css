@@ -418,10 +418,12 @@
 }
 .sr-search input {
   flex: 1;
+  min-width: 0;
   border: 0;
   background: transparent;
   outline: none;
-  font-size: 14.5px;
+  /* 16px：iOS 对小于 16px 的输入框聚焦时会自动放大整页，放大后两侧露底 */
+  font-size: 16px;
   color: var(--c-text-title);
 }
 .sr-search input::placeholder { color: var(--c-icon); }
@@ -4561,6 +4563,33 @@ button.sr-pf-bubble:active .sr-pf-bubble-part[data-part="dot"] {
 .sr-forum-comment-tools { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 2px; }
 .sr-forum-comment-tools .sr-forum-reply { min-height: 32px; font-size: 12.5px; }
 .sr-forum-comment-tools .sr-forum-reply:disabled { cursor: default; opacity: 0.7; }
+/* 楼中楼：回复默认折叠，点「展开回复」才显示，缩进一级，左侧细线 */
+.sr-forum-thread-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--c-text);
+  cursor: pointer;
+}
+.sr-forum-thread-toggle svg { transition: transform 0.2s ease; }
+.sr-forum-thread-toggle svg[data-open] { transform: rotate(180deg); }
+.sr-forum-thread {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0 0 0 12px;
+  border-left: 1.5px solid var(--c-card-border);
+}
+.sr-forum-sub-body .sr-forum-thread li { padding: 6px 0; }
+.sr-forum-sub-body .sr-forum-thread li + li { border-top: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .sr-forum-thread-toggle svg { transition: none; }
+}
 .sr-forum-sub-foot {
   flex: 0 0 auto;
   padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
@@ -4629,7 +4658,8 @@ button.sr-pf-bubble:active .sr-pf-bubble-part[data-part="dot"] {
   inset: auto;
   z-index: auto;
   width: min(100%, 460px);
-  height: min(100%, 88dvh);
+  /* 高度随内容：短帖不撑满屏幕；内容多时最高到可用高度，再由内部两块各自滚动 */
+  max-height: min(100%, 88dvh);
   border-radius: 22px;
   overflow: clip;
   box-shadow: 0 20px 60px rgba(20, 28, 45, 0.22);
@@ -4637,7 +4667,30 @@ button.sr-pf-bubble:active .sr-pf-bubble-part[data-part="dot"] {
 }
 @keyframes sr-overlay-in { from { transform: translateY(12px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
 .sr-forum-sub--overlay .sr-forum-sub-head { padding-top: 10px; padding-left: 16px; }
-.sr-forum-sub--overlay .sr-forum-sub-body { padding-bottom: 16px; }
+/* 浮层：上半部（作者/正文/操作）与评论区分成两块，各自内部滚动，评论多也不带动帖子 */
+.sr-post-top, .sr-post-replies { display: flex; flex-direction: column; gap: 8px; }
+.sr-forum-sub--overlay .sr-forum-sub-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+.sr-forum-sub--overlay .sr-post-top {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 46dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.sr-forum-sub--overlay .sr-post-replies {
+  flex: 1 1 auto;
+  /* 默认约两条一级评论的空间 */
+  min-height: min(176px, 26dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 12px;
+}
 @media (prefers-reduced-motion: reduce) {
   .sr-post-overlay, .sr-forum-sub--overlay, .sr-pf-leave { animation: none; }
   .sr-switch, .sr-switch::after, .sr-pf-swatch, .sr-forum-act { transition: none; }
@@ -5066,4 +5119,12 @@ button.sr-pf-bubble:active .sr-pf-bubble-part[data-part="dot"] {
 }
 @media (prefers-reduced-motion: reduce) {
   .sr-skeleton { animation: none; }
+}
+
+/* iOS：输入框字号小于 16px 时聚焦会自动放大整页，书房画面被放大后两侧露底、看起来变窄。
+   只在 iOS（支持 -webkit-touch-callout）把书房里的输入框字号抬到 16px，其他设备保持原样。 */
+@supports (-webkit-touch-callout: none) {
+  :is(.sr-app, .sr-reader, .sr-msg-app) :is(input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]), textarea, select) {
+    font-size: max(16px, 1em);
+  }
 }

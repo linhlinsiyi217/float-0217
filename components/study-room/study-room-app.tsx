@@ -10,6 +10,7 @@ import { STUDYROOM_SEARCH_EVENT } from "@/lib/study-room/events";
 import type { Book } from "@/lib/reading-types";
 import { StudyRoomShelf } from "./study-room-shelf";
 import { StudyRoomStore } from "./study-room-store";
+import { useStableStudyRoomScreen } from "./use-stable-screen";
 import { StudyRoomDesk } from "./study-room-desk";
 import { StudyRoomMine } from "./study-room-mine";
 import { StudyRoomNotes } from "./study-room-notes";
@@ -74,6 +75,9 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
   useEffect(() => {
     applyAppearance(loadAppearance());
   }, []);
+
+  // 键盘弹出时不让浏览器把书房整屏推歪（露出两侧壁纸）
+  useStableStudyRoomScreen();
 
   useEffect(() => {
     if (!returnFromBookId) return;
