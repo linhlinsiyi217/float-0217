@@ -926,14 +926,6 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
     [previewItem],
   );
 
-  // 自动滚动：用户上滚阅读时不拉回底部
-  const handleScroll = useCallback(() => {
-    const el = bodyRef.current;
-    if (!el) return;
-    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    handleScrollUpdateOutline();
-  }, [handleScrollUpdateOutline]);
-
   useEffect(() => {
     const el = bodyRef.current;
     if (el && stickToBottomRef.current) {
@@ -1030,6 +1022,14 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
       }
     }
   }, [rounds]);
+
+  // 自动滚动：用户上滚阅读时不拉回底部
+  const handleScroll = useCallback(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    handleScrollUpdateOutline();
+  }, [handleScrollUpdateOutline]);
 
   const scrollToMsg = useCallback((msgId: string) => {
     const body = bodyRef.current;
