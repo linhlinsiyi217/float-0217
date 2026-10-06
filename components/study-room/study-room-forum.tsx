@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronLeft, Compass, Loader2, PenLine, RotateCw, Search, Square, X } from "lucide-react";
+import { BookOpen, ChevronDown, ChevronLeft, Compass, Hash, Loader2, PenLine, RotateCw, Search, Square, X } from "lucide-react";
 
 import { loadBooks } from "@/lib/reading-storage";
 import type { Book } from "@/lib/reading-types";
@@ -29,6 +29,8 @@ import {
   deleteOwnComment,
   ensureSeeded,
   feedRefreshDue,
+  forumHotBooks,
+  forumHotTopics,
   normalizeRules,
   pickFeedTopic,
   isFollowing,
@@ -64,6 +66,9 @@ type StudyRoomForumProps = {
   initialCompose?: boolean;
   /** 剧透提示里选「不再观看」：这一次不进书友圈，回到进来之前的页面 */
   onLeave: () => void;
+  /** 这次进入书房里是否已经确认过剧透提示（由书房外壳保存，退出书房才清空） */
+  gateAccepted: boolean;
+  onGateAccept: () => void;
 };
 
 /**
@@ -71,10 +76,11 @@ type StudyRoomForumProps = {
  * 普通用户不需要先写话题或提示词：书友与内容会自己生成和维护；
  * 想看什么就搜、想说什么就发，其余交给书友按人设回应。
  */
-export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initialPostId, initialCompose, onLeave }: StudyRoomForumProps) {
+export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initialPostId, initialCompose, onLeave, gateAccepted, onGateAccept }: StudyRoomForumProps) {
   const [state, setState] = useState<ForumState>(() => loadForum());
-  // 每次进入书友圈都先问一次剧透；确认之前任何帖子都不渲染
-  const [gateOk, setGateOk] = useState(false);
+  // 剧透提示：每次进入书房后第一次打开书友圈时问一次；确认之前任何帖子都不渲染。
+  // 书房内切到书架/书桌再回来不重复问，退出书房再进来才重新问。
+  const gateOk = gateAccepted;
   const [scope, setScope] = useState<FeedScope>("recommend");
   const [sort, setSort] = useState<FeedSort>("default");
   const [kind, setKind] = useState<FeedKind>("all");
@@ -256,10 +262,14 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
 
   const unread = unreadNotifications(state);
 
+  // 大家在聊：只按本机真实帖子统计（书 = 关联帖子数 + 参与人数；话题 = 不含剧透的帖子数）
+  const hotBooks = useMemo(() => forumHotBooks(state), [state]);
+  const hotTopics = useMemo(() => forumHotTopics(state), [state]);
+
   if (!gateOk) {
     return (
       <div className="sr-forum sr-forum--gated">
-        <SpoilerGate onContinue={() => setGateOk(true)} onLeave={onLeave} />
+        <SpoilerGate onContinue={onGateAccept} onLeave={onLeave} />
       </div>
     );
   }
@@ -562,6 +572,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
               key={key}
               type="button"
               className="sr-forum-kind"
+              data-kind={key}
               aria-pressed={kind === key}
               onClick={() => setKind(key)}
             >
@@ -581,6 +592,50 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
         </button>
       </div>
       </div>
+
+      {scope === "recommend" && state.posts.length > 0 && (
+        <section className="sr-forum-hot" aria-label="大家在聊">
+          <div className="sr-forum-hot-head">
+            <span className="sr-forum-hot-title">大家在聊</span>
+            <span className="sr-forum-hot-note">按书友圈里的真实帖子统计</span>
+          </div>
+          {hotBooks.length === 0 && hotTopics.length === 0 ? (
+            <p className="sr-forum-hot-empty">还没有关联书籍或话题的帖子。发帖时选一本书、加个话题，就会出现在这里。</p>
+          ) : (
+            <div className="sr-forum-hot-row">
+              {hotBooks.map((item, index) => (
+                <button
+                  key={`b-${item.title}`}
+                  type="button"
+                  className="sr-forum-hot-chip"
+                  data-tone="book"
+                  data-top={index === 0 ? "true" : undefined}
+                  onClick={() => setView({ kind: "search", query: item.title })}
+                  aria-label={`《${item.title}》，${item.posts} 条帖子，${item.people} 人参与，查看相关帖子`}
+                >
+                  <BookOpen size={14} strokeWidth={1.8} aria-hidden />
+                  <span className="sr-forum-hot-name">《{item.title}》</span>
+                  <span className="sr-forum-hot-count">{item.posts} 帖 · {item.people} 人</span>
+                </button>
+              ))}
+              {hotTopics.map((item) => (
+                <button
+                  key={`t-${item.topic}`}
+                  type="button"
+                  className="sr-forum-hot-chip"
+                  data-tone="topic"
+                  onClick={() => setView({ kind: "search", query: item.topic })}
+                  aria-label={`话题 ${item.topic}，${item.posts} 条帖子，查看相关帖子`}
+                >
+                  <Hash size={14} strokeWidth={1.8} aria-hidden />
+                  <span className="sr-forum-hot-name">{item.topic}</span>
+                  <span className="sr-forum-hot-count">{item.posts} 帖</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {notice && (
         <div className="sr-note-card">

@@ -30,6 +30,7 @@ import { StudyRoomDraw } from "./study-room-draw";
 import { StudyRoomWishlist } from "./study-room-wishlist";
 import { StudyRoomNpcPanel } from "./study-room-npc-panel";
 import { StudyRoomGifts } from "./study-room-gifts";
+import { ImportSuccessHost } from "./import-success";
 
 type StudyRoomAppProps = {
   onClose: () => void;
@@ -65,7 +66,17 @@ const TAB_META: Record<StudyRoomTab, { label: string; icon: typeof Library; titl
 
 const TAB_ORDER: StudyRoomTab[] = ["shelf", "store", "desk", "forum", "mine"];
 
-export default function StudyRoomApp({ onClose, launchContext }: StudyRoomAppProps) {
+export default function StudyRoomApp(props: StudyRoomAppProps) {
+  // 导入成功弹窗挂在书房最外层：从详情页导入后会马上切到阅读器，弹窗不能跟着详情页一起消失
+  return (
+    <>
+      <StudyRoomScreens {...props} />
+      <ImportSuccessHost />
+    </>
+  );
+}
+
+function StudyRoomScreens({ onClose, launchContext }: StudyRoomAppProps) {
   const [ready, setReady] = useState(false);
   // 冷启动播放一次启动画面；书房内部切页不重播（见 study-room-splash）
   const [splashDone, setSplashDone] = useState(() => shouldSkipStudyRoomSplash());
@@ -76,6 +87,8 @@ export default function StudyRoomApp({ onClose, launchContext }: StudyRoomAppPro
     if (tab !== "forum") prevTabRef.current = tab;
   }, [tab]);
   const [view, setView] = useState<StudyRoomView>({ kind: "tabs" });
+  // 书友圈剧透提示：本次进入书房只问一次（本组件在退出书房时卸载，状态随之清空）
+  const [forumGateAccepted, setForumGateAccepted] = useState(false);
   // 从阅读器返回时，让那本书先以「抽出」状态出现再放回架上
   const lastOpenedBookRef = useRef<string | null>(null);
   const [returnFromBookId, setReturnFromBookId] = useState<string | null>(null);
@@ -315,6 +328,8 @@ export default function StudyRoomApp({ onClose, launchContext }: StudyRoomAppPro
             <StudyRoomForum
               initialPostId={forumPostId ?? undefined}
               initialCompose={forumCompose}
+              gateAccepted={forumGateAccepted}
+              onGateAccept={() => setForumGateAccepted(true)}
               onLeave={() => {
                 setForumPostId(null);
                 setForumCompose(false);

@@ -5,7 +5,14 @@ import { Check, ChevronDown, ChevronLeft, FileUp, LayoutTemplate, PenLine, Spark
 
 import type { Character } from "@/lib/character-types";
 import type { WorldBookConfig } from "@/lib/settings-types";
-import { createDraft, type CreativeDraft, type WorkKind } from "@/lib/study-room/creative";
+import { CREATIVE_TEMPLATES, createDraft, type CreativeDraft, type WorkKind } from "@/lib/study-room/creative";
+import {
+  STRENGTH_LABEL,
+  fetchBuiltinStyles,
+  loadUserStyles,
+  type StyleMeta,
+  type StyleStrength,
+} from "@/lib/study-room/writing-styles-client";
 import type { InspirationNote } from "@/lib/study-room/inspiration";
 import { HelpTip } from "./help-tip";
 import { WorldBookPicker } from "./study-room-worldbook-picker";
@@ -16,10 +23,10 @@ type Form = "novel" | "short" | "script" | "essay";
 type Resource = "cast" | "world" | "outline" | "material" | "idea";
 
 const MODES: Array<{ key: StartMode | "import"; label: string; desc: string; icon: React.ReactNode }> = [
-  { key: "ai", label: "AI 辅助", desc: "按大纲一章章写，每章都能自己改", icon: <Sparkles size={18} strokeWidth={1.7} /> },
-  { key: "hand", label: "手写", desc: "自己写，不会自动调用模型", icon: <PenLine size={18} strokeWidth={1.7} /> },
-  { key: "import", label: "导入", desc: "把 txt / md / docx 变成草稿", icon: <FileUp size={18} strokeWidth={1.7} /> },
-  { key: "template", label: "模板", desc: "带好世界观、人物与文风的设定起步", icon: <LayoutTemplate size={18} strokeWidth={1.7} /> },
+  { key: "ai", label: "AI 帮我写", desc: "先定大纲，AI 一章章写，你随时改", icon: <Sparkles size={18} strokeWidth={1.7} /> },
+  { key: "hand", label: "我自己写", desc: "只保存你写的字，不会调用模型", icon: <PenLine size={18} strokeWidth={1.7} /> },
+  { key: "import", label: "导入已有文稿", desc: "把 txt / md / docx 变成草稿接着改", icon: <FileUp size={18} strokeWidth={1.7} /> },
+  { key: "template", label: "从题材模板开始", desc: "套用现成题材：题材名、写法提示和标签先填好", icon: <LayoutTemplate size={18} strokeWidth={1.7} /> },
 ];
 
 const FORMS: Array<{ key: Form; label: string; desc: string; templateId: string }> = [
@@ -57,7 +64,11 @@ const WORD_OPTIONS: Record<Form, number[]> = {
 };
 const CHAPTER_OPTIONS = [5, 10, 20, 40];
 
-const STEP_TITLES = ["创作方式", "作品形式", "题材", "资源"] as const;
+const STEP_TITLES = ["怎么开始", "写成什么", "写什么", "怎么写", "参考资料"] as const;
+const LAST_STEP = STEP_TITLES.length - 1;
+
+/** 题材模板（真实预设，见 lib/study-room/creative.ts），模板方式下按卡片列出 */
+const GENRE_TEMPLATES = CREATIVE_TEMPLATES.filter((item) => item.fields.genre);
 
 export type DeskStartInitial = { characterId?: string };
 
@@ -72,7 +83,7 @@ type Props = {
 };
 
 /**
- * 开始创作：四步——方式 → 形式 → 题材 → 资源。
+ * 开始创作：五步——怎么开始 → 写成什么 → 写什么（题材）→ 怎么写（文风）→ 参考资料。
  * 每一步都能返回上一步改；资源都是可选的，不选也能开始。
  */
 export function StudyRoomDeskStart({ characters, worldBooks, inspirations, initial, onCreate, onImport, onClose }: Props) {
@@ -90,6 +101,11 @@ export function StudyRoomDeskStart({ characters, worldBooks, inspirations, initi
   const [outline, setOutline] = useState("");
   const [material, setMaterial] = useState("");
   const [ideaIds, setIdeaIds] = useState<string[]>([]);
+  // 文风（写法）：和题材分开选；不选就是不指定
+  const [builtinStyles, setBuiltinStyles] = useState<StyleMeta[] | null>(null);
+  const userStyles = useMemo(() => loadUserStyles(), []);
+  const [stylePick, setStylePick] = useState<{ kind: "builtin" | "user"; id: string } | null>(null);
+  const [strength, setStrength] = useState<StyleStrength>("standard");
   const fileRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -100,6 +116,14 @@ export function StudyRoomDeskStart({ characters, worldBooks, inspirations, initi
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetchBuiltinStyles(controller.signal).then((list) => {
+      if (!controller.signal.aborted) setBuiltinStyles(list);
+    });
+    return () => controller.abort();
+  }, []);
 
   // 换步骤时把焦点放到面板上，读屏能读出新的一步
   useEffect(() => {
@@ -115,14 +139,22 @@ export function StudyRoomDeskStart({ characters, worldBooks, inspirations, initi
   const ai = mode !== "hand";
   const genreLabel = customGenre.trim() || genre?.label || "";
 
+  const styleName =
+    stylePick?.kind === "builtin"
+      ? builtinStyles?.find((item) => item.id === stylePick.id)?.name
+      : stylePick?.kind === "user"
+        ? userStyles.find((item) => item.id === stylePick.id)?.name
+        : undefined;
+
   const summary = useMemo(() => {
     const parts = [
       MODES.find((m) => m.key === mode)?.label,
       FORMS.find((f) => f.key === form)?.label,
       genreLabel || "题材待定",
+      styleName ? `文风：${styleName}` : "",
     ];
     return parts.filter(Boolean).join(" · ");
-  }, [mode, form, genreLabel]);
+  }, [mode, form, genreLabel, styleName]);
 
   const create = () => {
     const formInfo = FORMS.find((item) => item.key === form)!;
@@ -150,6 +182,9 @@ export function StudyRoomDeskStart({ characters, worldBooks, inspirations, initi
       outline: outline.trim() || base.outline,
       extra: extra || undefined,
       writeMode: mode === "hand" ? "hand" : "ai",
+      styleId: stylePick?.kind === "builtin" ? stylePick.id : undefined,
+      userStyleId: stylePick?.kind === "user" ? stylePick.id : undefined,
+      styleStrength: stylePick ? strength : undefined,
       writer: castMode
         ? { ...base.writer, mode: "character", characterId, worldBookIds: castWorldBooks }
         : { ...base.writer, mode: "assistant", worldBookIds: assistantWorldBooks.length > 0 ? assistantWorldBooks : undefined },
@@ -184,7 +219,7 @@ export function StudyRoomDeskStart({ characters, worldBooks, inspirations, initi
         className="sr-sheet sr-sheet--tall sr-dstart"
         role="dialog"
         aria-modal="true"
-        aria-label={`开始创作，第 ${step + 1} 步，共 4 步：${STEP_TITLES[step]}`}
+        aria-label={`开始创作，第 ${step + 1} 步，共 ${STEP_TITLES.length} 步：${STEP_TITLES[step]}`}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="sr-dstart-head">
@@ -216,8 +251,9 @@ export function StudyRoomDeskStart({ characters, worldBooks, inspirations, initi
               <div className="sr-dstart-label">
                 怎么写
                 <HelpTip id="desk-step-mode" label="创作方式说明">
-                  AI 辅助：先定大纲，再一章章生成，每章写完会留一份章末记忆，接着写不失忆；手写：只保存你写的字，不会自己调用模型；
-                  导入：把已有文稿变成草稿，接着改；模板：带好一套世界观、人物与文风，进去全都能改。
+                  这一步决定谁来写。AI 帮我写：先定大纲，AI 一章章生成，每章写完留一份章末记忆，接着写不失忆，后面还能选角色来当作者；
+                  我自己写：只保存你写的字，不会自己调用模型，后面也不用选角色；导入：直接选文件，变成草稿接着改；
+                  从题材模板开始：下一步会列出现成的题材模板，选中后题材名、写法提示和标签先填好，进去全都能改。
                 </HelpTip>
               </div>
               <div className="sr-dstart-options" role="radiogroup" aria-label="创作方式">
@@ -306,26 +342,55 @@ export function StudyRoomDeskStart({ characters, worldBooks, inspirations, initi
           {step === 2 && (
             <>
               <div className="sr-dstart-label">
-                题材
+                {mode === "template" ? "选一个题材模板" : "写什么题材"}
                 <HelpTip id="desk-step-genre" label="题材说明">
+                  题材说的是写什么（都市、悬疑、言情…），和下一步的文风（怎么写）是两回事。
                   {mode === "template"
-                    ? "选「模板」方式时，带「套用」的题材会把整套世界观、人物与文风填进设定；不带的只写题材名。"
-                    : "题材只是给 AI 和你自己的方向提示，不选也可以，进去再定。"}
+                    ? "选模板会把题材名、一句写法提示和标签填进设定；剧本、散文暂时没有题材模板，只写题材名。"
+                    : "题材是给 AI 和你自己的方向提示，不选也可以，进去再定。"}
                 </HelpTip>
               </div>
-              <div className="sr-chip-row">
-                {GENRES[form].map((item) =>
-                  chip(
-                    !customGenre.trim() && genre?.label === item.label,
-                    mode === "template" && item.templateId ? `${item.label} · 套用` : item.label,
-                    () => {
-                      setCustomGenre("");
-                      setGenre(genre?.label === item.label ? null : item);
-                    },
-                    item.label,
-                  ),
-                )}
-              </div>
+              {mode === "template" && (form === "novel" || form === "short") ? (
+                <div className="sr-dstart-options" role="radiogroup" aria-label="题材模板">
+                  {GENRE_TEMPLATES.map((template) => {
+                    const active = !customGenre.trim() && genre?.templateId === template.id;
+                    return (
+                      <button
+                        key={template.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        className="sr-dstart-option"
+                        data-active={active ? "true" : undefined}
+                        onClick={() => {
+                          setCustomGenre("");
+                          setGenre(active ? null : { label: template.fields.genre ?? template.name, templateId: template.id });
+                        }}
+                      >
+                        <span className="sr-dstart-option-main">
+                          <span className="sr-dstart-option-name">{template.name}</span>
+                          <span className="sr-note-meta">{template.desc}</span>
+                          {template.fields.style && <span className="sr-note-meta">写法提示：{template.fields.style}</span>}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="sr-chip-row">
+                  {GENRES[form].map((item) =>
+                    chip(
+                      !customGenre.trim() && genre?.label === item.label,
+                      item.label,
+                      () => {
+                        setCustomGenre("");
+                        setGenre(genre?.label === item.label ? null : { label: item.label });
+                      },
+                      item.label,
+                    ),
+                  )}
+                </div>
+              )}
               <input
                 className="sr-appear-input sr-dstart-input"
                 value={customGenre}
@@ -339,10 +404,94 @@ export function StudyRoomDeskStart({ characters, worldBooks, inspirations, initi
           {step === 3 && (
             <>
               <div className="sr-dstart-label">
-                资源（都可以不选）
-                <HelpTip id="desk-step-resource" label="资源说明">
-                  角色：让一位角色以作者身份来写，会带上 TA 的人设与绑定的世界书；世界书：给写作助手的设定资料；
+                用什么文风
+                <HelpTip id="desk-step-style" label="文风说明">
+                  文风管怎么写：句子长短、语气、叙述方式；不改人物设定和剧情。内置文风的规则在服务端，不会下发；「我的文风」只存在这台手机上。
+                  不选就不指定，进作品后在「设定 → 文风」里随时能换。
+                </HelpTip>
+              </div>
+              {mode === "hand" && <p className="sr-note-meta sr-dstart-note">自己写时不会调用模型；这里选的文风会记在作品上，之后让 AI 续写时才用到。</p>}
+              <div className="sr-dstart-options" role="radiogroup" aria-label="文风">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={!stylePick}
+                  className="sr-dstart-option"
+                  data-active={!stylePick ? "true" : undefined}
+                  onClick={() => setStylePick(null)}
+                >
+                  <span className="sr-dstart-option-main">
+                    <span className="sr-dstart-option-name">不指定</span>
+                    <span className="sr-note-meta">按题材和设定自然写</span>
+                  </span>
+                </button>
+                {builtinStyles === null ? (
+                  <p className="sr-note-meta">正在读取内置文风…</p>
+                ) : builtinStyles.length === 0 ? (
+                  <p className="sr-note-meta">内置文风暂时读不到（可能是网络问题），进作品后可以在「设定 → 文风」里再选。</p>
+                ) : (
+                  builtinStyles.map((style) => {
+                    const active = stylePick?.kind === "builtin" && stylePick.id === style.id;
+                    return (
+                      <button
+                        key={style.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        className="sr-dstart-option"
+                        data-active={active ? "true" : undefined}
+                        onClick={() => setStylePick({ kind: "builtin", id: style.id })}
+                      >
+                        <span className="sr-dstart-option-main">
+                          <span className="sr-dstart-option-name">{style.name}</span>
+                          <span className="sr-note-meta">{style.summary}</span>
+                          <span className="sr-note-meta">{style.origin ?? "仪仪原创文风"}</span>
+                        </span>
+                      </button>
+                    );
+                  })
+                )}
+                {userStyles.map((style) => {
+                  const active = stylePick?.kind === "user" && stylePick.id === style.id;
+                  return (
+                    <button
+                      key={style.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      className="sr-dstart-option"
+                      data-active={active ? "true" : undefined}
+                      onClick={() => setStylePick({ kind: "user", id: style.id })}
+                    >
+                      <span className="sr-dstart-option-main">
+                        <span className="sr-dstart-option-name">{style.name}</span>
+                        <span className="sr-note-meta">{style.summary} · 我的文风</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {stylePick && (
+                <div className="sr-filter-row">
+                  <span className="sr-filter-label">浓淡</span>
+                  <div className="sr-chip-row">
+                    {(["light", "standard", "dense"] as StyleStrength[]).map((level) =>
+                      chip(strength === level, STRENGTH_LABEL[level], () => setStrength(level), level),
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {step === 4 && (
+            <>
+              <div className="sr-dstart-label">
+                参考资料（都可以不选）
+                <HelpTip id="desk-step-resource" label="参考资料说明">
+                  这一步是写的时候参考哪些设定。角色：让一位角色以作者身份来写，会带上 TA 的人设与绑定的世界书；世界书：给写作助手的设定资料；
                   大纲：已经有就贴进来，没有进去可以让 AI 先给一版；素材与灵感：会写进「补充要求」，生成时参考。
+                  这些设定只在书房写书时使用，不会带进平时的聊天。
                 </HelpTip>
               </div>
               <div className="sr-dstart-resources">
@@ -450,7 +599,7 @@ export function StudyRoomDeskStart({ characters, worldBooks, inspirations, initi
                 {openResource === "idea" && (
                   <div className="sr-dstart-panel">
                     {inspirations.length === 0 ? (
-                      <p className="sr-note-meta">灵感抽屉里还没有便签，书桌下方可以随手记。</p>
+                      <p className="sr-note-meta">还没有便签，书桌「工具 → 灵感便签」里可以随手记。</p>
                     ) : (
                       <ul className="sr-dstart-ideas">
                         {inspirations.map((item) => {
@@ -483,7 +632,7 @@ export function StudyRoomDeskStart({ characters, worldBooks, inspirations, initi
         {step > 0 && (
           <div className="sr-dstart-foot">
             <span className="sr-note-meta sr-dstart-summary">{summary}</span>
-            {step < 3 ? (
+            {step < LAST_STEP ? (
               <button type="button" className="sr-btn sr-btn-primary" onClick={() => setStep(step + 1)}>
                 下一步
               </button>

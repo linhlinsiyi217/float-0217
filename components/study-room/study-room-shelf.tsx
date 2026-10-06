@@ -5,6 +5,7 @@ import { BookPlus, SlidersHorizontal } from "lucide-react";
 
 import { deleteBook, loadAllProgress, loadBooks } from "@/lib/reading-storage";
 import { importBookFromBlob, UnsupportedBookFormatError } from "@/lib/study-room/import";
+import { announceImported } from "@/lib/study-room/events";
 import { DocxReadError } from "@/lib/study-room/docx";
 import { moveInOrder, sortShelfBooks, type ShelfSort } from "@/lib/study-room/shelf-layout";
 import { loadShelfPrefs, saveShelfPrefs, type ShelfPrefs } from "@/lib/study-room/shelf-prefs";
@@ -126,8 +127,9 @@ export function StudyRoomShelf({ onOpenBook, onOpenMessages, returnFromBookId }:
 
     setImportState({ status: "running", label: "正在解析文件…" });
     try {
-      await importBookFromBlob(file, file.name, (stage) => setImportState({ status: "running", label: stage }));
+      const book = await importBookFromBlob(file, file.name, (stage) => setImportState({ status: "running", label: stage }));
       setImportState({ status: "idle" });
+      announceImported(book.title);
       await refresh();
     } catch (err) {
       console.error("[StudyRoom] import failed:", err);

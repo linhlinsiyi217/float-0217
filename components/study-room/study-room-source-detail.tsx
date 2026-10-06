@@ -6,6 +6,7 @@ import { BookOpen, Compass, Download, Eye, Heart, Loader2, Upload, X } from "luc
 import type { Book } from "@/lib/reading-types";
 import { importBookFromBlob, UnsupportedBookFormatError } from "@/lib/study-room/import";
 import { importSearchResult, SourceImportError } from "@/lib/study-room/import-result";
+import { announceImported } from "@/lib/study-room/events";
 import {
   CATEGORY_LABEL,
   editionLanguageLabel,
@@ -43,6 +44,7 @@ export function StudyRoomSourceDetail({ item, versions = [], onClose, onRead, on
     try {
       const { book, existed } = await importSearchResult(item, (stage) => setNotice(stage));
       setNotice(existed ? `《${book.title}》已经在书架上，直接打开。` : `《${item.title}》已加入书架`);
+      if (!existed) announceImported(book.title);
       return book;
     } catch (error) {
       setNotice(
@@ -67,6 +69,7 @@ export function StudyRoomSourceDetail({ item, versions = [], onClose, onRead, on
     try {
       const book = await importBookFromBlob(file, file.name, undefined, item.cover);
       setNotice(`《${book.title}》已加入书架`);
+      announceImported(book.title);
       onRead(book);
     } catch (error) {
       setNotice(error instanceof UnsupportedBookFormatError ? error.message : "这个文件读不了，请换一个试试。");

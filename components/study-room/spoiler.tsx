@@ -65,7 +65,7 @@ export function SpoilerBlock({
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
- * 进入书友圈前的剧透提示：每次进入都问。
+ * 进入书友圈前的剧透提示：每次进入书房后第一次打开书友圈时问（书房内切页不重复问）。
  * 「继续观看」才进入；「不再观看」、Esc、点遮罩都只是这一次不进，不算同意。
  * 焦点锁在弹窗里（Tab / Shift+Tab 循环），关闭后焦点回到进入前的位置。
  */

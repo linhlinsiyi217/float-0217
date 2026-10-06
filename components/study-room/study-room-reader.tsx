@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -26,6 +26,7 @@ import {
   Timer,
   Waves,
   Music2,
+  Square,
   X,
 } from "lucide-react";
 
@@ -63,17 +64,35 @@ import {
   loadTtsProgress,
   pickDefaultVoice,
   saveTtsProgress,
-  setNoiseVolume,
   speakParagraph,
-  startNoise,
-  stopNoise,
   stopSpeaking,
   whenVoicesReady,
-  type NoiseKind,
   type ReaderVoice,
   type SpeakHandle,
 } from "@/lib/study-room/tts";
 import { getReaderMusicController } from "@/lib/study-room/reader-music";
+import {
+  NOISE_LABELS,
+  duckAmbient,
+  getAmbientState,
+  pauseAmbient,
+  playNoise,
+  resumeAmbient,
+  setAmbientVolume,
+  setReadingVolume,
+  stopAmbient,
+  subscribeAmbient,
+  type AmbientStatus,
+  type NoiseKind,
+} from "@/lib/study-room/ambient";
+
+const AMBIENT_STATUS_TEXT: Record<AmbientStatus, string> = {
+  idle: "未播放",
+  loading: "加载中",
+  playing: "正在播放",
+  paused: "已暂停",
+  error: "播放失败",
+};
 import { resolveForumApiConfig } from "@/lib/study-room/forum";
 import { simpleLLMCall } from "@/lib/api-helpers";
 import { generateAnnotationBatch } from "@/lib/reading-engine";
@@ -102,11 +121,13 @@ type StudyRoomReaderProps = {
   onBack: () => void;
 };
 
+/** 选区位置：相对阅读器根容器（x 为选区水平中心，top/bottom 为选区上下沿） */
 type SelectionState = {
   text: string;
   paragraphIndex: number;
   x: number;
-  y: number;
+  top: number;
+  bottom: number;
 };
 
 type AnnotateState = {
@@ -155,8 +176,10 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   const [playing, setPlaying] = useState(false);
   const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
   const [sleepUntil, setSleepUntil] = useState<number | null>(null);
-  const [noise, setNoise] = useState<NoiseKind>("off");
-  const [noiseLevel, setNoiseLevel] = useState(0.5);
+  // 背景声音（白噪音 / 背景音乐）：独立入口，没有朗读音色也能用
+  const [ambientOpen, setAmbientOpen] = useState(false);
+  const ambient = useSyncExternalStore(subscribeAmbient, getAmbientState, getAmbientState);
+  const [pickedNoise, setPickedNoise] = useState<NoiseKind>(() => getAmbientState().kind ?? "rain");
   const [ttsNotice, setTtsNotice] = useState<string | null>(null);
   const [bookmarks, setBookmarks] = useState<ReadingBookmark[]>([]);
   const [selection, setSelection] = useState<SelectionState | null>(null);
@@ -175,6 +198,9 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   const preHeightRef = useRef<number | null>(null);
 
   const bodyRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const selbarRef = useRef<HTMLDivElement>(null);
+  const [selbarPos, setSelbarPos] = useState<{ left: number; top: number } | null>(null);
   const speakRef = useRef<SpeakHandle | null>(null);
   const playingRef = useRef(false);
   const rateRef = useRef(1);
@@ -203,13 +229,19 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
     rateRef.current = rate;
   }, [rate]);
 
-  // 离开阅读器或关闭面板时停掉朗读与白噪音
+  // 朗读时背景声音自动调低，停下 / 暂停 / 失败后回到用户设定的音量（只是一个开关，不会越降越低）
+  useEffect(() => {
+    duckAmbient(playing);
+  }, [playing]);
+
+  // 离开阅读器时停掉朗读与背景声音（沿用原来的约定）
   useEffect(() => {
     return () => {
       playingRef.current = false;
       speakRef.current?.abort();
       stopSpeaking();
-      stopNoise();
+      duckAmbient(false);
+      stopAmbient();
       if (sleepTimerRef.current !== null) window.clearTimeout(sleepTimerRef.current);
     };
   }, []);
@@ -481,7 +513,11 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
       }
       const pi = findParagraphIndex(range.startContainer);
       const rect = range.getBoundingClientRect();
-      setSelection({ text, paragraphIndex: pi, x: rect.left + rect.width / 2, y: rect.top });
+      // 按阅读器根容器换算坐标：外层手机壳可能有缩放/位移，fixed 定位会跑偏
+      const base = rootRef.current?.getBoundingClientRect();
+      const ox = base?.left ?? 0;
+      const oy = base?.top ?? 0;
+      setSelection({ text, paragraphIndex: pi, x: rect.left + rect.width / 2 - ox, top: rect.top - oy, bottom: rect.bottom - oy });
     };
 
     const onChange = () => {
@@ -495,6 +531,32 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
       if (debounce !== null) window.clearTimeout(debounce);
     };
   }, [isPdf, chapterIndex]);
+
+  // 选区菜单：先渲染再量尺寸。优先放在选区下方（手机系统自带的复制菜单多在上方，避免叠在一起），
+  // 下方放不下（靠近底栏）就放到上方；左右夹在阅读器内，不被屏幕边缘裁掉。
+  useLayoutEffect(() => {
+    if (!selection || annotate) {
+      setSelbarPos(null);
+      return;
+    }
+    const bar = selbarRef.current;
+    const root = rootRef.current;
+    if (!bar || !root) return;
+    const W = root.clientWidth;
+    const H = root.clientHeight;
+    const w = bar.offsetWidth;
+    const h = bar.offsetHeight;
+    const gap = 12;
+    const footer = root.querySelector<HTMLElement>(".sr-reader-footer");
+    const header = root.querySelector<HTMLElement>(".sr-reader-header");
+    const bottomLimit = H - (barsHidden ? 16 : (footer?.offsetHeight ?? 0) + 12);
+    const topLimit = barsHidden ? 16 : (header?.offsetHeight ?? 0) + 8;
+    let top = selection.bottom + gap;
+    if (top + h > bottomLimit) top = selection.top - gap - h;
+    top = Math.min(Math.max(top, topLimit), Math.max(topLimit, bottomLimit - h));
+    const left = Math.min(Math.max(selection.x - w / 2, 8), Math.max(8, W - w - 8));
+    setSelbarPos({ left, top });
+  }, [selection, annotate, barsHidden, showMarkColors, showMore]);
 
   const clearSelection = () => {
     window.getSelection()?.removeAllRanges();
@@ -854,17 +916,31 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
       setPlaying(false);
       setSpeakingIndex(null);
       stopSpeaking();
-      stopNoise();
-      setNoise("off");
+      stopAmbient();
       setSleepUntil(null);
-      setTtsNotice("定时时间到，已停止朗读。");
+      setTtsNotice("定时时间到，已停止朗读和背景声音。");
     }, minutes * 60_000);
   };
 
-  const handleNoise = (kind: NoiseKind) => {
-    setNoise(kind);
-    if (kind === "off") stopNoise();
-    else startNoise(kind, noiseLevel);
+  /** 选一种白噪音：正在播放时直接换过去（同一时间只有一路） */
+  const pickNoise = (kind: NoiseKind) => {
+    setPickedNoise(kind);
+    if (ambient.kind && ambient.kind !== kind && (ambient.status === "playing" || ambient.status === "paused")) {
+      void playNoise(kind);
+    }
+  };
+
+  const toggleAmbient = () => {
+    if (ambient.status === "loading") return;
+    if (ambient.status === "playing" && ambient.kind === pickedNoise) {
+      void pauseAmbient();
+      return;
+    }
+    if (ambient.status === "paused" && ambient.kind === pickedNoise) {
+      void resumeAmbient();
+      return;
+    }
+    void playNoise(pickedNoise);
   };
 
   // 点正文切换顶/底栏；选中文字、点按钮或链接时不切换
@@ -906,7 +982,7 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   const progressPct = total > 0 ? ((chapterIndex + 1) / total) * 100 : 0;
 
   return (
-    <div className="sr-reader" data-bars={barsHidden ? "hidden" : undefined}>
+    <div ref={rootRef} className="sr-reader" data-bars={barsHidden ? "hidden" : undefined}>
       <header className="sr-reader-header" aria-hidden={barsHidden || undefined}>
         <button type="button" className="sr-icon-btn" onClick={onBack} aria-label="返回书架">
           <ChevronLeft size={22} strokeWidth={1.6} />
@@ -938,6 +1014,16 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
             disabled={isPdf}
           >
             <Volume2 size={20} strokeWidth={1.6} />
+          </button>
+          <button
+            type="button"
+            className="sr-icon-btn"
+            data-active={ambientOpen || ambient.status === "playing" ? "true" : undefined}
+            onClick={() => setAmbientOpen(true)}
+            aria-label="背景声音"
+            title="背景声音"
+          >
+            <Waves size={20} strokeWidth={1.6} />
           </button>
           <button
             type="button"
@@ -1067,8 +1153,11 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
 
       {selection && !annotate && (
         <div
-          className="sr-selbar"
-          style={{ left: Math.min(Math.max(selection.x, 90), window.innerWidth - 90), top: Math.max(selection.y - 52, 60) }}
+          ref={selbarRef}
+          className="sr-selbar sr-selbar--anchored"
+          role="toolbar"
+          aria-label="选中文字的操作"
+          style={selbarPos ? { left: selbarPos.left, top: selbarPos.top } : { left: 8, top: Math.max(selection.bottom + 12, 0), visibility: "hidden" }}
           onMouseDown={(e) => e.preventDefault()}
         >
           <button type="button" className="sr-selbar-btn" onClick={handleCopy}>
@@ -1414,55 +1503,146 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
                   <p className="sr-note-meta">将在 {new Date(sleepUntil).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} 停止朗读。</p>
                 )}
 
-                <div className="sr-appear-row">
-                  <span className="sr-appear-label">
-                    <Waves size={13} strokeWidth={1.8} style={{ verticalAlign: -2, marginRight: 4 }} />
-                    白噪音（本地生成）
-                  </span>
-                  <div className="sr-chip-row">
-                    {(["off", "rain", "room"] as NoiseKind[]).map((kind) => (
-                      <button
-                        key={kind}
-                        type="button"
-                        className="sr-chip"
-                        data-active={noise === kind ? "true" : undefined}
-                        onClick={() => handleNoise(kind)}
-                      >
-                        {kind === "off" ? "关" : kind === "rain" ? "雨声" : "室内"}
-                      </button>
-                    ))}
-                  </div>
+                <div className="sr-appear-row sr-appear-row--slider">
+                  <span className="sr-appear-label">朗读音量</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={ambient.readingVolume}
+                    onChange={(event) => setReadingVolume(Number(event.target.value))}
+                    className="sr-slider"
+                    aria-label="朗读音量"
+                  />
+                  <span className="sr-appear-value">{Math.round(ambient.readingVolume * 100)}%</span>
                 </div>
-                {noise !== "off" && (
-                  <div className="sr-appear-row sr-appear-row--slider">
-                    <span className="sr-appear-label">白噪音音量</span>
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      value={noiseLevel}
-                      onChange={(event) => {
-                        const value = Number(event.target.value);
-                        setNoiseLevel(value);
-                        setNoiseVolume(value);
-                      }}
-                      className="sr-slider"
-                      aria-label="白噪音音量"
-                    />
-                    <span className="sr-appear-value">{Math.round(noiseLevel * 100)}%</span>
-                  </div>
-                )}
-
-                <div className="sr-appear-row">
-                  <span className="sr-appear-label">
-                    <Music2 size={13} strokeWidth={1.8} style={{ verticalAlign: -2, marginRight: 4 }} />
-                    背景音乐
-                  </span>
-                  <span className="sr-note-meta">{getReaderMusicController().unavailableReason}</span>
-                </div>
+                <p className="sr-note-meta">朗读音量从下一段开始生效，只管朗读，不影响背景声音。</p>
               </>
             )}
+
+            <button
+              type="button"
+              className="sr-ambient-link"
+              onClick={() => {
+                setTtsOpen(false);
+                setAmbientOpen(true);
+              }}
+            >
+              <Waves size={18} strokeWidth={1.7} />
+              <span>背景声音</span>
+              <span className="sr-ambient-link-state">
+                {ambient.kind && ambient.status !== "idle" ? `${NOISE_LABELS[ambient.kind]} · ${AMBIENT_STATUS_TEXT[ambient.status]}` : "未播放"}
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {ambientOpen && (
+        <div className="sr-sheet-mask" onClick={() => setAmbientOpen(false)}>
+          <div
+            className="sr-sheet sr-ambient-sheet"
+            role="dialog"
+            aria-label="背景声音"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="sr-gift-head">
+              <span className="sr-sheet-label" style={{ margin: 0 }}>背景声音</span>
+              <button type="button" className="sr-icon-btn" onClick={() => setAmbientOpen(false)} aria-label="关闭">
+                <X size={18} strokeWidth={1.7} />
+              </button>
+            </div>
+
+            <section className="sr-ambient-sec">
+              <div className="sr-ambient-sec-head">
+                <Waves size={15} strokeWidth={1.8} />
+                <span>白噪音</span>
+                <small>本机生成的持续环境声，不联网</small>
+              </div>
+              <div className="sr-chip-row" role="radiogroup" aria-label="选择白噪音">
+                {(Object.keys(NOISE_LABELS) as NoiseKind[]).map((kind) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    role="radio"
+                    aria-checked={pickedNoise === kind}
+                    className="sr-chip"
+                    data-active={pickedNoise === kind ? "true" : undefined}
+                    onClick={() => pickNoise(kind)}
+                  >
+                    {NOISE_LABELS[kind]}
+                  </button>
+                ))}
+              </div>
+
+              <p className="sr-ambient-status" data-status={ambient.status} role="status" aria-live="polite">
+                {ambient.status === "error"
+                  ? ambient.error ?? "播放失败"
+                  : ambient.kind && ambient.status !== "idle"
+                    ? `${NOISE_LABELS[ambient.kind]} · ${AMBIENT_STATUS_TEXT[ambient.status]}${ambient.ducked ? "（朗读中，已调低）" : ""}`
+                    : "未播放"}
+              </p>
+
+              <div className="sr-ambient-ctrl">
+                <button
+                  type="button"
+                  className="sr-btn sr-btn-primary"
+                  onClick={toggleAmbient}
+                  disabled={ambient.status === "loading"}
+                  aria-busy={ambient.status === "loading" || undefined}
+                >
+                  {ambient.status === "playing" && ambient.kind === pickedNoise ? (
+                    <Pause size={16} strokeWidth={1.9} />
+                  ) : (
+                    <Play size={16} strokeWidth={1.9} />
+                  )}
+                  {ambient.status === "loading"
+                    ? "加载中"
+                    : ambient.status === "playing" && ambient.kind === pickedNoise
+                      ? "暂停"
+                      : ambient.status === "paused" && ambient.kind === pickedNoise
+                        ? "继续"
+                        : ambient.status === "playing"
+                          ? `换成${NOISE_LABELS[pickedNoise]}`
+                          : "播放"}
+                </button>
+                <button
+                  type="button"
+                  className="sr-btn"
+                  onClick={() => stopAmbient()}
+                  disabled={ambient.status === "idle"}
+                >
+                  <Square size={14} strokeWidth={1.9} />
+                  停止
+                </button>
+              </div>
+
+              <div className="sr-appear-row sr-appear-row--slider">
+                <span className="sr-appear-label">背景音量</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={ambient.volume}
+                  onChange={(event) => setAmbientVolume(Number(event.target.value))}
+                  className="sr-slider"
+                  aria-label="背景音量"
+                />
+                <span className="sr-appear-value">{Math.round(ambient.volume * 100)}%</span>
+              </div>
+              <p className="sr-note-meta">朗读时自动调低，停下后回到这个音量；离开阅读页会停止。</p>
+            </section>
+
+            <section className="sr-ambient-sec">
+              <div className="sr-ambient-sec-head">
+                <Music2 size={15} strokeWidth={1.8} />
+                <span>背景音乐</span>
+                <small>有旋律的歌曲 / 曲目</small>
+              </div>
+              <p className="sr-note-meta">{getReaderMusicController().unavailableReason}</p>
+            </section>
           </div>
         </div>
       )}

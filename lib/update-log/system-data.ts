@@ -10,6 +10,28 @@ import type { Release } from "./types";
 
 export const SYSTEM_RELEASES: Release[] = [
   {
+    version: "0.6.5",
+    releaseId: "system-2026-10-07-v065",
+    date: "2026-10-07",
+    name: "书房第五批：白噪音、书桌一屏、书友圈热门",
+    summary: "书房：白噪音/背景音乐可用，朗读和背景音量分开；书桌、开新书、剧透提示、长按菜单、导入提示、外观页、书城、书友圈、主页头像一起修；更新应用：书房、朗读服务",
+    includes: { studyroom: "studyroom-2026-10-07-v074" },
+    entries: [
+      {
+        id: "sys-065-tts-volume",
+        category: "tweak",
+        app: "系统 · 朗读服务",
+        title: "朗读播放支持单独的音量",
+        items: [
+          "朗读服务播放声音时可以带上自己的音量，书房用它把朗读音量和背景声音分开；其他应用不传音量，行为不变",
+        ],
+      },
+    ],
+    pending: [
+      "书房部分全部没有在手机上实测，详见书房 0.7.4 的待确认",
+    ],
+  },
+  {
     version: "0.6.4",
     releaseId: "system-2026-10-06-v064",
     date: "2026-10-06",

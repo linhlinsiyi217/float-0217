@@ -691,3 +691,43 @@ export function parseDraftField(text: string): string[] {
     .filter(Boolean)
     .slice(0, 6);
 }
+
+// ── 热门：只按本机真实帖子计算，没有就如实为空 ──
+
+export type ForumHotBook = { title: string; posts: number; people: number };
+export type ForumHotTopic = { topic: string; posts: number };
+
+/** 大家在聊的书：按关联这本书的可见帖子数排，参与人数 = 发帖人 + 评论人（去重） */
+export function forumHotBooks(state: ForumState, limit = 5): ForumHotBook[] {
+  const map = new Map<string, { posts: number; people: Set<string>; heat: number }>();
+  for (const post of channelPosts(state, "recommend")) {
+    const title = post.bookTitle?.trim();
+    if (!title) continue;
+    const entry = map.get(title) ?? { posts: 0, people: new Set<string>(), heat: 0 };
+    entry.posts += 1;
+    entry.people.add(post.authorId);
+    for (const comment of post.comments) entry.people.add(comment.authorId);
+    entry.heat += post.likedBy.length * 2 + post.comments.length;
+    map.set(title, entry);
+  }
+  return Array.from(map.entries())
+    .sort((a, b) => b[1].posts - a[1].posts || b[1].heat - a[1].heat)
+    .slice(0, limit)
+    .map(([title, entry]) => ({ title, posts: entry.posts, people: entry.people.size }));
+}
+
+/** 热门话题：只统计不含剧透的帖子，避免话题名本身泄露剧情 */
+export function forumHotTopics(state: ForumState, limit = 6): ForumHotTopic[] {
+  const map = new Map<string, number>();
+  for (const post of channelPosts(state, "recommend")) {
+    if (post.spoiler) continue;
+    for (const raw of post.topics ?? []) {
+      const topic = raw.replace(/^#/, "").trim();
+      if (topic) map.set(topic, (map.get(topic) ?? 0) + 1);
+    }
+  }
+  return Array.from(map.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([topic, posts]) => ({ topic, posts }));
+}

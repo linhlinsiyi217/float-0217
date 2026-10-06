@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 import { importSearchResult, SourceImportError } from "@/lib/study-room/import-result";
+import { announceImported } from "@/lib/study-room/events";
 import { HelpFoot, HelpTip } from "./help-tip";
 import {
   AVAILABILITY_LABEL,
@@ -299,6 +300,7 @@ export function StudyRoomDraw({ onBack, onRead, onImported }: StudyRoomDrawProps
         return;
       }
       flash(`《${item.title}》已加入书架，可以开始读了。`, 3200);
+      announceImported(item.title);
       onImported();
     } catch (error) {
       flash(error instanceof SourceImportError ? error.message : "导入失败，请稍后重试；也可以先点「详情」在原站看看。", 3600);

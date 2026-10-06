@@ -352,11 +352,11 @@ export function playAudioBlobViaMediaElement(blob: Blob): { promise: Promise<voi
     return playAudioBlobElement(blob);
 }
 
-function playAudioBlobElement(blob: Blob): { promise: Promise<void>; abort: () => void } {
+function playAudioBlobElement(blob: Blob, volume?: number): { promise: Promise<void>; abort: () => void } {
     const url = URL.createObjectURL(blob);
     const audio = getSharedAudio();
     audio.muted = false;
-    audio.volume = _ttsVolume;
+    audio.volume = volume ?? _ttsVolume;
     audio.src = url;
 
     let settled = false;
@@ -386,10 +386,15 @@ function playAudioBlobElement(blob: Blob): { promise: Promise<void>; abort: () =
  * ends. After playback the context is suspended so iOS releases the audio
  * session back to the microphone (lets SpeechRecognition restart next turn).
  * Returns an abort function to stop playback early. Playback is sequential.
+ * options.volume（0..1）只给这一段用，例如书房朗读有自己的音量；不传时沿用全局语音音量。
  */
-export function playAudioBlob(blob: Blob): { promise: Promise<void>; abort: () => void } {
+export function playAudioBlob(
+    blob: Blob,
+    options?: { volume?: number },
+): { promise: Promise<void>; abort: () => void } {
+    const ownVolume = options?.volume == null ? undefined : Math.min(1, Math.max(0, options.volume));
     const ctx = getAudioContext();
-    if (!ctx) return playAudioBlobElement(blob);
+    if (!ctx) return playAudioBlobElement(blob, ownVolume);
 
     let settled = false;
     let resolveFn: () => void = () => {};
@@ -439,10 +444,11 @@ export function playAudioBlob(blob: Blob): { promise: Promise<void>; abort: () =
                 source.buffer = audioBuffer;
                 // Route through a gain node so the in-app volume slider applies.
                 gain = ctx.createGain();
-                gain.gain.value = _ttsVolume;
+                gain.gain.value = ownVolume ?? _ttsVolume;
                 source.connect(gain);
                 gain.connect(ctx.destination);
-                _activeGain = gain;
+                // 自带音量的片段不挂到全局滑杆上，免得通话音量改动把它改掉
+                if (ownVolume == null) _activeGain = gain;
                 source.onended = finalize;
                 source.start();
             } catch {
@@ -451,7 +457,7 @@ export function playAudioBlob(blob: Blob): { promise: Promise<void>; abort: () =
                 // 此前这里直接 finalize，正是「语音条有声、通话没声」的来源之一。
                 if (settled) return;
                 cleanupWebAudio();
-                const fallback = playAudioBlobElement(blob);
+                const fallback = playAudioBlobElement(blob, ownVolume);
                 fallbackAbort = fallback.abort;
                 void fallback.promise.then(() => {
                     if (settled) return;

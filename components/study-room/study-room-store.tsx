@@ -500,13 +500,24 @@ export function StudyRoomStore({ onRead, initialQuery }: StudyRoomStoreProps) {
               每本都在详情里写明版本与来源链接。
             </HelpTip>
           </div>
-          <ul className="sr-src-versions">
-            {builtinBooks.map((book) => (
+          {/* 书封陈列：封面只排真实的书名 / 作者 / 年代（内置书没有扫描封面，不编造封面图） */}
+          <ul className="sr-store-covers">
+            {builtinBooks.map((book, index) => (
               <li key={book.id}>
-                <button type="button" onClick={() => setDetail({ item: builtinToResult(book), versions: [] })}>
-                  <span className="sr-src-version-title">{book.title}</span>
-                  <span className="sr-note-meta">
-                    {book.author} · {book.chapters} 章 · 约 {Math.round(book.totalChars / 10000)} 万字
+                <button
+                  type="button"
+                  className="sr-store-cover-btn"
+                  onClick={() => setDetail({ item: builtinToResult(book), versions: [] })}
+                  aria-label={`${book.title}，${book.author}，${book.chapters} 章，约 ${Math.round(book.totalChars / 10000)} 万字`}
+                >
+                  <span className="sr-store-cover" data-tone={index % 4} aria-hidden>
+                    <span className="sr-store-cover-title">{book.title}</span>
+                    <span className="sr-store-cover-author">{book.author}</span>
+                    <span className="sr-store-cover-era">{book.era}</span>
+                  </span>
+                  <span className="sr-store-cover-name">{book.title}</span>
+                  <span className="sr-store-cover-meta">
+                    {book.chapters} 章 · {Math.max(1, Math.round(book.totalChars / 10000))} 万字
                   </span>
                 </button>
               </li>

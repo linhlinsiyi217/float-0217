@@ -9,6 +9,7 @@ import { loadCharacters } from "@/lib/character-storage";
 import { kvGet, kvSet, registerKvMigration } from "@/lib/kv-db";
 import { loadVoiceConfigs } from "@/lib/settings-storage";
 import { playAudioBlob, resolveVoiceConfig, synthesizeSpeech } from "@/lib/tts-service";
+import { getReadingVolume } from "./ambient";
 
 const PROGRESS_KEY = "ai_phone_studyroom_tts_progress_v1";
 registerKvMigration(PROGRESS_KEY);
@@ -96,6 +97,8 @@ async function speakWithSystem(text: string, voice: ReaderVoice, rate: number): 
   if (matched) utterance.voice = matched;
   else if (voice.lang) utterance.lang = voice.lang;
   utterance.rate = Math.min(Math.max(rate, 0.5), 2.5);
+  // 书房朗读音量（独立于背景声音）
+  utterance.volume = getReadingVolume();
   const promise = new Promise<void>((resolve) => {
     utterance.onend = () => resolve();
     utterance.onerror = () => resolve();
@@ -125,7 +128,7 @@ async function speakWithCharacter(
   const tuned = rate === 1 ? config : { ...config, speechSpeed: rate };
   const blob = await synthesizeSpeech(text, tuned);
   if (!blob) return null;
-  const handle = playAudioBlob(blob);
+  const handle = playAudioBlob(blob, { volume: getReadingVolume() });
   return { promise: handle.promise, abort: handle.abort };
 }
 
@@ -185,74 +188,4 @@ export function saveTtsProgress(bookId: string, chapterIndex: number, paragraphI
   kvSet(PROGRESS_KEY, JSON.stringify({ ...all, [bookId]: { chapterIndex, paragraphIndex, at: new Date().toISOString() } }));
 }
 
-// ── 白噪音：本地生成，不联网、不用音频文件 ──
-
-export type NoiseKind = "off" | "rain" | "room";
-
-let noiseContext: AudioContext | null = null;
-let noiseSource: AudioBufferSourceNode | null = null;
-let noiseGain: GainNode | null = null;
-
-function noiseBuffer(ctx: AudioContext, kind: Exclude<NoiseKind, "off">): AudioBuffer {
-  const length = ctx.sampleRate * 2;
-  const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-  let last = 0;
-  for (let i = 0; i < length; i += 1) {
-    const white = Math.random() * 2 - 1;
-    if (kind === "rain") {
-      // 雨：高频偏亮，轻微起伏
-      last = 0.85 * white + 0.15 * last;
-      data[i] = last * 0.5;
-    } else {
-      // 室内底噪：低频偏多，接近空调声
-      last = 0.97 * last + 0.03 * white;
-      data[i] = last * 3.2;
-    }
-  }
-  return buffer;
-}
-
-export function startNoise(kind: Exclude<NoiseKind, "off">, volume: number): void {
-  if (typeof window === "undefined") return;
-  stopNoise();
-  try {
-    const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctor) return;
-    noiseContext = new Ctor();
-    const ctx = noiseContext;
-    noiseSource = ctx.createBufferSource();
-    noiseSource.buffer = noiseBuffer(ctx, kind);
-    noiseSource.loop = true;
-    noiseGain = ctx.createGain();
-    noiseGain.gain.value = Math.min(Math.max(volume, 0), 1) * 0.35;
-    noiseSource.connect(noiseGain).connect(ctx.destination);
-    noiseSource.start();
-  } catch {
-    // 音频上下文不可用就静默跳过，不影响朗读
-  }
-}
-
-export function setNoiseVolume(volume: number): void {
-  if (noiseGain) {
-    try {
-      noiseGain.gain.value = Math.min(Math.max(volume, 0), 1) * 0.35;
-    } catch {
-      /* 忽略 */
-    }
-  }
-}
-
-export function stopNoise(): void {
-  try {
-    noiseSource?.stop();
-  } catch {
-    /* 忽略 */
-  }
-  noiseSource?.disconnect();
-  noiseGain?.disconnect();
-  noiseSource = null;
-  noiseGain = null;
-  void noiseContext?.close().catch(() => undefined);
-  noiseContext = null;
-}
+// 白噪音（背景声音）已移到 ./ambient.ts，与朗读音量一起管理。

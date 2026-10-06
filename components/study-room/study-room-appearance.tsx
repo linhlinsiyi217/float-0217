@@ -567,8 +567,9 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
               <div className="sr-section-label">实时预览（预览数据，不写入书架/会话）</div>
               <div className="sr-preview-box"><ModulePreview module={module} bookScale={Number(draft.vars["--sr-book-scale"]) || 1} /></div>
 
-              {/* 自定义 CSS 覆盖层 */}
-              <div className="sr-section-label">自定义 CSS（覆盖层，作用域限定在书房）</div>
+              {/* 自定义 CSS 覆盖层：默认收起，页面更短；已经写过的会自动展开 */}
+              <details className="sr-css-fold" open={moduleCss.trim() !== "" || undefined}>
+              <summary className="sr-section-label">自定义 CSS（覆盖层，作用域限定在书房）</summary>
               <textarea
                 className="sr-css-editor"
                 value={moduleCss}
@@ -582,6 +583,9 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
                 <button type="button" className="sr-chip" onClick={handleCopyCss}><Copy size={13} strokeWidth={1.8} />复制</button>
                 <button type="button" className="sr-chip" onClick={handleExport}><Download size={13} strokeWidth={1.8} />导出</button>
                 <button type="button" className="sr-chip" onClick={() => fileRef.current?.click()}><Upload size={13} strokeWidth={1.8} />导入</button>
+              </div>
+              </details>
+              <div className="sr-css-actions">
                 <button type="button" className="sr-btn sr-btn-sm" onClick={handleResetModule}><RotateCcw size={13} strokeWidth={1.8} />恢复本部分默认</button>
               </div>
               </>)}
@@ -674,8 +678,8 @@ function ModulePreview({ module, bookScale }: { module: AppearanceModule; bookSc
   }
   if (module === "reader") {
     return (
-      <div className="sr-reader" style={{ position: "static", inset: "auto", borderRadius: 12, overflow: "hidden" }}>
-        <div className="sr-reader-body" style={{ padding: 14, maxHeight: 190 }}>
+      <div className="sr-reader sr-reader--preview">
+        <div className="sr-reader-body">
           <h2 className="sr-chapter-title" style={{ marginTop: 0 }}>第一章</h2>
           <p className="sr-para">预览正文：风从窗外进来，把书页吹得轻轻响了一声。</p>
           <p className="sr-para">第二行用来检查行距与字号是否合适。</p>

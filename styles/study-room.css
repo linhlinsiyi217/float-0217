@@ -6108,3 +6108,340 @@ button.sr-pf-bubble:active { transform: scale(0.95); }
   .sr-pop-menu, .sr-confirm-mask { animation: none; }
   .sr-forum-kind::before { transition: none; }
 }
+
+/* ===== 第五批（2026-10-07）===== */
+
+/* B04 阅读正文可以长按选字：外层手机工作区设了 user-select: none（会继承），
+   阅读正文必须单独恢复，否则手机上长按选不中字、书房的选区菜单也不会出现。 */
+.sr-reader-body {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.sr-reader-body button,
+.sr-reader-body [role="button"] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* 选区菜单相对阅读器定位（坐标由组件按选区计算，已夹在边界内） */
+.sr-selbar.sr-selbar--anchored {
+  position: absolute;
+  transform: none;
+  max-width: calc(100% - 16px);
+  z-index: 60;
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sr-selbar.sr-selbar--anchored { background: var(--c-panel, #ffffff); }
+}
+
+/* 背景声音（白噪音 / 背景音乐）：紧凑底部面板，和朗读面板分开 */
+.sr-ambient-sheet { display: flex; flex-direction: column; gap: 6px; }
+.sr-ambient-sec { padding: 10px 0 4px; }
+.sr-ambient-sec + .sr-ambient-sec { border-top: 1px dashed var(--c-border, #e4e8ee); margin-top: 6px; }
+.sr-ambient-sec-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--c-text-title, #1c1f24);
+}
+.sr-ambient-sec-head small {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--c-text-sub, #8a93a1);
+}
+.sr-ambient-status {
+  margin: 12px 0 0;
+  font-size: 13.5px;
+  color: var(--c-text-sub, #5b6472);
+  font-variant-numeric: tabular-nums;
+}
+.sr-ambient-status[data-status="playing"] { color: #2e8b57; }
+.sr-ambient-status[data-status="error"] { color: #c23b3b; }
+.sr-ambient-ctrl { display: flex; gap: 10px; margin: 10px 0 6px; }
+.sr-ambient-ctrl .sr-btn { flex: 1; min-height: 44px; justify-content: center; white-space: nowrap; }
+.sr-ambient-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  margin-top: 10px;
+  padding: 0 4px;
+  border: none;
+  border-top: 1px solid var(--c-border, #e4e8ee);
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  color: var(--c-text-title, #1c1f24);
+  text-align: left;
+  cursor: pointer;
+}
+.sr-ambient-link-state { margin-left: auto; font-size: 13px; color: var(--c-text-sub, #8a93a1); }
+.sr-ambient-link:active { opacity: 0.7; }
+
+/* B09 头像被撑成满宽大图：.sr-pf-avatar 是 <span>（行内元素），宽高不生效，
+   图片按自身分辨率撑开，把名字、ID、统计挤出屏幕。这里锁死成块级固定尺寸，素材再大也只按 cover 裁切。 */
+.sr-pf-avatar-wrap { width: 76px; height: 76px; flex: 0 0 76px; }
+.sr-pf-avatar { display: block; position: relative; }
+.sr-pf-avatar img { position: absolute; inset: 0; max-width: none; min-width: 0; }
+@media (max-width: 370px) {
+  .sr-pf-avatar-wrap { width: 68px; height: 68px; flex-basis: 68px; }
+}
+
+/* B05 导入成功弹窗：只在真正新加进书架时出现；无遮罩、不拦截其他点击，约 1.8 秒自动收起 */
+.sr-imported-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.sr-imported {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 168px;
+  max-width: min(260px, calc(100% - 64px));
+  padding: 22px 22px 18px;
+  border: none;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow: 0 0 0 0.5px rgba(28, 34, 45, 0.08), 0 14px 40px rgba(28, 34, 45, 0.16);
+  font: inherit;
+  color: var(--c-text-title, #1c1f24);
+  cursor: pointer;
+  animation: sr-imported-in 0.28s cubic-bezier(0.22, 0.9, 0.32, 1) both;
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sr-imported { background: #ffffff; }
+}
+.sr-imported-check { width: 52px; height: 52px; }
+.sr-imported-check circle { fill: #2e8b57; }
+.sr-imported-check path {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 36;
+  stroke-dashoffset: 36;
+  animation: sr-imported-tick 0.36s 0.14s cubic-bezier(0.22, 0.9, 0.32, 1) forwards;
+}
+.sr-imported-text { font-size: 16px; font-weight: 600; white-space: nowrap; }
+.sr-imported-title {
+  max-width: 100%;
+  font-size: 13px;
+  color: var(--c-text-sub, #5b6472);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@keyframes sr-imported-in { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }
+@keyframes sr-imported-tick { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .sr-imported { animation: none; }
+  .sr-imported-check path { animation: none; stroke-dashoffset: 0; }
+}
+
+/* B06 外观页：滑动闪烁 / 到不了底部
+   1. 底部「撤销 / 取消 / 保存」改成页面里的一行（不再浮在滚动内容上），
+      滚动区在它上方结束：最后一项一定能滑到，模糊玻璃也不用跟着滚动每帧重算。
+   2. 滑杆只接管左右拖动，上下滑交给页面滚动：手指落在滑杆上往下滑时
+      不会误改字号 / 行距（误改会立刻重排整页，看起来就是一直闪、一直抖）。
+   3. 实时预览里的阅读正文不再是第二个滚动区，也不能长按选字，
+      避免和外层滚动抢手势。 */
+.sr-appear-app .sr-appearance-pane { padding-bottom: 20px; }
+.sr-appear-app .sr-appear-footer {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  flex: 0 0 auto;
+  margin: 0 12px calc(12px + env(safe-area-inset-bottom, 0px));
+}
+.sr-appear-app .sr-slider { touch-action: pan-y; }
+.sr-reader.sr-reader--preview {
+  position: static;
+  inset: auto;
+  z-index: auto;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.sr-reader--preview .sr-reader-body {
+  flex: none;
+  padding: 14px;
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.sr-css-fold { margin-top: 4px; }
+.sr-css-fold > summary { cursor: pointer; list-style: revert; }
+
+/* B01 书桌一屏：开始创作 → 角色写作 → 最近一本 → 今日一行 → 工具格子。
+   工具点开是底部面板（不让页面变长），关掉回到书桌；没记完的便签会保留。 */
+.sr-desk .sr-section-label { margin: 14px 2px 8px; }
+.sr-desk .sr-section-label:first-child { margin-top: 0; }
+.sr-desk .sr-desk-hero { padding: 12px 14px; gap: 10px; }
+.sr-desk-label-row { display: flex; align-items: center; justify-content: space-between; }
+.sr-desk-more {
+  display: inline-flex; align-items: center; gap: 2px;
+  min-height: 32px; padding: 0 2px; border: 0; background: none;
+  font: inherit; font-size: 12px; letter-spacing: 0; text-transform: none;
+  color: var(--sr-accent, #0a84ff); cursor: pointer;
+}
+.sr-desk-today {
+  display: flex; align-items: baseline; gap: 10px;
+  margin-top: 10px; padding: 9px 12px;
+  border-radius: var(--sr-card-radius, 12px);
+  background: var(--c-input);
+  font-size: 12.5px; color: var(--c-text);
+}
+.sr-desk-today-label { flex: none; font-weight: 600; color: var(--c-text-title); }
+.sr-desk-today strong { font-size: 15px; color: var(--c-text-title); }
+.sr-desk-tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.sr-desk-tool {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  min-width: 0; min-height: 72px; padding: 10px;
+  border-radius: var(--sr-card-radius, 14px);
+  border: 0.5px solid var(--c-card-border);
+  background: var(--sr-card-bg, #fff);
+  color: var(--c-text-title); font: inherit; text-align: left; cursor: pointer;
+  transition: transform 0.15s ease;
+}
+.sr-desk-tool:active { transform: scale(0.97); }
+.sr-desk-tool:disabled { opacity: 0.45; cursor: default; }
+.sr-desk-tool > svg { color: var(--c-icon); }
+.sr-desk-tool-name { font-size: 13.5px; font-weight: 600; }
+.sr-desk-tool-meta { max-width: 100%; font-size: 11.5px; color: var(--c-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-desk-sheet { display: flex; flex-direction: column; max-height: min(78%, 620px); }
+.sr-desk-sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+@media (max-width: 340px) {
+  .sr-desk-tools { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) { .sr-desk-tool { transition: none; } }
+
+/* B02 创作向导：五步（怎么开始 / 写成什么 / 写什么 / 怎么写 / 参考资料），文风单独一步 */
+.sr-dstart-steps { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.sr-dstart-step-name { overflow: hidden; text-overflow: ellipsis; }
+.sr-dstart-note { margin: 0 2px 8px; line-height: 1.7; }
+
+/* B07 书城内置书：书封陈列（四列两行，一屏看全 8 本）。
+   封面只用真实的书名 / 作者 / 年代排版，底色是四种安静的冷色，不编造封面图。 */
+.sr-store-covers {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sr-store-cover-btn {
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+  width: 100%; padding: 0; border: 0; background: none;
+  font: inherit; text-align: left; color: var(--c-text-title); cursor: pointer;
+}
+.sr-store-cover {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center;
+  aspect-ratio: 3 / 4;
+  padding: 12% 8% 8%;
+  border-radius: 4px 8px 8px 4px;
+  overflow: hidden;
+  background: var(--sr-cover-bg, #eef1f5);
+  color: var(--sr-cover-ink, #2b3038);
+  box-shadow: 0 1px 2px rgba(20, 28, 45, 0.10), 0 6px 14px rgba(20, 28, 45, 0.08);
+  transition: transform 0.15s ease;
+}
+/* 书脊折痕 */
+.sr-store-cover::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 6%; width: 1px;
+  background: rgba(0, 0, 0, 0.08); box-shadow: 1px 0 0 rgba(255, 255, 255, 0.5);
+}
+.sr-store-cover[data-tone="0"] { --sr-cover-bg: #eef1f5; }
+.sr-store-cover[data-tone="1"] { --sr-cover-bg: #e6edf6; }
+.sr-store-cover[data-tone="2"] { --sr-cover-bg: #2f3540; --sr-cover-ink: #f2f4f7; }
+.sr-store-cover[data-tone="3"] { --sr-cover-bg: #f4f2ee; }
+.sr-store-cover-btn:active .sr-store-cover { transform: scale(0.97); }
+.sr-store-cover-title {
+  writing-mode: vertical-rl;
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+  font-size: 15px; font-weight: 600; letter-spacing: 3px; line-height: 1;
+  max-height: 64%; overflow: hidden;
+}
+.sr-store-cover-author { margin-top: auto; font-size: 10px; opacity: 0.75; }
+.sr-store-cover-era { font-size: 9.5px; opacity: 0.55; }
+.sr-store-cover-name { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-store-cover-meta { font-size: 11px; color: var(--c-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 340px) { .sr-store-covers { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (prefers-reduced-motion: reduce) { .sr-store-cover { transition: none; } }
+
+/* ── 书友圈第五批（B08）：发布按钮不再被挤出右边；白底上用绿/紫/黄/蓝做重点 ──
+ * 颜色只给「选中分类、热门书/话题、互动状态」，不铺满页面，不用霓虹、不用渐变。
+ * 热门数据全部来自本机真实帖子，没有就显示空态，不写假数字。 */
+.sr-forum {
+  --sr-acc-green: #2b8a5e;
+  --sr-acc-green-bg: #e8f5ee;
+  --sr-acc-purple: #6b4fc8;
+  --sr-acc-purple-bg: #f0ecfb;
+  --sr-acc-yellow: #9a6a00;
+  --sr-acc-yellow-bg: #fdf3d6;
+  --sr-acc-blue: #2f66c4;
+  --sr-acc-blue-bg: #e9f0fc;
+}
+.sr-forum-head { width: 100%; min-width: 0; box-sizing: border-box; }
+.sr-forum-head > .sr-forum-search { flex: 1 1 0; width: 0; min-width: 0; }
+.sr-forum-head > .sr-forum-search input { width: 100%; }
+.sr-forum-head > .sr-forum-me,
+.sr-forum-head > .sr-forum-publish { flex: 0 0 auto; }
+.sr-forum-kind[data-kind="review"][aria-pressed="true"]::before { background: var(--sr-acc-purple); }
+.sr-forum-kind[data-kind="discussion"][aria-pressed="true"]::before { background: var(--sr-acc-green); }
+.sr-fpost-topics { color: var(--sr-acc-blue); }
+
+.sr-forum-hot { display: flex; flex-direction: column; gap: 6px; padding-top: 2px; }
+.sr-forum-hot-head { display: flex; align-items: baseline; gap: 8px; }
+.sr-forum-hot-title { font-size: 14px; font-weight: 600; color: var(--c-text-title, #1d1d1f); }
+.sr-forum-hot-note { font-size: 11.5px; color: var(--c-text-sub, #8a919c); }
+.sr-forum-hot-empty { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--c-text-sub, #8a919c); }
+.sr-forum-hot-row {
+  display: flex;
+  gap: 8px;
+  margin: 0 -16px;
+  padding: 2px 16px 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+.sr-forum-hot-row::-webkit-scrollbar { display: none; }
+.sr-forum-hot-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 44px;
+  max-width: 240px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 14px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+.sr-forum-hot-chip[data-tone="book"] { background: var(--sr-acc-purple-bg); color: var(--sr-acc-purple); }
+.sr-forum-hot-chip[data-tone="book"][data-top="true"] { background: var(--sr-acc-yellow-bg); color: var(--sr-acc-yellow); }
+.sr-forum-hot-chip[data-tone="topic"] { background: var(--sr-acc-blue-bg); color: var(--sr-acc-blue); }
+.sr-forum-hot-chip:active { transform: scale(0.97); }
+.sr-forum-hot-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.sr-forum-hot-count { flex: none; font-size: 11.5px; opacity: 0.8; }
+@media (prefers-reduced-motion: reduce) {
+  .sr-forum-hot-chip { transition: none; }
+  .sr-forum-hot-chip:active { transform: none; }
+}
