@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Ban, BookOpen, ChevronDown, ChevronLeft, EyeOff, Gift, Heart, MessageSquare, PenLine, Send, Star, Trash2, X } from "lucide-react";
+import { Ban, BookOpen, ChevronDown, ChevronLeft, EyeOff, Gift, Heart, MessageSquare, MoreHorizontal, PenLine, Send, Star, Trash2, X } from "lucide-react";
 
 import type { Book } from "@/lib/reading-types";
 import { avatarDataUrl } from "@/lib/study-room/npc-avatar";
@@ -10,6 +10,7 @@ import { normalizeForMatch } from "@/lib/study-room/book-source";
 import { loadBooks } from "@/lib/reading-storage";
 import { shareItemFromPost } from "@/lib/study-room/share-to-chat";
 import { ShareSheet } from "./share-sheet";
+import { ConfirmSheet, PopMenu, type MenuItem } from "./confirm-sheet";
 
 /** 帖子关联的书：先看 bookId，再按书名匹配书架上的书。 */
 export function findBookForPost(post: ForumPost): Book | undefined {
@@ -39,6 +40,8 @@ type CardProps = {
   onHide: () => void;
   /** 屏蔽这位书友（只对书友的帖子出现） */
   onBlock?: () => void;
+  /** 删除自己的帖子（只对用户自己的帖子出现） */
+  onDelete?: () => void;
   /** 用户在书房里的名字与头像 */
   me?: { name: string; avatar: string };
 };
@@ -104,18 +107,35 @@ export function StudyRoomForumPostCard({
   onGift,
   onHide,
   onBlock,
+  onDelete,
   me,
 }: CardProps) {
   const avatar = authorAvatar(post, state, me?.avatar);
   const liked = post.likedBy.includes(ME);
   const book = post.bookId ? books[post.bookId] : findBookForPost(post);
+  const mine = post.authorId === ME;
+  const [confirm, setConfirm] = useState<null | "block" | "delete">(null);
+  const [sharing, setSharing] = useState(false);
+  const bookTitle = post.bookTitle?.replace(/^《|》$/g, "");
+
+  // 管理项收进「更多」：自己的帖子是删除，书友的帖子是不感兴趣 / 屏蔽
+  const menu: MenuItem[] = mine
+    ? onDelete
+      ? [{ key: "delete", label: "删除帖子", icon: <Trash2 size={16} strokeWidth={1.7} />, danger: true, onSelect: () => setConfirm("delete") }]
+      : []
+    : [
+        { key: "hide", label: "不感兴趣", icon: <EyeOff size={16} strokeWidth={1.7} />, onSelect: onHide },
+        ...(onBlock && post.authorKind === "npc"
+          ? [{ key: "block", label: `屏蔽 ${post.authorName}`, icon: <Ban size={16} strokeWidth={1.7} />, danger: true, onSelect: () => setConfirm("block") }]
+          : []),
+      ];
 
   return (
-    <article className="sr-note-card sr-forum-post">
-      <header className="sr-forum-author">
+    <article className="sr-fpost" data-kind={post.kind}>
+      <header className="sr-fpost-head">
         <button
           type="button"
-          className="sr-forum-avatar"
+          className="sr-forum-avatar sr-fpost-avatar"
           onClick={() => post.authorKind === "npc" && onOpenAuthor(post.authorId)}
           aria-label={`${post.authorName} 的主页`}
           disabled={post.authorKind === "user"}
@@ -127,44 +147,37 @@ export function StudyRoomForumPostCard({
             <span>我</span>
           )}
         </button>
-        <span className="sr-forum-author-main">
-          <button
-            type="button"
-            className="sr-forum-name sr-forum-name--link"
-            onClick={() => post.authorKind === "npc" && onOpenAuthor(post.authorId)}
-          >
-            {post.authorId === ME && me ? me.name : post.authorName}
-          </button>
-          <span className="sr-note-meta">
-            {shortTime(post.createdAt)}
-            {post.kind !== "post" ? ` · ${KIND_TEXT[post.kind]}` : ""}
-            {post.generated ? " · AI" : ""}
+        <span className="sr-fpost-who">
+          <span className="sr-fpost-name-row">
+            <button
+              type="button"
+              className="sr-fpost-name"
+              onClick={() => post.authorKind === "npc" && onOpenAuthor(post.authorId)}
+            >
+              {mine && me ? me.name : post.authorName}
+            </button>
+            {post.generated && <span className="sr-fpost-badge">AI</span>}
+          </span>
+          <span className="sr-fpost-meta">
+            <time dateTime={post.createdAt}>{shortTime(post.createdAt)}</time>
+            {post.kind !== "post" && <span className="sr-fpost-kind" data-kind={post.kind}>{KIND_TEXT[post.kind]}</span>}
           </span>
         </span>
-        {onBlock && post.authorKind === "npc" && (
-          <button
-            type="button"
-            className="sr-note-tool"
-            title="屏蔽这位书友"
-            aria-label={`屏蔽 ${post.authorName}`}
-            onClick={() => {
-              if (confirm(`屏蔽 ${post.authorName}？TA 的帖子不再出现，也不会再来回复。可以在「书友管理」里解除。`)) onBlock();
-            }}
-            disabled={busy}
-          >
-            <Ban size={14} strokeWidth={1.8} />
-          </button>
+        {menu.length > 0 && (
+          <PopMenu
+            label="更多操作"
+            triggerClassName="sr-fpost-more"
+            trigger={<MoreHorizontal size={18} strokeWidth={1.7} aria-hidden />}
+            items={menu}
+          />
         )}
-        <button type="button" className="sr-note-tool" title="不感兴趣" aria-label="不感兴趣" onClick={onHide} disabled={busy}>
-          <X size={15} strokeWidth={1.8} />
-        </button>
       </header>
 
       {/* 标题、正文、图片一起遮：剧透帖的标题也不露 */}
       <SpoilerBlock spoiler={post.spoiler}>
-        <button type="button" className="sr-forum-open" onClick={onOpen}>
-          {post.title && <span className="sr-forum-title">{post.title}</span>}
-          <span className="sr-forum-body sr-forum-body--clamp">{post.body}</span>
+        <button type="button" className="sr-forum-open sr-fpost-open" onClick={onOpen}>
+          {post.title && <span className="sr-fpost-title">{post.title}</span>}
+          <span className="sr-fpost-body">{post.body}</span>
           {post.images && post.images.length > 0 && (
             <span className="sr-forum-images">
               {post.images.slice(0, 3).map((image, index) => (
@@ -178,43 +191,65 @@ export function StudyRoomForumPostCard({
         </button>
       </SpoilerBlock>
 
-      {/* 关联的书是次要信息：一行小字，放在正文之后 */}
-      {post.bookTitle && (
-        <div className="sr-forum-book">
-          <BookOpen size={13} strokeWidth={1.8} aria-hidden />
-          {book ? (
-            <button type="button" className="sr-forum-book-btn" onClick={() => onOpenBook(book)}>
-              《{post.bookTitle}》
-            </button>
-          ) : (
-            <span className="sr-note-meta">《{post.bookTitle}》</span>
-          )}
-          {post.topics && post.topics.length > 0 && (
-            <span className="sr-note-meta">{post.topics.slice(0, 2).map((topic) => `#${topic}`).join(" ")}</span>
-          )}
-        </div>
-      )}
-      {!post.bookTitle && post.topics && post.topics.length > 0 && (
-        <div className="sr-forum-book">
-          <span className="sr-note-meta">{post.topics.slice(0, 3).map((topic) => `#${topic}`).join(" ")}</span>
-        </div>
+      {bookTitle &&
+        (book ? (
+          <button type="button" className="sr-fpost-book" onClick={() => onOpenBook(book)}>
+            {book.cover ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={book.cover} alt="" className="sr-fpost-book-cover" />
+            ) : (
+              <BookOpen size={15} strokeWidth={1.7} aria-hidden />
+            )}
+            <span className="sr-fpost-book-title">《{bookTitle}》</span>
+            {book.author && <span className="sr-fpost-book-author">{book.author}</span>}
+          </button>
+        ) : (
+          <span className="sr-fpost-book" data-static="true">
+            <BookOpen size={15} strokeWidth={1.7} aria-hidden />
+            <span className="sr-fpost-book-title">《{bookTitle}》</span>
+          </span>
+        ))}
+      {post.topics && post.topics.length > 0 && (
+        <div className="sr-fpost-topics">{post.topics.slice(0, 3).map((topic) => `#${topic}`).join("  ")}</div>
       )}
 
-      <footer className="sr-note-foot sr-forum-foot">
-        <span className="sr-note-tools">
-          <button type="button" className="sr-note-tool" data-active={liked ? "true" : undefined} title="赞同" onClick={onLike}>
-            <Heart size={15} strokeWidth={1.7} fill={liked ? "currentColor" : "none"} />
-            {post.likedBy.length > 0 && <span className="sr-forum-count">{post.likedBy.length}</span>}
-          </button>
-          <button type="button" className="sr-note-tool" title="评论" onClick={onOpen}>
-            <MessageSquare size={15} strokeWidth={1.7} />
-            {post.comments.length > 0 && <span className="sr-forum-count">{post.comments.length}</span>}
-          </button>
-          <button type="button" className="sr-note-tool" title="送礼物" onClick={onGift}>
-            <Gift size={15} strokeWidth={1.7} />
-          </button>
-        </span>
+      <footer className="sr-fpost-acts">
+        <button type="button" className="sr-fpost-act" data-active={liked || undefined} aria-pressed={liked} onClick={onLike} disabled={busy}>
+          <Heart size={16} strokeWidth={1.7} fill={liked ? "currentColor" : "none"} aria-hidden />
+          <span>{post.likedBy.length > 0 ? post.likedBy.length : "赞同"}</span>
+        </button>
+        <button type="button" className="sr-fpost-act" onClick={onOpen}>
+          <MessageSquare size={16} strokeWidth={1.7} aria-hidden />
+          <span>{post.comments.length > 0 ? post.comments.length : "评论"}</span>
+        </button>
+        <button type="button" className="sr-fpost-act" onClick={() => setSharing(true)}>
+          <Send size={16} strokeWidth={1.7} aria-hidden />
+          <span>分享</span>
+        </button>
+        <button type="button" className="sr-fpost-act" onClick={onGift}>
+          <Gift size={16} strokeWidth={1.7} aria-hidden />
+          <span>礼物</span>
+        </button>
       </footer>
+
+      {sharing && <ShareSheet item={shareItemFromPost(post)} onClose={() => setSharing(false)} />}
+      {confirm === "block" && onBlock && (
+        <ConfirmSheet
+          title={`屏蔽 ${post.authorName}？`}
+          message="TA 的帖子不再出现，也不会再来回复。可以在「书友管理」里解除。"
+          confirmLabel="屏蔽"
+          onConfirm={onBlock}
+          onCancel={() => setConfirm(null)}
+        />
+      )}
+      {confirm === "delete" && onDelete && (
+        <ConfirmSheet
+          title="删除这条帖子？"
+          message="评论也会一起删除，删除后不能恢复。"
+          onConfirm={onDelete}
+          onCancel={() => setConfirm(null)}
+        />
+      )}
     </article>
   );
 }
@@ -276,6 +311,8 @@ export function StudyRoomForumPostView({
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [sharing, setSharing] = useState(false);
+  // 应用内确认：删除评论 / 删除帖子 / 屏蔽楼主
+  const [ask, setAsk] = useState<null | { kind: "comment"; id: string } | { kind: "post" } | { kind: "block" }>(null);
   const [draft, setDraft] = useState(post.body);
   // 回复默认折叠：只记录展开了哪几条一级评论
   const [openThreads, setOpenThreads] = useState<Set<string>>(() => new Set());
@@ -350,7 +387,7 @@ export function StudyRoomForumPostView({
               type="button"
               className="sr-forum-reply"
               onClick={() => {
-                if (confirm("删除这条评论？")) onDeleteComment(item.id);
+                setAsk({ kind: "comment", id: item.id });
               }}
             >
               删除
@@ -390,7 +427,7 @@ export function StudyRoomForumPostView({
               title="删除帖子"
               aria-label="删除帖子"
               onClick={() => {
-                if (confirm("删除这条帖子？评论也会一起删除。")) onDelete();
+                setAsk({ kind: "post" });
               }}
             >
               <Trash2 size={16} strokeWidth={1.7} />
@@ -405,7 +442,7 @@ export function StudyRoomForumPostView({
               title="屏蔽楼主"
               aria-label={`屏蔽 ${post.authorName}`}
               onClick={() => {
-                if (confirm(`屏蔽 ${post.authorName}？TA 的帖子不再出现，也不会再来回复。可以在「书友管理」里解除。`)) onBlockAuthor();
+                setAsk({ kind: "block" });
               }}
             >
               <Ban size={16} strokeWidth={1.7} />
@@ -515,6 +552,31 @@ export function StudyRoomForumPostView({
           </button>
         </div>
         {sharing && <ShareSheet item={shareItemFromPost(post)} onClose={() => setSharing(false)} />}
+        {ask?.kind === "comment" && (
+          <ConfirmSheet
+            title="删除这条评论？"
+            message="删除后不能恢复。"
+            onConfirm={() => onDeleteComment(ask.id)}
+            onCancel={() => setAsk(null)}
+          />
+        )}
+        {ask?.kind === "post" && (
+          <ConfirmSheet
+            title="删除这条帖子？"
+            message="评论也会一起删除，删除后不能恢复。"
+            onConfirm={onDelete}
+            onCancel={() => setAsk(null)}
+          />
+        )}
+        {ask?.kind === "block" && onBlockAuthor && (
+          <ConfirmSheet
+            title={`屏蔽 ${post.authorName}？`}
+            message="TA 的帖子不再出现，也不会再来回复。可以在「书友管理」里解除。"
+            confirmLabel="屏蔽"
+            onConfirm={onBlockAuthor}
+            onCancel={() => setAsk(null)}
+          />
+        )}
 
         </div>
 

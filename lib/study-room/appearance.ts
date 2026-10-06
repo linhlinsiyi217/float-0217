@@ -226,6 +226,8 @@ export type AppearancePreset = {
   state: AppearanceState;
 };
 
+const LEGACY_PAGE_BG = "#f1f2f6";
+
 /** 把外部数据（存档/预设/导入文件）收成一份可用的外观状态。 */
 export function sanitizeState(raw: unknown): AppearanceState {
   const base = defaultState();
@@ -237,6 +239,9 @@ export function sanitizeState(raw: unknown): AppearanceState {
       if (typeof value === "string" && key in vars) vars[key] = value;
     }
   }
+  // 旧版默认页面底色是冷灰 #f1f2f6，存档把它原样存了下来，老用户一直是灰底；
+  // 改回纯白默认。用户自己挑过的其他颜色、背景图和夜间模式都不动。
+  if (vars["--sr-page-bg"]?.trim().toLowerCase() === LEGACY_PAGE_BG) vars["--sr-page-bg"] = "#ffffff";
   const css: Record<string, string> = {};
   if (parsed.css && typeof parsed.css === "object") {
     for (const [key, value] of Object.entries(parsed.css)) {

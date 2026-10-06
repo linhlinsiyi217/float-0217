@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, Compass, Loader2, PenLine, RotateCw, Search, Square, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, Compass, Loader2, PenLine, RotateCw, Search, Square, X } from "lucide-react";
 
 import { loadBooks } from "@/lib/reading-storage";
 import type { Book } from "@/lib/reading-types";
@@ -44,6 +44,7 @@ import {
   type FeedSort,
 } from "@/lib/study-room/forum-social";
 import { shortError, useForumReplyEngine, useMeCard } from "./forum-reply-engine";
+import { PopMenu } from "./confirm-sheet";
 import { GiftSheet } from "./gift-sheet";
 import { StudyRoomForumCompose } from "./study-room-forum-compose";
 import { StudyRoomForumDrawer } from "./study-room-forum-drawer";
@@ -196,6 +197,11 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
     const npc = state.npcs.find((item) => item.id === npcId);
     mutate((prev) => blockNpc(prev, npcId));
     flash(`已屏蔽 ${npc?.nickname ?? "这位书友"}，可以在「书友管理」里解除`);
+  };
+
+  const deletePost = (postId: string) => {
+    mutate((prev) => ({ ...prev, posts: prev.posts.filter((item) => item.id !== postId) }));
+    flash("已删除这条帖子");
   };
 
   const handleFollow = (npc: ForumNpc) => {
@@ -459,6 +465,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
                       onGift={() => setGiftTarget({ postId: post.id, npcId: post.authorKind === "npc" ? post.authorId : undefined })}
                       onHide={() => mutate((prev) => hidePost(prev, post.id))}
                       onBlock={() => handleBlock(post.authorId)}
+                      onDelete={() => deletePost(post.id)}
                       busy={false}
                       me={me}
                     />
@@ -509,9 +516,9 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
           <Search size={15} strokeWidth={1.8} aria-hidden />
           <input name="q" placeholder="搜帖子、书友、书或话题" aria-label="搜索书友圈" />
         </form>
-        <button type="button" className="sr-forum-publish" onClick={() => setView({ kind: "compose" })}>
+        <button type="button" className="sr-forum-publish" onClick={() => setView({ kind: "compose" })} aria-label="发布帖子">
           <PenLine size={15} strokeWidth={1.9} aria-hidden />
-          发布
+          <span className="sr-forum-publish-text">发布</span>
         </button>
       </div>
 
@@ -530,16 +537,22 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
             </button>
           ))}
         </div>
-        <label className="sr-forum-sort">
-          <span className="sr-visually-hidden">排序</span>
-          <select value={sort} onChange={(event) => setSort(event.target.value as FeedSort)} aria-label="排序">
-            {(Object.keys(FEED_SORT_LABEL) as FeedSort[]).map((key) => (
-              <option key={key} value={key}>
-                {FEED_SORT_LABEL[key]}
-              </option>
-            ))}
-          </select>
-        </label>
+        <PopMenu
+          label={`排序：${FEED_SORT_LABEL[sort]}`}
+          triggerClassName="sr-forum-sort"
+          trigger={
+            <>
+              {FEED_SORT_LABEL[sort]}
+              <ChevronDown size={14} strokeWidth={1.9} aria-hidden />
+            </>
+          }
+          items={(Object.keys(FEED_SORT_LABEL) as FeedSort[]).map((key) => ({
+            key,
+            label: FEED_SORT_LABEL[key],
+            checked: sort === key,
+            onSelect: () => setSort(key),
+          }))}
+        />
       </div>
 
       <div className="sr-forum-row3">
@@ -665,6 +678,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
             onGift={() => setGiftTarget({ postId: post.id, npcId: post.authorKind === "npc" ? post.authorId : undefined })}
             onHide={() => mutate((prev) => hidePost(prev, post.id))}
             onBlock={() => handleBlock(post.authorId)}
+            onDelete={() => deletePost(post.id)}
             busy={false}
             me={me}
           />

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
-import { ChevronRight, Heart, MessageCircle } from "lucide-react";
+import { ChevronRight, Heart, MessageCircle, Plus } from "lucide-react";
 
 import { KIND_TEXT, type ForumPost } from "@/lib/study-room/forum";
 import { SPOILER_SUMMARY } from "./spoiler";
@@ -20,30 +20,24 @@ export function shortTime(iso: string): string {
 
 
 /**
- * 云朵思考气泡：轮廓严格取自用户指定素材（/study-room/bubble/bubble-mask.png）。
- * 玻璃层 = 素材蒙版 + 半透明白 + 背景模糊；边缘高光层 = 素材细边蒙版；文字是真实文字层，只放在主体安全区内，尾巴不放字。
+ * 云朵状态气泡：轮廓取自用户指定素材（/study-room/bubble/bubble-mask.png、bubble-rim.png）。
+ * 只显示素材的云朵主体和相连的尾巴，素材底部那颗独立小圆点用蒙版裁掉，不另画白球；
+ * 按原比例缩放，不拉伸。文字只放在主体安全区内，尾巴不放字。
  */
 function ThoughtBubble({ text, onEdit }: { text: string; onEdit?: () => void }) {
   const inner = (
     <>
-      <span className="sr-pf-bubble-part" data-part="dot" aria-hidden>
-        <span className="sr-pf-bubble-shadow" />
-        <span className="sr-pf-bubble-glass" />
-        <span className="sr-pf-bubble-rim" />
-      </span>
-      <span className="sr-pf-bubble-part" data-part="body">
-        <span className="sr-pf-bubble-shadow" aria-hidden />
-        <span className="sr-pf-bubble-glass" aria-hidden />
-        <span className="sr-pf-bubble-rim" aria-hidden />
-        <span className="sr-pf-bubble-text" data-empty={text ? undefined : "true"}>
-          <span>{text || "写点此刻的状态"}</span>
-        </span>
+      <span className="sr-pf-bubble-shadow" aria-hidden />
+      <span className="sr-pf-bubble-glass" aria-hidden />
+      <span className="sr-pf-bubble-rim" aria-hidden />
+      <span className="sr-pf-bubble-text">
+        <span>{text}</span>
       </span>
     </>
   );
   if (onEdit) {
     return (
-      <button type="button" className="sr-pf-bubble" onClick={onEdit} aria-label={text ? `状态：${text}，点按修改` : "设置状态"}>
+      <button type="button" className="sr-pf-bubble" onClick={onEdit} aria-label={`状态：${text}，点按修改`}>
         {inner}
       </button>
     );
@@ -56,8 +50,9 @@ function ThoughtBubble({ text, onEdit }: { text: string; onEdit?: () => void }) 
 }
 
 /**
- * 主页身份区：头像在左、名字与真实统计在右；云朵气泡在头像上方，尾巴指向头像。
- * 自己的主页没写状态时显示一行淡色提示（不放大加号）；他人主页没内容就不显示气泡。
+ * 主页身份区：头像在左、名字与真实统计在右。
+ * 状态气泡小小地挂在头像左上方，尾巴只轻压头像边缘，不挡脸、名字和统计；
+ * 自己的主页没写状态时只在头像左上角放一个小「＋」入口；他人主页没内容就不显示。
  */
 export function ProfileHero({
   avatarSrc,
@@ -83,20 +78,25 @@ export function ProfileHero({
   corner?: ReactNode;
 }) {
   const text = bubble.trim();
-  const showBubble = Boolean(onEditBubble) || Boolean(text);
 
   return (
-    <div className="sr-pf-hero" data-bubble={showBubble ? "true" : undefined}>
+    <div className="sr-pf-hero" data-bubble={text ? "true" : undefined}>
       {corner && <div className="sr-pf-hero-corner">{corner}</div>}
-      {showBubble && (
-        <div className="sr-pf-bubble-slot">
-          <ThoughtBubble text={text} onEdit={onEditBubble} />
-        </div>
-      )}
       <div className="sr-pf-hero-row">
-        <span className="sr-pf-avatar" aria-hidden>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={avatarSrc} alt="" />
+        <span className="sr-pf-avatar-wrap">
+          <span className="sr-pf-avatar" aria-hidden>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={avatarSrc} alt="" />
+          </span>
+          {text ? (
+            <ThoughtBubble text={text} onEdit={onEditBubble} />
+          ) : (
+            onEditBubble && (
+              <button type="button" className="sr-pf-status-add" onClick={onEditBubble} aria-label="设置状态">
+                <Plus size={14} strokeWidth={2.2} aria-hidden />
+              </button>
+            )
+          )}
         </span>
         <div className="sr-pf-id">
           <h2 className="sr-pf-name">

@@ -10,6 +10,31 @@ import type { Release } from "./types";
 
 export const SYSTEM_RELEASES: Release[] = [
   {
+    version: "0.6.3",
+    releaseId: "system-2026-10-06-v063",
+    date: "2026-10-06",
+    name: "书房白色主题、头像气泡与书友圈信息流",
+    summary: "书房默认回到纯白底、头像状态气泡缩小、书友圈改成清晰信息流、自己的动态在主页里打开；更新应用：书房",
+    includes: { studyroom: "studyroom-2026-10-06-v072" },
+    entries: [
+      {
+        id: "sys-063-studyroom",
+        category: "tweak",
+        app: "书房",
+        title: "更新应用：书房",
+        items: [
+          "书房默认回到纯白底，头像状态气泡缩小挂在头像左上方",
+          "书友圈改成清晰信息流，删除与排序改用应用内弹窗和小菜单，发布按钮不再被挤出屏幕",
+          "自己的动态在主页中间打开，评论区固定高度、回复默认收起",
+          "详细条目见下方书房更新",
+        ],
+      },
+    ],
+    pending: [
+      "本次改动只在书房内，详细条目与待验证项见书房条目；没有在手机上实测",
+    ],
+  },
+  {
     version: "0.6.2",
     releaseId: "system-2026-10-06-v062",
     date: "2026-10-06",

@@ -103,7 +103,6 @@ export function StudyRoomMine({
   onOpenUpdateLog,
   onOpenWishlist,
   onOpenDraft,
-  onOpenPost,
   onOpenBook,
   onCompose,
   onOpenDesk,
@@ -453,10 +452,6 @@ export function StudyRoomMine({
           mutate={mutateForum}
           flash={flash}
           onClose={() => setOpenPostId(null)}
-          onOpenInForum={(postId) => {
-            setOpenPostId(null);
-            onOpenPost(postId);
-          }}
           onOpenBook={(book) => {
             setOpenPostId(null);
             onOpenBook(book);
@@ -483,7 +478,6 @@ function MinePostOverlay({
   mutate,
   flash,
   onClose,
-  onOpenInForum,
   onOpenBook,
 }: {
   postId: string;
@@ -491,7 +485,6 @@ function MinePostOverlay({
   mutate: (updater: (prev: ForumState) => ForumState) => void;
   flash: (message: string, ms?: number) => void;
   onClose: () => void;
-  onOpenInForum: (postId: string) => void;
   onOpenBook: (book: Book) => void;
 }) {
   const me = useMeCard();
@@ -530,7 +523,8 @@ function MinePostOverlay({
           onComment={(body, replyToId, spoiler) => engine.comment(post, body, replyToId, spoiler)}
           onCollect={() => mutate((prev) => toggleCollect(prev, post.id))}
           onGift={() => setGift(true)}
-          onOpenAuthor={() => onOpenInForum(post.id)}
+          // 在自己主页里看动态：留在浮层，不跳去书友圈
+          onOpenAuthor={() => undefined}
           onEdit={(body) =>
             mutate((prev) => ({
               ...prev,
