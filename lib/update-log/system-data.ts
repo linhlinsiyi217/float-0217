@@ -32,10 +32,18 @@ export const SYSTEM_RELEASES: Release[] = [
         id: "sys-064-chat-return",
         category: "fix",
         app: "聊天 · 会话",
-        title: "点卡片看完回到原来的聊天，没发出的字还在",
+        title: "去别的应用再回来，没发出的字还在",
+        items: [
+          "输入框里没发出去的字会按会话暂存，去别的应用再回来还在，发送后自动清掉",
+        ],
+      },
+      {
+        id: "sys-064-desktop-return",
+        category: "fix",
+        app: "桌面 · 应用切换",
+        title: "从聊天卡片打开的书房，关闭后回到原聊天",
         items: [
           "从聊天里点书房卡片，关闭书房后回到刚才那个聊天，不再退回桌面",
-          "输入框里没发出去的字会按会话暂存，去别的应用再回来还在，发送后自动清掉",
         ],
       },
       {
