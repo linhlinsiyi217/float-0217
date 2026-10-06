@@ -3,13 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, Library, Store, NotebookPen, User, Users, Shuffle } from "lucide-react";
 
-import { hydrateReadingStorage } from "@/lib/reading-storage";
+import { hydrateReadingStorage, loadBooks } from "@/lib/reading-storage";
 import { applyAppearance, loadAppearance } from "@/lib/study-room/appearance";
 import { loadForum } from "@/lib/study-room/forum";
+import { readStudyRoomTarget } from "@/lib/study-room/share-to-chat";
 import { STUDYROOM_SEARCH_EVENT } from "@/lib/study-room/events";
 import type { Book } from "@/lib/reading-types";
 import { StudyRoomShelf } from "./study-room-shelf";
 import { StudyRoomStore } from "./study-room-store";
+import { useStableStudyRoomScreen } from "./use-stable-screen";
 import { StudyRoomDesk } from "./study-room-desk";
 import { StudyRoomMine } from "./study-room-mine";
 import { StudyRoomNotes } from "./study-room-notes";
@@ -31,6 +33,8 @@ import { StudyRoomGifts } from "./study-room-gifts";
 
 type StudyRoomAppProps = {
   onClose: () => void;
+  /** 从聊天里的书房分享卡点进来时带上要打开的书或帖子 */
+  launchContext?: Record<string, unknown> | null;
 };
 
 type StudyRoomTab = "shelf" | "store" | "desk" | "forum" | "mine";
@@ -61,11 +65,16 @@ const TAB_META: Record<StudyRoomTab, { label: string; icon: typeof Library; titl
 
 const TAB_ORDER: StudyRoomTab[] = ["shelf", "store", "desk", "forum", "mine"];
 
-export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
+export default function StudyRoomApp({ onClose, launchContext }: StudyRoomAppProps) {
   const [ready, setReady] = useState(false);
   // 冷启动播放一次启动画面；书房内部切页不重播（见 study-room-splash）
   const [splashDone, setSplashDone] = useState(() => shouldSkipStudyRoomSplash());
   const [tab, setTab] = useState<StudyRoomTab>("shelf");
+  // 记住最近一个不是书友圈的标签：剧透提示里选「不再观看」时回到那里
+  const prevTabRef = useRef<StudyRoomTab>("shelf");
+  useEffect(() => {
+    if (tab !== "forum") prevTabRef.current = tab;
+  }, [tab]);
   const [view, setView] = useState<StudyRoomView>({ kind: "tabs" });
   // 从阅读器返回时，让那本书先以「抽出」状态出现再放回架上
   const lastOpenedBookRef = useRef<string | null>(null);
@@ -74,6 +83,9 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
   useEffect(() => {
     applyAppearance(loadAppearance());
   }, []);
+
+  // 键盘弹出时不让浏览器把书房整屏推歪（露出两侧壁纸）
+  useStableStudyRoomScreen();
 
   useEffect(() => {
     if (!returnFromBookId) return;
@@ -100,6 +112,37 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
   const [forumPostId, setForumPostId] = useState<string | null>(null);
   // 从「我的」点「发布第一条动态」：切到书友圈并直接打开发帖（只用一次）
   const [forumCompose, setForumCompose] = useState(false);
+
+  // 聊天分享卡点进来：书在书架上就直接打开阅读，帖子就切到书友圈打开原帖；每个启动对象只处理一次
+  const handledLaunchRef = useRef<Record<string, unknown> | null>(null);
+  const [launchNotice, setLaunchNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!ready || !launchContext || handledLaunchRef.current === launchContext) return;
+    handledLaunchRef.current = launchContext;
+    const target = readStudyRoomTarget(launchContext);
+    if (!target) return;
+    if (target.kind === "book") {
+      const book = loadBooks().find((item) => item.id === target.bookId);
+      if (book) {
+        lastOpenedBookRef.current = book.id;
+        setView({ kind: "reader", book });
+      } else {
+        setView({ kind: "tabs" });
+        setTab("shelf");
+        setLaunchNotice("这本书已经不在书架上了");
+      }
+      return;
+    }
+    setView({ kind: "tabs" });
+    setForumCompose(false);
+    setForumPostId(target.postId);
+    setTab("forum");
+  }, [ready, launchContext]);
+  useEffect(() => {
+    if (!launchNotice) return;
+    const timer = window.setTimeout(() => setLaunchNotice(null), 2400);
+    return () => window.clearTimeout(timer);
+  }, [launchNotice]);
 
   // 论坛名可以在书友管理里改，这里跟着刷新
   const [forumName, setForumName] = useState<string>(() => loadForum().name);
@@ -271,6 +314,11 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
             <StudyRoomForum
               initialPostId={forumPostId ?? undefined}
               initialCompose={forumCompose}
+              onLeave={() => {
+                setForumPostId(null);
+                setForumCompose(false);
+                setTab(prevTabRef.current);
+              }}
               onOpenNpcPanel={() => setView({ kind: "npcPanel" })}
               onOpenMine={() => {
                 setView({ kind: "tabs" });
@@ -317,6 +365,12 @@ export default function StudyRoomApp({ onClose }: StudyRoomAppProps) {
           )}
         </div>
       </div>
+
+      {launchNotice && (
+        <div className="sr-toast" role="status">
+          {launchNotice}
+        </div>
+      )}
 
       <StudyRoomDock
         items={dockItems}

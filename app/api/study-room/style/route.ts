@@ -19,6 +19,7 @@ import {
   styleMeta,
   type StyleStrength,
 } from "@/lib/server/writing-styles";
+import { STUDYROOM_WRITING_SCOPE, composeWritingWorldbook } from "@/lib/study-room/writing-worldbook";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -75,7 +76,9 @@ export async function POST(request: Request) {
           body.brief?.trim() ?? "",
         ];
 
-  const prompt = [styleBlock, PROMPT_GUARD, "", ...task].filter(Boolean).join("\n");
+  // 书房写作规范：这个接口只服务书房写书，范围在这里写死，不看请求体；设定与前文用来匹配关键词
+  const worldbook = composeWritingWorldbook(STUDYROOM_WRITING_SCOPE, body.brief ?? "").block;
+  const prompt = [worldbook, styleBlock, PROMPT_GUARD, "", ...task].filter(Boolean).join("\n");
 
   try {
     const result = await simpleLLMCall(

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, Loader2, Compass, RotateCw, Heart, BookOpen, Eye, Upload, ChevronDown, WifiOff, ServerCrash, SlidersHorizontal } from "lucide-react";
+import { Search, Loader2, Compass, RotateCw, Heart, BookOpen, Eye, Upload, ChevronDown, WifiOff, ServerCrash, SlidersHorizontal, Hourglass } from "lucide-react";
 
 import {
   CATEGORY_LABEL,
@@ -43,8 +43,15 @@ const CATEGORY_GROUPS: Array<{ key: string; label: string; cats: BookCategory[] 
 
 const READ_ORDER: Readability[] = ["readable", "preview", "import"];
 
+/** 书城搜索最长等多久；超过就算「没有响应」，不再干等 */
+const SEARCH_TIMEOUT_MS = 25_000;
+
 type Failure =
-  /** 根本没连上（断网、请求被拦） */
+  /** 设备离线 */
+  | { kind: "offline" }
+  /** 发出去了但一直没有回音 */
+  | { kind: "timeout" }
+  /** 连书城服务都没连上（请求被拦、服务出错） */
   | { kind: "network" }
   /** 连上了，但所有书源都没响应 */
   | { kind: "sources"; failed: SearchFailure[] };
@@ -98,6 +105,18 @@ export function StudyRoomStore({ onRead, initialQuery }: StudyRoomStoreProps) {
     const controller = new AbortController();
     abortRef.current = controller;
 
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      setLastQuery(q);
+      setResults([]);
+      setFailure({ kind: "offline" });
+      return;
+    }
+    let timedOut = false;
+    const timer = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, SEARCH_TIMEOUT_MS);
+
     setLoading(true);
     setFailure(null);
     setFailedSources([]);
@@ -124,11 +143,17 @@ export function StudyRoomStore({ onRead, initialQuery }: StudyRoomStoreProps) {
         setFailure({ kind: "sources", failed: failed.length > 0 ? failed : [{ id: "all", label: "全部来源", reason: `接口返回 ${res.status}` }] });
       }
     } catch (err) {
+      if (timedOut && abortRef.current === controller) {
+        setResults([]);
+        setFailure({ kind: "timeout" });
+        return;
+      }
       if (controller.signal.aborted) return;
       if (err instanceof DOMException && err.name === "AbortError") return;
       setResults([]);
-      setFailure({ kind: "network" });
+      setFailure({ kind: typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "network" });
     } finally {
+      window.clearTimeout(timer);
       if (abortRef.current === controller) setLoading(false);
     }
   };
@@ -377,11 +402,33 @@ export function StudyRoomStore({ onRead, initialQuery }: StudyRoomStoreProps) {
         </p>
       )}
 
-      {!loading && failure?.kind === "network" && (
+      {!loading && failure?.kind === "offline" && (
         <div className="sr-store-state" role="alert">
           <WifiOff size={36} strokeWidth={1.2} />
-          <strong>网络连接失败</strong>
-          <p>没连上书城服务，检查网络后再试。</p>
+          <strong>当前没有网络</strong>
+          <p>手机处于离线状态，连上网络后再搜。</p>
+          <button type="button" className="sr-btn" onClick={() => void runSearch(lastQuery)}>
+            <RotateCw size={15} strokeWidth={1.8} /> 重新搜索
+          </button>
+        </div>
+      )}
+
+      {!loading && failure?.kind === "timeout" && (
+        <div className="sr-store-state" role="alert">
+          <Hourglass size={36} strokeWidth={1.2} />
+          <strong>书城没有响应</strong>
+          <p>等了 {SEARCH_TIMEOUT_MS / 1000} 秒还没有结果，可能是书源太慢，稍后再试。</p>
+          <button type="button" className="sr-btn" onClick={() => void runSearch(lastQuery)}>
+            <RotateCw size={15} strokeWidth={1.8} /> 重新搜索
+          </button>
+        </div>
+      )}
+
+      {!loading && failure?.kind === "network" && (
+        <div className="sr-store-state" role="alert">
+          <ServerCrash size={36} strokeWidth={1.2} />
+          <strong>搜索失败</strong>
+          <p>网络在线，但没连上书城服务，稍后再试。</p>
           <button type="button" className="sr-btn" onClick={() => void runSearch(lastQuery)}>
             <RotateCw size={15} strokeWidth={1.8} /> 重新搜索
           </button>

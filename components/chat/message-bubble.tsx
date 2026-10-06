@@ -29,6 +29,7 @@ import { ScanPayCard } from "@/components/chat/scan-pay-card";
 import { payWithWalletBalance } from "@/lib/wallet-storage";
 import { formatShoppingPaymentRequestHistory } from "@/lib/shopping-payment-request";
 import { toCustomAppIconId } from "@/lib/custom-app-types";
+import { STUDYROOM_APP_ID, readStudyRoomTarget } from "@/lib/study-room/share-to-chat";
 import { ChatPluginSlot } from "@/components/chat/chat-plugin-slot";
 import { CHAT_PLUGIN_SLOTS_CHANGED_EVENT, getChatPluginRuntime } from "@/lib/chat-plugin-runtime";
 
@@ -798,6 +799,14 @@ function AppCardBubble({ msg, characterId, characterName }: { msg: ChatMessage; 
     const openApp = () => {
         if (cardOpenDisabled) return;
         if (!d?.appId || typeof window === "undefined") return;
+        // 书房分享卡：书房是内置应用，按卡片里记的书或帖子直接打开
+        if (d.appId === STUDYROOM_APP_ID) {
+            const target = readStudyRoomTarget(d.appCardLayout);
+            window.dispatchEvent(new CustomEvent("open-app", {
+                detail: { appId: STUDYROOM_APP_ID, launchContext: target ? { studyRoomTarget: target } : {} },
+            }));
+            return;
+        }
         window.dispatchEvent(new CustomEvent("open-app", {
             detail: {
                 appId: toCustomAppIconId(d.appId),

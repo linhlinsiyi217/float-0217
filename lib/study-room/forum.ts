@@ -65,6 +65,8 @@ export type ForumComment = {
   body: string;
   /** 回复某条评论时带上 */
   replyToId?: string;
+  /** 含剧透：默认遮住，逐条点开 */
+  spoiler?: boolean;
   createdAt: string;
 };
 
@@ -567,7 +569,9 @@ export function buildForumPrompt(topic: ForumTopic, participants: ForumNpc[]): s
     "- 别复读上一条：同一个人不要重复同一个句式或同一个观点；",
     "- 不要把用户的书架情况、阅读进度或现实生活当成已知事实；不知道就说不知道；",
     "- 允许温和反驳与追问，但禁止辱骂、骚扰与现实群体攻击；",
-    "- 允许剧透（论坛不限制进度），但含剧透的发言要在 spoiler 里标 true；",
+    "- 允许剧透（论坛不限制进度），但含剧透的发言要在 spoiler 里标 true；标题里也不要写剧情结局或关键反转；",
+    "- 每个人的口吻跟着自己的人设走：词汇、句长、语气各不相同，别写成同一个人换名字；",
+    "- 网络梗少用：只有符合这个人的说话习惯时才偶尔用一个，不重复别人已经用过的梗；话题严肃、有人难过或在认真讨论时一个都不用；",
     "- 不辱骂、不攻击现实中的群体，不涉及政治敏感内容；",
     "- 发言像真人打字：有长有短，别都用排比句；",
     "- 只输出 JSON 数组，每项字段：author（必须是上面某个昵称）、kind（post/review/recommend）、title（可空）、body、bookTitle（可空）、spoiler（true/false）。",
@@ -776,8 +780,9 @@ export async function makeFriendFromNpc(
   }
 
   const alreadyFriend = loadChatContacts().some((contact) => contact.characterId === characterId);
-  const contact = addChatContact(characterId);
-  if (contact) createOrGetSession(contact.id);
+  addChatContact(characterId);
+  // 会话按角色 id 归档（与聊天应用一致）
+  createOrGetSession(characterId);
 
   // 把书友圈里的交流带进记忆库：聊天时能想起你们聊过什么
   const talked = state.posts

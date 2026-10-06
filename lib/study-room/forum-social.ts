@@ -179,6 +179,28 @@ export function channelPosts(state: ForumState, channel: ForumChannel): ForumPos
   }
 }
 
+// ── 信息流三层：范围（推荐 / 关注）× 排序（默认 / 最新 / 热门）× 类型（全部 / 书评 / 讨论） ──
+
+export type FeedScope = "recommend" | "following";
+export type FeedSort = "default" | "latest" | "hot";
+export type FeedKind = "all" | "review" | "discussion";
+
+export const FEED_SORT_LABEL: Record<FeedSort, string> = { default: "默认", latest: "最新", hot: "热门" };
+export const FEED_KIND_LABEL: Record<FeedKind, string> = { all: "全部", review: "书评", discussion: "讨论" };
+
+export function feedPosts(state: ForumState, scope: FeedScope, sort: FeedSort, kind: FeedKind): ForumPost[] {
+  // 范围先定好候选（推荐 = 全部可见，关注 = 关注的人 + 自己），再按类型筛、按排序排
+  let list = channelPosts(state, scope === "following" ? "following" : "recommend");
+  if (kind === "review") list = list.filter((post) => post.kind === "review");
+  if (kind === "discussion") list = list.filter((post) => post.kind === "post");
+  if (sort === "latest") return [...list].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  if (sort === "hot") {
+    const heat = (post: ForumPost) => post.likedBy.length * 2 + post.comments.length;
+    return [...list].sort((a, b) => heat(b) - heat(a));
+  }
+  return list;
+}
+
 // ── 互动：收藏 / 关注 / 通知 ──
 
 export function toggleCollect(state: ForumState, postId: string, actorId = USER_ID): ForumState {
@@ -501,7 +523,8 @@ export function buildCommentPrompt(post: ForumPost, npc: ForumNpc, rules: ForumR
     "写法：像真人在论坛回帖——可以只回一句，也可以问一句；不要客服腔、不要说教、不要每次都用同一种句式。",
     "不要把用户的书架、阅读进度或现实生活当成已知事实；不知道就别装作知道。",
     rules.commentFollowUp ? "如果有想问的，可以顺着追问一句。" : "不要反问，直接回应就好。",
-    "允许剧透，但不要辱骂、不要攻击现实中的群体。",
+    "口吻跟着你自己的说话习惯，不要模仿其他评论的句式。网络梗少用：只有符合你的说话习惯时偶尔用一个，不重复已有评论里的梗；话题严肃、有人难过时一个都不用。",
+    "允许剧透，但不要辱骂、不要攻击现实中的群体。如果这条评论透露了剧情走向、结局或关键反转，在最开头写上「[剧透]」标记（会被自动遮住，别在正文里再提）。",
     "只输出评论本身，不要加引号、不要写自己的昵称。",
   ]
     .filter(Boolean)
@@ -522,7 +545,7 @@ export function cleanComment(raw: string): string | null {
 
 /** 生成结果分开说清楚：成功 / 没配 API / 调用失败（失败要能重试，不能悄悄吞掉）。 */
 export type CommentResult =
-  | { status: "ok"; body: string }
+  | { status: "ok"; body: string; spoiler: boolean }
   | { status: "no-api" }
   | { status: "error"; message: string };
 
@@ -542,12 +565,16 @@ export async function generateComment(
     label: "studyroom-forum-comment",
   });
   if (result.error) return { status: "error", message: result.error };
-  const body = result.content ? cleanComment(result.content) : null;
+  const raw = result.content ? cleanComment(result.content) : null;
+  if (!raw) return { status: "error", message: "模型返回了空内容" };
+  // 模型按要求在开头加「[剧透]」：去掉标记，改成评论上的剧透开关
+  const flagged = /^\s*[[【(（]\s*剧透\s*[\]】)）]\s*/.exec(raw);
+  const body = flagged ? raw.slice(flagged[0].length).trim() : raw;
   if (!body) return { status: "error", message: "模型返回了空内容" };
-  return { status: "ok", body };
+  return { status: "ok", body, spoiler: !!flagged };
 }
 
-export function makeComment(npc: ForumNpc, body: string, replyToId?: string): ForumComment {
+export function makeComment(npc: ForumNpc, body: string, replyToId?: string, spoiler?: boolean): ForumComment {
   return {
     id: `fc_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
     authorId: npc.id,
@@ -555,6 +582,7 @@ export function makeComment(npc: ForumNpc, body: string, replyToId?: string): Fo
     authorKind: "npc",
     body,
     replyToId,
+    ...(spoiler ? { spoiler: true } : {}),
     createdAt: new Date().toISOString(),
   };
 }
@@ -563,7 +591,7 @@ export function makeComment(npc: ForumNpc, body: string, replyToId?: string): Fo
  * 把一条待回复变成真正的评论：同时按生成规则里「NPC 日常活动」的节奏，
  * 顺带产生赞同 / 关注 / 好友申请（都是真实状态，刷新后仍在）。
  */
-export function applyComment(state: ForumState, reply: PendingReply, body: string): ForumState {
+export function applyComment(state: ForumState, reply: PendingReply, body: string, spoiler = false): ForumState {
   const npc = state.npcs.find((item) => item.id === reply.npcId);
   const post = state.posts.find((item) => item.id === reply.postId);
   if (!npc || !post) return consumeReply(state, reply.id);
@@ -573,7 +601,7 @@ export function applyComment(state: ForumState, reply: PendingReply, body: strin
   let next: ForumState = {
     ...state,
     posts: state.posts.map((item) =>
-      item.id === post.id ? { ...item, comments: [...item.comments, makeComment(npc, body, reply.replyToId)] } : item,
+      item.id === post.id ? { ...item, comments: [...item.comments, makeComment(npc, body, reply.replyToId, spoiler)] } : item,
     ),
   };
 
@@ -585,7 +613,7 @@ export function applyComment(state: ForumState, reply: PendingReply, body: strin
       fromId: npc.id,
       fromName: npc.nickname,
       postId: post.id,
-      text: body.slice(0, 60),
+      text: spoiler ? "回复含剧透，进书友圈后点开查看" : body.slice(0, 60),
     });
   }
 
@@ -595,7 +623,7 @@ export function applyComment(state: ForumState, reply: PendingReply, body: strin
       fromId: npc.id,
       fromName: npc.nickname,
       postId: post.id,
-      text: body.slice(0, 60),
+      text: spoiler ? "回复含剧透，进书友圈后点开查看" : body.slice(0, 60),
     });
 
     // 按规则里的节奏顺带点赞

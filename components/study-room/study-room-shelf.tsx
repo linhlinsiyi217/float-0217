@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownUp, BookPlus } from "lucide-react";
+import { BookPlus, SlidersHorizontal } from "lucide-react";
 
 import { deleteBook, loadAllProgress, loadBooks } from "@/lib/reading-storage";
 import { importBookFromBlob, UnsupportedBookFormatError } from "@/lib/study-room/import";
@@ -11,6 +11,7 @@ import { loadShelfPrefs, saveShelfPrefs, type ShelfPrefs } from "@/lib/study-roo
 import type { Book } from "@/lib/reading-types";
 import { StudyRoomShelf3D } from "./study-room-shelf3d";
 import { StudyRoomBookDetail } from "./study-room-book-detail";
+import { StudyRoomShelfManager, type ShelfReadStatus } from "./study-room-shelf-manager";
 
 type StudyRoomShelfProps = {
   onOpenBook: (book: Book, chapterIndex?: number, paragraphIndex?: number, options?: { tts?: boolean }) => void;
@@ -23,18 +24,15 @@ type ImportState =
   | { status: "running"; label: string }
   | { status: "error"; message: string };
 
-const SORT_OPTIONS: Array<{ value: ShelfSort; label: string }> = [
-  { value: "import", label: "导入顺序" },
-  { value: "recent", label: "最近阅读" },
-  { value: "manual", label: "手动排序" },
-];
-
 /** 从阅读器回来后，书先以抽出姿态停留片刻再放回架上 */
 const RETURN_HOLD_MS = 420;
 
 export function StudyRoomShelf({ onOpenBook, onOpenMessages, returnFromBookId }: StudyRoomShelfProps) {
   const [books, setBooks] = useState<Book[]>([]);
   const [lastReadAt, setLastReadAt] = useState<Record<string, string>>({});
+  // 阅读进度（0~1），用于书架管理里的「未读 / 在读 / 读完」筛选
+  const [progressById, setProgressById] = useState<Record<string, number>>({});
+  const [managing, setManaging] = useState(false);
   const [prefs, setPrefs] = useState<ShelfPrefs>(() => loadShelfPrefs());
   const [importState, setImportState] = useState<ImportState>({ status: "idle" });
   const [activeId, setActiveId] = useState<string | null>(returnFromBookId ?? null);
@@ -48,6 +46,11 @@ export function StudyRoomShelf({ onOpenBook, onOpenMessages, returnFromBookId }:
     setBooks(loadBooks());
     const all = await loadAllProgress().catch(() => []);
     setLastReadAt(Object.fromEntries(all.filter((p) => p.lastReadAt).map((p) => [p.bookId, p.lastReadAt])));
+    setProgressById(
+      Object.fromEntries(
+        all.map((p) => [p.bookId, typeof p.progressFraction === "number" ? p.progressFraction : p.chapterIndex > 0 ? 0.01 : 0]),
+      ),
+    );
   }, []);
 
   useEffect(() => {
@@ -138,6 +141,21 @@ export function StudyRoomShelf({ onOpenBook, onOpenMessages, returnFromBookId }:
     }
   };
 
+  const statusOf = useCallback(
+    (book: Book): ShelfReadStatus => {
+      const fraction = progressById[book.id];
+      if (fraction === undefined || (fraction <= 0 && !lastReadAt[book.id])) return "unread";
+      return fraction >= 0.98 ? "finished" : "reading";
+    },
+    [progressById, lastReadAt],
+  );
+
+  const removeBooks = async (targets: Book[]) => {
+    if (targets.some((book) => book.id === activeId || book.id === detailBook?.id)) closeDetail();
+    for (const book of targets) await deleteBook(book.id);
+    await refresh();
+  };
+
   const handleDelete = async (book: Book) => {
     if (!confirm(`确定从书架移除《${book.title}》吗？该书的阅读进度、书签与笔记会一并删除。`)) return;
     closeDetail();
@@ -158,18 +176,16 @@ export function StudyRoomShelf({ onOpenBook, onOpenMessages, returnFromBookId }:
           {importState.status === "running" ? importState.label : "导入本地书"}
         </button>
         <input ref={fileInputRef} type="file" accept=".txt,.epub,.pdf,.docx" hidden onChange={handleFile} />
-        {books.length > 1 && (
-          <label className="sr-shelf-sort">
-            <ArrowDownUp size={15} strokeWidth={1.8} aria-hidden />
-            <span className="sr-visually-hidden">书架排序</span>
-            <select value={prefs.sort} onChange={(event) => changeSort(event.target.value as ShelfSort)}>
-              {SORT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </label>
+        {books.length > 0 && (
+          <button
+            type="button"
+            className="sr-btn sr-shelf-manage"
+            onClick={() => setManaging(true)}
+            aria-haspopup="dialog"
+          >
+            <SlidersHorizontal size={16} strokeWidth={1.7} aria-hidden />
+            书架管理
+          </button>
         )}
       </div>
 
@@ -214,6 +230,23 @@ export function StudyRoomShelf({ onOpenBook, onOpenMessages, returnFromBookId }:
           onOpenMessages={onOpenMessages}
           onRemove={handleDelete}
           onMove={prefs.sort === "manual" ? (delta) => moveBook(detailBook, delta) : undefined}
+        />
+      )}
+
+      {managing && (
+        <StudyRoomShelfManager
+          books={sorted}
+          statusOf={statusOf}
+          sort={prefs.sort}
+          onSort={changeSort}
+          onOpen={(book) => {
+            setManaging(false);
+            restoringRef.current = null;
+            setDetailBook(null);
+            setActiveId(book.id);
+          }}
+          onRemove={removeBooks}
+          onClose={() => setManaging(false)}
         />
       )}
     </div>

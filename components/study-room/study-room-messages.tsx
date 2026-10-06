@@ -42,6 +42,15 @@ function dayLabel(key: string): string {
   return `${y}年${m}月${d}日`;
 }
 
+const GROUP_GAP_MS = 5 * 60 * 1000;
+
+function closeInTime(earlier: string | number | undefined, later: string | number | undefined): boolean {
+  const t1 = earlier === undefined ? NaN : new Date(earlier).getTime();
+  const t2 = later === undefined ? NaN : new Date(later).getTime();
+  if (!Number.isFinite(t1) || !Number.isFinite(t2)) return true;
+  return Math.abs(t2 - t1) <= GROUP_GAP_MS;
+}
+
 export function StudyRoomMessages({ onBack }: StudyRoomMessagesProps) {
   const [refs, setRefs] = useState<CoreadRef[]>([]);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -105,8 +114,9 @@ export function StudyRoomMessages({ onBack }: StudyRoomMessagesProps) {
       const prev = visible[i - 1];
       const next = visible[i + 1];
       const dayKey = dayKeyOf(msg.createdAt);
-      const sameAsPrev = !!prev && prev.role === msg.role && dayKeyOf(prev.createdAt) === dayKey;
-      const sameAsNext = !!next && next.role === msg.role && dayKeyOf(next.createdAt) === dayKey;
+      // 同一个人、同一天、前后相隔不超过 5 分钟才算一组（隔得久的另起一组，重新带尾巴）
+      const sameAsPrev = !!prev && prev.role === msg.role && dayKeyOf(prev.createdAt) === dayKey && closeInTime(prev.createdAt, msg.createdAt);
+      const sameAsNext = !!next && next.role === msg.role && dayKeyOf(next.createdAt) === dayKey && closeInTime(msg.createdAt, next.createdAt);
       out.push({ msg, dayKey, groupStart: !sameAsPrev, groupEnd: !sameAsNext });
     }
     return out;

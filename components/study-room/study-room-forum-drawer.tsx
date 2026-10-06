@@ -22,6 +22,7 @@ import type { ForumState } from "@/lib/study-room/forum";
 import { deleteDraft, markNotificationsRead } from "@/lib/study-room/forum-social";
 import { displayName, loadProfile } from "@/lib/study-room/profile";
 import { loadUserIdentities } from "@/lib/settings-storage";
+import { SPOILER_SUMMARY } from "./spoiler";
 
 type StudyRoomForumDrawerProps = {
   state: ForumState;
@@ -212,7 +213,7 @@ export function StudyRoomForumDrawer({
                 ) : (
                   myPosts.map((post) => (
                     <button key={post.id} type="button" className="sr-drawer-item" onClick={() => onOpenPost(post.id)}>
-                      <span className="sr-drawer-item-text">{post.title || post.body.slice(0, 22)}</span>
+                      <span className="sr-drawer-item-text">{post.spoiler ? SPOILER_SUMMARY : post.title || post.body.slice(0, 22)}</span>
                       <ChevronRight size={14} strokeWidth={1.8} />
                     </button>
                   ))
@@ -256,7 +257,7 @@ export function StudyRoomForumDrawer({
                 ) : (
                   myComments.slice(0, 12).map(({ comment, post }) => (
                     <button key={comment.id} type="button" className="sr-drawer-item" onClick={() => onOpenPost(post.id)}>
-                      <span className="sr-drawer-item-text">{comment.body.slice(0, 24)}</span>
+                      <span className="sr-drawer-item-text">{comment.spoiler ? SPOILER_SUMMARY : comment.body.slice(0, 24)}</span>
                       <ChevronRight size={14} strokeWidth={1.8} />
                     </button>
                   ))

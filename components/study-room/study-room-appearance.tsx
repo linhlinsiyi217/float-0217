@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, RotateCcw, Copy, Download, Upload, Undo2, Info, ImagePlus, X } from "lucide-react";
 
 import {
@@ -36,7 +36,7 @@ import {
   looksLikeImageUrl,
 } from "@/lib/study-room/background-image";
 import { ColorSheet } from "./color-sheet";
-import { HelpFoot } from "./help-tip";
+import { HelpFoot, HelpTip } from "./help-tip";
 
 type StudyRoomAppearanceProps = { onBack: () => void };
 
@@ -242,6 +242,68 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
     window.setTimeout(() => setNotice(null), 2000);
   };
 
+  const hasBg = Boolean(draft.background.url);
+
+  /** 单个变量的控件：颜色色块 / 字体下拉 / 文本 / 开关 / 滑杆。 */
+  const renderControl = (def: (typeof VAR_DEFS)[number], value: string, label: ReactNode) => {
+    if (def.type === "color") {
+      return (
+        <div key={def.key} className="sr-appear-row">
+          {label}
+          <span className="sr-appear-value">{value}</span>
+          <button type="button" className="sr-swatch" style={{ background: value }} onClick={() => setColorTarget({ kind: "var", key: def.key })} aria-label={`${def.label}，当前 ${value}`} />
+        </div>
+      );
+    }
+    if (def.type === "font") {
+      const known = FONT_CHOICES.some((choice) => choice.value === value);
+      return (
+        <div key={def.key} className="sr-appear-row">
+          {label}
+          <select className="sr-appear-select" value={value} onChange={(e) => setVar(def.key, e.target.value)} aria-label={def.label}>
+            {!known && <option value={value}>当前自定义字体</option>}
+            {FONT_CHOICES.map((choice) => (
+              <option key={choice.label} value={choice.value}>
+                {choice.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+    if (def.type === "text") {
+      return (
+        <div key={def.key} className="sr-appear-row">
+          {label}
+          <input className="sr-appear-input" value={value} onChange={(e) => setVar(def.key, e.target.value)} aria-label={def.label} />
+        </div>
+      );
+    }
+    if (def.type === "toggle") {
+      const on = value !== "0";
+      return (
+        <div key={def.key} className="sr-appear-row">
+          {label}
+          <button type="button" className="sr-chip" aria-pressed={on} data-active={on ? "true" : undefined} onClick={() => setVar(def.key, on ? "0" : "1")}>{on ? "开" : "关"}</button>
+        </div>
+      );
+    }
+    return (
+      <div key={def.key} className="sr-appear-row sr-appear-row--slider">
+        {label}
+        <input
+          type="range"
+          min={def.min} max={def.max} step={def.step}
+          value={Number(value)}
+          onChange={(e) => setVar(def.key, e.target.value)}
+          className="sr-slider"
+          aria-label={def.label}
+        />
+        <span className="sr-appear-value">{value}{def.unit}</span>
+      </div>
+    );
+  };
+
   return (
     <section className="sr-app sr-appear-app">
       <header className="sr-header">
@@ -328,7 +390,7 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
             </>
           ) : (
             <>
-              {module === "global" && (
+              {module === "background" && (
                 <>
                   <div className="sr-section-label">书房背景</div>
                   <div className="sr-appear-row">
@@ -368,6 +430,9 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
                       使用
                     </button>
                   </div>
+                  {!hasBg && (
+                    <p className="sr-note-meta sr-appear-hint">先选一张图片或填链接，下面的显示方式、透明度和遮罩才会起作用。</p>
+                  )}
                   <div className="sr-appear-row">
                     <span className="sr-appear-label">显示方式</span>
                     {(["cover", "contain", "repeat"] as BackgroundFit[]).map((fit) => (
@@ -377,6 +442,7 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
                         className="sr-chip"
                         data-active={draft.background.fit === fit ? "true" : undefined}
                         onClick={() => setBackground({ fit })}
+                        disabled={!hasBg}
                       >
                         {FIT_LABEL[fit]}
                       </button>
@@ -391,6 +457,7 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
                         className="sr-chip"
                         data-active={draft.background.position === pos ? "true" : undefined}
                         onClick={() => setBackground({ position: pos })}
+                        disabled={!hasBg}
                       >
                         {POSITION_LABEL[pos]}
                       </button>
@@ -405,6 +472,7 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
                       step={5}
                       value={draft.background.opacity}
                       onChange={(e) => setBackground({ opacity: Number(e.target.value) })}
+                      disabled={!hasBg}
                       className="sr-slider"
                       aria-label="背景图片不透明度"
                     />
@@ -419,6 +487,7 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
                       step={5}
                       value={draft.background.mask}
                       onChange={(e) => setBackground({ mask: Number(e.target.value) })}
+                      disabled={!hasBg}
                       className="sr-slider"
                       aria-label="背景遮罩强度"
                     />
@@ -431,6 +500,7 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
                       className="sr-swatch"
                       style={{ background: draft.background.maskColor || draft.vars["--sr-page-bg"] }}
                       onClick={() => setColorTarget({ kind: "bgMask" })}
+                      disabled={!hasBg}
                       aria-label="选择遮罩颜色"
                     />
                   </div>
@@ -441,6 +511,7 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
                       className="sr-chip"
                       data-active={draft.background.inReader ? "true" : undefined}
                       onClick={() => setBackground({ inReader: !draft.background.inReader })}
+                      disabled={!hasBg}
                     >
                       {draft.background.inReader ? "开" : "关"}
                     </button>
@@ -452,77 +523,34 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
                 </>
               )}
 
-              {/* 基础控件 */}
-              <div className="sr-section-label">基础样式</div>
-              {moduleVars.map((def) => {
+              {/* 基础控件：同组里按小节分开（例如聊天外观里的「共读侧栏专属」） */}
+              {moduleVars.length > 0 && <div className="sr-section-label">基础样式</div>}
+              {moduleVars.map((def, index) => {
                 const value = draft.vars[def.key] ?? def.fallback;
-                if (def.type === "color") {
-                  return (
-                    <div key={def.key} className="sr-appear-row">
-                      <span className="sr-appear-label">{def.label}</span>
-                      <button type="button" className="sr-swatch" style={{ background: value }} onClick={() => setColorTarget({ kind: "var", key: def.key })} aria-label={`${def.label}，当前 ${value}`} />
-                    </div>
-                  );
-                }
-                if (def.type === "font") {
-                  const known = FONT_CHOICES.some((choice) => choice.value === value);
-                  return (
-                    <div key={def.key} className="sr-appear-row">
-                      <span className="sr-appear-label">{def.label}</span>
-                      <select
-                        className="sr-appear-select"
-                        value={value}
-                        onChange={(e) => setVar(def.key, e.target.value)}
-                        aria-label={def.label}
-                      >
-                        {!known && <option value={value}>当前自定义字体</option>}
-                        {FONT_CHOICES.map((choice) => (
-                          <option key={choice.label} value={choice.value}>
-                            {choice.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  );
-                }
-                if (def.type === "text") {
-                  return (
-                    <div key={def.key} className="sr-appear-row">
-                      <span className="sr-appear-label">{def.label}</span>
-                      <input
-                        className="sr-appear-input"
-                        value={value}
-                        onChange={(e) => setVar(def.key, e.target.value)}
-                        aria-label={def.label}
-                      />
-                    </div>
-                  );
-                }
-                if (def.type === "toggle") {
-                  const on = value !== "0";
-                  return (
-                    <div key={def.key} className="sr-appear-row">
-                      <span className="sr-appear-label">{def.label}</span>
-                      <button type="button" className="sr-chip" data-active={on ? "true" : undefined} onClick={() => setVar(def.key, on ? "0" : "1")}>{on ? "开" : "关"}</button>
-                    </div>
-                  );
-                }
-                return (
-                  <div key={def.key} className="sr-appear-row sr-appear-row--slider">
-                    <span className="sr-appear-label">{def.label}</span>
-                    <input
-                      type="range"
-                      min={def.min} max={def.max} step={def.step}
-                      value={Number(value)}
-                      onChange={(e) => setVar(def.key, e.target.value)}
-                      className="sr-slider"
-                      aria-label={def.label}
-                    />
-                    <span className="sr-appear-value">{value}{def.unit}</span>
+                const prevGroup = index > 0 ? moduleVars[index - 1].group : undefined;
+                const groupHead = def.group && def.group !== prevGroup ? (
+                  <div className="sr-section-label sr-appear-subhead">
+                    {def.group}
+                    <HelpTip id={`appear-group-${def.group}`} label={`关于${def.group}`}>
+                      共读侧栏是阅读页里的「AI 共读」抽屉。气泡颜色、圆角、尾巴与聊天室共用上面的设置；这里只调侧栏自己的宽度和字号。
+                    </HelpTip>
                   </div>
+                ) : null;
+                const label = (
+                  <span className="sr-appear-label">
+                    {def.label}
+                    {def.hint && (
+                      <HelpTip id={`appear-var-${def.key}`} label={`关于${def.label}`}>
+                        {def.hint}
+                      </HelpTip>
+                    )}
+                  </span>
                 );
+                const control = renderControl(def, value, label);
+                return groupHead ? <div key={def.key}>{groupHead}{control}</div> : control;
               })}
 
+              {module !== "background" && (<>
               {/* 只读的基础样式说明 */}
               <details className="sr-css-base">
                 <summary><Info size={14} strokeWidth={1.7} />基础样式（只读）与可用的选择器</summary>
@@ -537,7 +565,7 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
 
               {/* 实时预览：复用真实类名与相同样式机制，数据为明确标注的预览数据 */}
               <div className="sr-section-label">实时预览（预览数据，不写入书架/会话）</div>
-              <div className="sr-preview-box"><ModulePreview module={module} /></div>
+              <div className="sr-preview-box"><ModulePreview module={module} bookScale={Number(draft.vars["--sr-book-scale"]) || 1} /></div>
 
               {/* 自定义 CSS 覆盖层 */}
               <div className="sr-section-label">自定义 CSS（覆盖层，作用域限定在书房）</div>
@@ -556,6 +584,12 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
                 <button type="button" className="sr-chip" onClick={() => fileRef.current?.click()}><Upload size={13} strokeWidth={1.8} />导入</button>
                 <button type="button" className="sr-btn sr-btn-sm" onClick={handleResetModule}><RotateCcw size={13} strokeWidth={1.8} />恢复本部分默认</button>
               </div>
+              </>)}
+              {module === "background" && (
+                <div className="sr-css-actions">
+                  <button type="button" className="sr-btn sr-btn-sm" onClick={handleResetModule}><RotateCcw size={13} strokeWidth={1.8} />清除背景设置</button>
+                </div>
+              )}
               <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void handleImportFile(f); }} />
             </>
           )}
@@ -597,27 +631,29 @@ export function StudyRoomAppearance({ onBack }: StudyRoomAppearanceProps) {
 /** 各部分的真实选择器（给用户写覆盖 CSS 参考，稳定且不含编译哈希）。 */
 const MODULE_SELECTORS: Record<AppearanceModule, string> = {
   global: ".sr-app / .sr-btn / .sr-tabbar",
+  background: ".sr-app::before（图片）/ .sr-app::after（遮罩）",
   shelf: ".sr3-stage / .sr3-shelf / .sr3-board / .sr3-book / .sr3-spine-title",
   reader: ".sr-reader / .sr-reader-body / .sr-para / .sr-chapter-title",
-  chat: ".sr-msg-app / .sr-msg-row / .sr-msg-bubble / .sr-msg-inputbar",
+  chat: ".sr-msg-app / .sr-msg-bubble / .sr-msg-inputbar · 共读侧栏 .sr-coread / .sr-coread-msg",
   coread: ".sr-coread / .sr-coread-msg / .sr-coread-foot",
   notes: ".sr-note-card / .sr-note-group / .sr-res-card",
 };
 
 /** 预览块：用真实类名渲染，数据全部是写死的预览样本。 */
-function ModulePreview({ module }: { module: AppearanceModule }) {
+function ModulePreview({ module, bookScale }: { module: AppearanceModule; bookScale: number }) {
   if (module === "shelf") {
     return (
       <div className="sr3-stage" style={{ padding: 0, minHeight: 0 }}>
         <div className="sr3-shelves" style={{ gap: 18 }}>
           {[[0, 1, 2], [3, 4]].map((row, ri) => (
             <div className="sr3-shelf" key={ri}>
-              <div className="sr3-row" style={{ minHeight: 92, transformStyle: "flat" }}>
+              <div className="sr3-row" style={{ minHeight: Math.round(92 * bookScale), transformStyle: "flat" }}>
                 {row.map((i) => {
                   const bookStyle = {
-                    "--w": `${24 + i * 4}px`,
-                    "--h": "88px",
-                    "--d": "58px",
+                    // 书本尺寸在真实书架里由 JS 读取后乘到宽高上，预览这里同样乘上去
+                    "--w": `${Math.round((24 + i * 4) * bookScale)}px`,
+                    "--h": `${Math.round(88 * bookScale)}px`,
+                    "--d": `${Math.round(58 * bookScale)}px`,
                     "--tone": ["#33465e", "#5a3f36", "#3d4d41", "#5c3a46", "#2f4b4c"][i],
                     "--ink": "#eef2f8",
                     pointerEvents: "none",
@@ -648,6 +684,21 @@ function ModulePreview({ module }: { module: AppearanceModule }) {
     );
   }
   if (module === "chat" || module === "coread") {
+    return (
+      <>
+        <ChatPreview kind="chat" />
+        <div className="sr-note-meta" style={{ margin: "10px 2px 6px" }}>共读侧栏</div>
+        <ChatPreview kind="coread" />
+      </>
+    );
+  }
+  return <OtherPreview />;
+}
+
+/** 聊天室 / 共读侧栏的气泡样本。 */
+function ChatPreview({ kind }: { kind: "chat" | "coread" }) {
+  const module = kind;
+  {
     const wrap = module === "chat" ? "sr-msg-body" : "sr-coread-body";
     const cls = module === "chat" ? "sr-msg-bubble" : "sr-coread-msg";
     const rowCls = module === "chat" ? "sr-msg-row" : null;
@@ -665,6 +716,9 @@ function ModulePreview({ module }: { module: AppearanceModule }) {
       </div>
     );
   }
+}
+
+function OtherPreview() {
   return (
     <div style={{ padding: 4 }}>
       <div className="sr-note-card">

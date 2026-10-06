@@ -527,7 +527,7 @@ function MinePostOverlay({
           onBack={onClose}
           onOpenBook={onOpenBook}
           onLike={() => engine.like(post)}
-          onComment={(body, replyToId) => engine.comment(post, body, replyToId)}
+          onComment={(body, replyToId, spoiler) => engine.comment(post, body, replyToId, spoiler)}
           onCollect={() => mutate((prev) => toggleCollect(prev, post.id))}
           onGift={() => setGift(true)}
           onOpenAuthor={() => onOpenInForum(post.id)}

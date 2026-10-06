@@ -9,8 +9,10 @@ import { loadCharacters } from "@/lib/character-storage";
 import { kvGet, kvSet, registerKvMigration } from "@/lib/kv-db";
 import { addBook, loadBooks, saveChapters } from "@/lib/reading-storage";
 import type { Book, BookChapter } from "@/lib/reading-types";
+import type { ApiConfig } from "@/lib/settings-types";
 import { formatCharacterRelationsForPrompt } from "@/lib/character-world-storage";
 import { loadApiConfigs, loadBindingConfig, loadWorldBooks, resolveBinding } from "@/lib/settings-storage";
+import { STUDYROOM_WRITING_SCOPE, composeWritingWorldbook } from "@/lib/study-room/writing-worldbook";
 
 const DRAFTS_KEY = "ai_phone_studyroom_creative_drafts_v1";
 registerKvMigration(DRAFTS_KEY);
@@ -23,6 +25,14 @@ export type CreativeChapter = {
   updatedAt: string;
   /** 章末结构化记忆：下一章只加载需要的那部分，防长篇失忆 */
   memory?: ChapterMemory;
+  /** 连贯检查结果：对照大纲与前几章记忆挑出的问题（只给建议，不改稿） */
+  review?: ChapterReview;
+};
+
+export type ChapterReview = {
+  /** 一行一条「问题 → 建议」；没问题时为空数组 */
+  issues: string[];
+  createdAt: string;
 };
 
 /** 章末结构化记忆（按 TXT 要求：摘要/人物状态/关系变化/地点时间/伏笔/未解决冲突/必须保持设定） */
@@ -338,8 +348,10 @@ function clip(text: string, max: number): string {
  * 只交给模型把握口吻与设定，界面上不展示；专业写作助手模式不带这些。
  */
 function characterContext(draft: CreativeDraft): string {
-  if (draft.writer.mode !== "character" || !draft.writer.characterId) return "";
-  const character = loadCharacters().find((c) => c.id === draft.writer.characterId);
+  const isCharacter = draft.writer.mode === "character" && Boolean(draft.writer.characterId);
+  // 写作助手模式：只有作品里单独选过世界书时才带世界书，没有人设与卷宗
+  if (!isCharacter && !draft.writer.worldBookIds?.length) return "";
+  const character = isCharacter ? loadCharacters().find((c) => c.id === draft.writer.characterId) : undefined;
   const parts: string[] = [];
   const persona = [character?.persona, character?.personality].filter((v): v is string => Boolean(v?.trim())).join("\n");
   if (persona) parts.push(`【作者人设（只用来把握你的口吻与视角，不要写进书里）】\n${clip(persona, 1500)}`);
@@ -353,6 +365,7 @@ function characterContext(draft: CreativeDraft): string {
     if (entries) parts.push(`【世界书设定（可以作为素材，按需取用）】\n${clip(entries, 4000)}`);
   }
 
+  if (!isCharacter || !draft.writer.characterId) return parts.join("\n\n");
   const relations = formatCharacterRelationsForPrompt(draft.writer.characterId);
   if (relations) parts.push(`【世界卷宗：作者所在世界与角色关系（只作背景参考）】\n${clip(relations, 1200)}`);
   return parts.join("\n\n");
@@ -371,9 +384,15 @@ function recentContext(draft: CreativeDraft): string {
     .join("\n\n");
 }
 
+/** 书房写作规范（只给书房写书用）：用设定与前文匹配关键词，按预算挑条目。 */
+function writingNorms(draft: CreativeDraft): string {
+  return composeWritingWorldbook(STUDYROOM_WRITING_SCOPE, `${draftBrief(draft)}\n${recentContext(draft)}`).block;
+}
+
 export function buildOutlinePrompt(draft: CreativeDraft): string {
   return [
     identityInstruction(draft, "写作助手"),
+    writingNorms(draft),
     "",
     "请根据下面的设定，给出这本书的大纲：分 5–8 幕，每幕一到两句写清推进；再列 3–5 个主要人物，写清他们是谁、想要什么。",
     "只输出大纲本身，不要客套话。",
@@ -403,6 +422,7 @@ export function buildChapterBrief(draft: CreativeDraft, chapterNumber: number): 
 export function buildChapterPrompt(draft: CreativeDraft, chapterNumber: number): string {
   return [
     identityInstruction(draft, "写作助手"),
+    writingNorms(draft),
     "",
     `请写第 ${chapterNumber} 章的正文。`,
     "要求：直接开始写正文，第一行用「第N章 标题」格式给出本章标题，之后是正文；不要写解说、不要总结自己的过程。",
@@ -436,17 +456,25 @@ export function parseChapterOutput(raw: string, chapterNumber: number, fallbackT
   return { title: fallbackTitle?.trim() || `第 ${chapterNumber} 章`, content: text };
 }
 
+/** 实际调用哪份 API：作品/角色指定的优先，否则全局默认，再否则第一份。所有写作相关调用共用。 */
+export function resolveWriterApiConfig(draft: CreativeDraft): ApiConfig | null {
+  const { apiConfigId } = resolveWriterConfig(draft);
+  const configs = loadApiConfigs();
+  return (
+    (apiConfigId ? configs.find((c) => c.id === apiConfigId) : undefined) ??
+    configs.find((c) => c.id === loadBindingConfig().globalDefaults.apiConfigId) ??
+    configs[0] ??
+    null
+  );
+}
+
 async function callWriter(
   draft: CreativeDraft,
   prompt: string,
   signal?: AbortSignal,
   maxTokens = 3000,
 ): Promise<string> {
-  const { apiConfigId } = resolveWriterConfig(draft);
-  const configs = loadApiConfigs();
-  const config = apiConfigId
-    ? configs.find((c) => c.id === apiConfigId) ?? null
-    : configs.find((c) => c.id === loadBindingConfig().globalDefaults.apiConfigId) ?? configs[0] ?? null;
+  const config = resolveWriterApiConfig(draft);
   if (!config) throw new Error("还没有可用的 API：请先在设置里配置模型");
   const result = await simpleLLMCall(config, [{ role: "user", content: prompt }], {
     temperature: 0.85,
@@ -508,6 +536,67 @@ export function parseChapterMemory(raw: string): ChapterMemory | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * 连贯检查（借鉴 AI-Novel-Writing-Assistant 的「大纲 → 章节 → 连贯审查」流程思路，代码为本项目自写）：
+ * 只发大纲、这一章之前的章末记忆、上一章结尾与本章正文，让模型挑前后矛盾。
+ */
+export function buildContinuityReviewPrompt(draft: CreativeDraft, chapterId: string): string {
+  const index = draft.chapters.findIndex((chapter) => chapter.id === chapterId);
+  const chapter = draft.chapters[index];
+  if (!chapter) return "";
+  const before = draft.chapters.slice(0, index);
+  const memories = recentMemories({ ...draft, chapters: before }, 4);
+  const prev = before[before.length - 1];
+  return [
+    "你是长篇连载的连贯性审查。对照下面的大纲、前文记忆和上一章结尾，检查「本章」有没有：",
+    "人物状态或称呼跳变、时间地点冲突、已定设定被改、伏笔被遗忘、偏离大纲走向。",
+    "每行一条，格式：问题 → 建议。只列真实存在的问题，最多 6 条；如果没有问题，只输出「无明显问题」。不要重写正文，不要夸奖。",
+    "",
+    draft.outline ? `【大纲】\n${clip(draft.outline, 1200)}` : "【大纲】（未写）",
+    memories ? `\n【前文记忆】\n${memories}` : "",
+    prev ? `\n【上一章结尾：${prev.title}】\n……${prev.content.slice(-500)}` : "",
+    `\n【本章：${chapter.title}】`,
+    chapter.content.slice(0, 5000),
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** 解析连贯检查结果；「无明显问题」记为空数组。 */
+export function parseContinuityReview(raw: string): ChapterReview {
+  const lines = raw
+    .split("\n")
+    .map((line) => line.replace(/^[-*\d.、\s]+/, "").trim())
+    .filter(Boolean);
+  const clean = lines.length === 1 && /无明显问题|没有明显问题|未发现/.test(lines[0]) ? [] : lines.slice(0, 6);
+  return { issues: clean, createdAt: new Date().toISOString() };
+}
+
+/** 恢复进度：根据作品现状算出「下一步」，书桌与作品总览共用。 */
+export type DraftNextStep = {
+  label: string;
+  /** 进作品后应该先打开哪一栏 */
+  section: "outline" | "write";
+};
+
+export function draftNextStep(draft: CreativeDraft): DraftNextStep {
+  const ai = draft.writeMode !== "hand";
+  const chapters = draft.chapters;
+  if (chapters.length === 0) {
+    if (ai && !draft.outline?.trim()) return { label: "先定大纲", section: "outline" };
+    return { label: "写第 1 章", section: "write" };
+  }
+  const lastIndex = chapters.length - 1;
+  const last = chapters[lastIndex];
+  if (!last.content.trim()) return { label: `把第 ${lastIndex + 1} 章写完`, section: "write" };
+  if (ai && !last.memory) return { label: `给第 ${lastIndex + 1} 章补记忆`, section: "write" };
+  if (ai && chapters.length > 1 && !last.review) return { label: `连贯检查第 ${lastIndex + 1} 章`, section: "write" };
+  if (draft.plannedChapters && chapters.length >= draft.plannedChapters) {
+    return { label: "已到计划章数，可以校对或发布", section: "write" };
+  }
+  return { label: `写第 ${chapters.length + 1} 章`, section: "write" };
 }
 
 /** 今日写作：只统计真实数据（今天有编辑的项目、字数与完成的章节数）。 */

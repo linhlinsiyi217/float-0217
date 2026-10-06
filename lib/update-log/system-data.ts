@@ -8,6 +8,40 @@ import type { Release } from "./types";
 
 export const SYSTEM_RELEASES: Release[] = [
   {
+    version: "0.6.1",
+    releaseId: "system-2026-10-06-v061",
+    date: "2026-10-06",
+    name: "书房分享到聊天",
+    summary: "聊天可以收到书房分享的书和帖子卡片；更新应用：书房",
+    entries: [
+      {
+        id: "sys-061-share",
+        category: "feat",
+        app: "聊天 · 应用卡片",
+        title: "聊天能收到书房分享卡片",
+        items: [
+          "书房的书和书友圈帖子可以发给聊天里的好友，以应用卡片显示",
+          "点卡片直接打开书房里对应的书或帖子",
+        ],
+      },
+      {
+        id: "sys-061-studyroom",
+        category: "feat",
+        app: "书房",
+        title: "更新应用：书房",
+        items: [
+          "外观设置全局生效、书架管理、书桌四步开始创作、抽卡重做",
+          "书友圈剧透遮挡、新增四套文风与写作世界书、书城搜索过滤",
+          "详细条目见书房「更新日志」",
+        ],
+      },
+    ],
+    pending: [
+      "本轮只做了代码检查，没有在手机上实测分享卡片和书房各页",
+      "文风与书城联网搜索没有用真实模型、真实网络测试",
+    ],
+  },
+  {
     version: "0.6.0",
     releaseId: "system-2026-10-05-v060",
     date: "2026-10-05",

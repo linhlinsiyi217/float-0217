@@ -99,6 +99,8 @@ export type DrawCandidate = {
   language?: string;
   /** 书架藏书直接带书本对象 */
   book?: Book;
+  /** 存档后的书架藏书 id（存档不带整本书） */
+  shelfBookId?: string;
   importFile?: { url: string; format: "txt" | "epub" };
   externalUrl?: string;
   raw?: BookSearchResult;
@@ -291,6 +293,16 @@ export type SavedDrawCard = {
   savedAt: string;
 };
 
+/**
+ * 最近一次开奖结果：出结果时就存下，返回 / 刷新后直接展示这一份，不会重新开奖。
+ * 书架藏书只存 id（不把整本书塞进存储），读的时候再从书架取。
+ */
+export type DrawLastResult = {
+  categoryId: string;
+  candidates: DrawCandidate[];
+  createdAt: string;
+};
+
 export type DrawState = {
   /** 上次用掉每日免费的日期（YYYY-MM-DD） */
   lastFreeOn: string | null;
@@ -301,6 +313,7 @@ export type DrawState = {
   dryStreak: number;
   pending: PendingDraw | null;
   savedCards: SavedDrawCard[];
+  lastResult: DrawLastResult | null;
 };
 
 export const DEFAULT_DRAW_STATE: DrawState = {
@@ -310,7 +323,11 @@ export const DEFAULT_DRAW_STATE: DrawState = {
   dryStreak: 0,
   pending: null,
   savedCards: [],
+  lastResult: null,
 };
+
+/** 连续几次没抽到新书后，下一次单抽免费（保底，不改概率）。 */
+export const PITY_STREAK = 2;
 
 /** 单抽一次给几张候选：抽到分类后翻开这几张，由用户挑想读的一本。 */
 export const CANDIDATES_PER_DRAW: Record<1 | 5, number> = { 1: 3, 5: 5 };
@@ -327,6 +344,30 @@ function parsePending(value: unknown): PendingDraw | null {
     status: item.status === "charging" ? "charging" : "paid",
     createdAt: typeof item.createdAt === "string" ? item.createdAt : new Date().toISOString(),
   };
+}
+
+function parseLastResult(value: unknown): DrawLastResult | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Partial<DrawLastResult>;
+  if (typeof item.categoryId !== "string" || !Array.isArray(item.candidates) || item.candidates.length === 0) return null;
+  return {
+    categoryId: item.categoryId,
+    candidates: item.candidates.filter((c): c is DrawCandidate => !!c && typeof c === "object" && typeof c.title === "string"),
+    createdAt: typeof item.createdAt === "string" ? item.createdAt : new Date().toISOString(),
+  };
+}
+
+/** 存结果时去掉整本书对象，只留书架 id。 */
+function slimCandidate(item: DrawCandidate): DrawCandidate {
+  const { book, ...rest } = item;
+  return book ? { ...rest, shelfBookId: book.id } : rest;
+}
+
+/** 取回书架藏书：结果里只存了 id，读的时候按 id 从书架找。 */
+export function resolveCandidateBook(item: DrawCandidate): Book | undefined {
+  if (item.book) return item.book;
+  if (!item.shelfBookId) return undefined;
+  return loadBooks().find((book) => book.id === item.shelfBookId);
 }
 
 /** 钱包里是不是已经有这一单的扣费记录（用挂单 id 关联）。 */
@@ -351,6 +392,7 @@ export function loadDrawState(): DrawState {
       dryStreak: typeof parsed.dryStreak === "number" ? parsed.dryStreak : 0,
       pending,
       savedCards: Array.isArray(parsed.savedCards) ? parsed.savedCards : [],
+      lastResult: parseLastResult(parsed.lastResult),
     };
   } catch {
     return { ...DEFAULT_DRAW_STATE };
@@ -442,8 +484,13 @@ export function finishDraw(
 ): DrawState {
   const pending = state.pending;
   if (!pending) return state;
+  const lastResult: DrawLastResult = {
+    categoryId: params.category.id,
+    candidates: params.candidates.map(slimCandidate),
+    createdAt: new Date().toISOString(),
+  };
   return recordDraw(
-    { ...state, pending: null },
+    { ...state, pending: null, lastResult },
     { category: params.category, candidates: params.candidates, count: pending.count, cost: pending.cost, free: pending.free },
   );
 }
@@ -497,12 +544,12 @@ export function recordDraw(
 
 /** 保底：连续两次什么都没抽到新书，下一次单抽免费（不改概率，只是不收费）。 */
 export function pityFreeAvailable(state: DrawState): boolean {
-  return state.dryStreak >= 2;
+  return state.dryStreak >= PITY_STREAK;
 }
 
 export function clearDrawHistory(): DrawState {
   // 只清记录；未出结果的已付挂单要留着，免得白扣
-  const next: DrawState = { ...loadDrawState(), records: [], history: [], dryStreak: 0 };
+  const next: DrawState = { ...loadDrawState(), records: [], history: [], dryStreak: 0, lastResult: null };
   saveDrawState(next);
   return next;
 }

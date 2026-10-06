@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Ban, BookOpen, ChevronLeft, Gift, Heart, MessageSquare, PenLine, Star, Trash2, X } from "lucide-react";
+import { Ban, BookOpen, ChevronDown, ChevronLeft, EyeOff, Gift, Heart, MessageSquare, PenLine, Send, Star, Trash2, X } from "lucide-react";
 
 import type { Book } from "@/lib/reading-types";
 import { avatarDataUrl } from "@/lib/study-room/npc-avatar";
 import { KIND_TEXT, type ForumPost, type ForumState } from "@/lib/study-room/forum";
 import { normalizeForMatch } from "@/lib/study-room/book-source";
 import { loadBooks } from "@/lib/reading-storage";
+import { shareItemFromPost } from "@/lib/study-room/share-to-chat";
+import { ShareSheet } from "./share-sheet";
 
 /** 帖子关联的书：先看 bookId，再按书名匹配书架上的书。 */
 export function findBookForPost(post: ForumPost): Book | undefined {
@@ -20,6 +22,7 @@ export function findBookForPost(post: ForumPost): Book | undefined {
   return loadBooks().find((book) => normalizeForMatch(book.title) === key);
 }
 import { isCollected } from "@/lib/study-room/forum-social";
+import { SpoilerBlock } from "./spoiler";
 
 const ME = "user";
 
@@ -56,6 +59,37 @@ function shortTime(iso: string): string {
   if (date.toDateString() === now.toDateString()) return hm;
   if (date.getFullYear() === now.getFullYear()) return `${date.getMonth() + 1}月${date.getDate()}日 ${hm}`;
   return date.toLocaleDateString("zh-CN");
+}
+
+type ForumComment = ForumPost["comments"][number];
+
+/**
+ * 把评论整理成「一级评论 + 它下面的全部回复」：回复顺着 replyToId 找到最上层那条评论，
+ * 找不到（被删了）就当一级评论。按时间顺序，不改原数据。
+ */
+export function threadComments(comments: ForumComment[]): { root: ForumComment; replies: ForumComment[] }[] {
+  const byId = new Map(comments.map((item) => [item.id, item]));
+  const rootOf = (item: ForumComment) => {
+    let current = item;
+    const seen = new Set<string>();
+    while (current.replyToId && byId.has(current.replyToId) && !seen.has(current.id)) {
+      seen.add(current.id);
+      current = byId.get(current.replyToId)!;
+    }
+    return current;
+  };
+  const threads = new Map<string, { root: ForumComment; replies: ForumComment[] }>();
+  for (const item of comments) {
+    const root = rootOf(item);
+    if (root.id === item.id) {
+      if (!threads.has(item.id)) threads.set(item.id, { root: item, replies: [] });
+    } else {
+      const thread = threads.get(root.id) ?? { root, replies: [] };
+      thread.replies.push(item);
+      threads.set(root.id, thread);
+    }
+  }
+  return [...threads.values()];
 }
 
 export function StudyRoomForumPostCard({
@@ -102,8 +136,9 @@ export function StudyRoomForumPostCard({
             {post.authorId === ME && me ? me.name : post.authorName}
           </button>
           <span className="sr-note-meta">
-            {KIND_TEXT[post.kind]}
-            {post.generated ? " · AI" : ""} · {shortTime(post.createdAt)}
+            {shortTime(post.createdAt)}
+            {post.kind !== "post" ? ` · ${KIND_TEXT[post.kind]}` : ""}
+            {post.generated ? " · AI" : ""}
           </span>
         </span>
         {onBlock && post.authorKind === "npc" && (
@@ -125,47 +160,47 @@ export function StudyRoomForumPostCard({
         </button>
       </header>
 
-      <button type="button" className="sr-forum-open" onClick={onOpen}>
-        {post.title && <span className="sr-forum-title">{post.title}</span>}
-        <span className="sr-forum-body sr-forum-body--clamp" data-spoiler={post.spoiler ? "true" : undefined}>
-          {post.body}
-        </span>
-        {post.images && post.images.length > 0 && (
-          <span className="sr-forum-images">
-            {post.images.slice(0, 3).map((image, index) => (
-              <span key={index} className="sr-forum-image">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={image} alt="" />
-              </span>
-            ))}
-          </span>
-        )}
-      </button>
+      {/* 标题、正文、图片一起遮：剧透帖的标题也不露 */}
+      <SpoilerBlock spoiler={post.spoiler}>
+        <button type="button" className="sr-forum-open" onClick={onOpen}>
+          {post.title && <span className="sr-forum-title">{post.title}</span>}
+          <span className="sr-forum-body sr-forum-body--clamp">{post.body}</span>
+          {post.images && post.images.length > 0 && (
+            <span className="sr-forum-images">
+              {post.images.slice(0, 3).map((image, index) => (
+                <span key={index} className="sr-forum-image">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={image} alt="" />
+                </span>
+              ))}
+            </span>
+          )}
+        </button>
+      </SpoilerBlock>
 
-      {post.spoiler && <span className="sr-forum-spoiler-tag">含剧透</span>}
-
+      {/* 关联的书是次要信息：一行小字，放在正文之后 */}
       {post.bookTitle && (
         <div className="sr-forum-book">
           <BookOpen size={13} strokeWidth={1.8} aria-hidden />
           {book ? (
             <button type="button" className="sr-forum-book-btn" onClick={() => onOpenBook(book)}>
-              在书房读《{post.bookTitle}》
+              《{post.bookTitle}》
             </button>
           ) : (
-            <span className="sr-note-meta">《{post.bookTitle}》· 不在书架上</span>
+            <span className="sr-note-meta">《{post.bookTitle}》</span>
+          )}
+          {post.topics && post.topics.length > 0 && (
+            <span className="sr-note-meta">{post.topics.slice(0, 2).map((topic) => `#${topic}`).join(" ")}</span>
           )}
         </div>
       )}
-
-      {post.topics && post.topics.length > 0 && (
-        <div className="sr-chip-row" style={{ marginTop: 6 }}>
-          {post.topics.map((topic) => (
-            <span key={topic} className="sr-note-tag">#{topic}</span>
-          ))}
+      {!post.bookTitle && post.topics && post.topics.length > 0 && (
+        <div className="sr-forum-book">
+          <span className="sr-note-meta">{post.topics.slice(0, 3).map((topic) => `#${topic}`).join(" ")}</span>
         </div>
       )}
 
-      <footer className="sr-note-foot">
+      <footer className="sr-note-foot sr-forum-foot">
         <span className="sr-note-tools">
           <button type="button" className="sr-note-tool" data-active={liked ? "true" : undefined} title="赞同" onClick={onLike}>
             <Heart size={15} strokeWidth={1.7} fill={liked ? "currentColor" : "none"} />
@@ -191,7 +226,7 @@ type ViewProps = {
   onBack: () => void;
   onOpenBook: (book: Book) => void;
   onLike: () => void;
-  onComment: (body: string, replyToId?: string) => void;
+  onComment: (body: string, replyToId?: string, spoiler?: boolean) => void;
   onCollect: () => void;
   onGift: () => void;
   onOpenAuthor: (npcId: string) => void;
@@ -237,9 +272,20 @@ export function StudyRoomForumPostView({
   variant = "page",
 }: ViewProps) {
   const [comment, setComment] = useState("");
+  const [commentSpoiler, setCommentSpoiler] = useState(false);
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [draft, setDraft] = useState(post.body);
+  // 回复默认折叠：只记录展开了哪几条一级评论
+  const [openThreads, setOpenThreads] = useState<Set<string>>(() => new Set());
+  const toggleThread = (id: string) =>
+    setOpenThreads((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const liked = post.likedBy.includes(ME);
   const collected = isCollected(post);
   const book = post.bookId ? books[post.bookId] : findBookForPost(post);
@@ -250,9 +296,69 @@ export function StudyRoomForumPostView({
 
   const send = () => {
     if (!comment.trim()) return;
-    onComment(comment, replyTo ?? undefined);
+    // 回复某条评论后，把那条所在的楼展开，方便看到自己刚发的
+    if (replyTo) {
+      const root = threadComments(post.comments).find(
+        (thread) => thread.root.id === replyTo || thread.replies.some((item) => item.id === replyTo),
+      );
+      if (root) setOpenThreads((prev) => new Set(prev).add(root.root.id));
+    }
+    onComment(comment, replyTo ?? undefined, commentSpoiler);
     setComment("");
+    setCommentSpoiler(false);
     setReplyTo(null);
+  };
+
+  const renderComment = (item: ForumComment) => {
+    const target = item.replyToId ? post.comments.find((entry) => entry.id === item.replyToId) : undefined;
+    const asking = pendingReplyIds?.has(item.id) ?? false;
+    return (
+      <>
+        <div className="sr-forum-comment-head">
+          <button
+            type="button"
+            className="sr-forum-comment-author sr-forum-name--link"
+            onClick={() => item.authorKind === "npc" && onOpenAuthor(item.authorId)}
+          >
+            {nameOf(item.authorId, item.authorName)}
+          </button>
+          {target && <span className="sr-note-meta">回复 {nameOf(target.authorId, target.authorName)}</span>}
+          <span className="sr-note-meta" style={{ marginLeft: "auto" }}>
+            {new Date(item.createdAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        </div>
+        <SpoilerBlock spoiler={item.spoiler} compact>
+          <p className="sr-forum-comment-body">{item.body}</p>
+        </SpoilerBlock>
+        <div className="sr-forum-comment-tools">
+          <button type="button" className="sr-forum-reply" onClick={() => setReplyTo(item.id)}>
+            回复
+          </button>
+          {onAskReply && (
+            <button
+              type="button"
+              className="sr-forum-reply"
+              onClick={() => onAskReply(item.id)}
+              disabled={asking}
+              aria-busy={asking || undefined}
+            >
+              {asking ? "书友回复中…" : "请书友回复这条"}
+            </button>
+          )}
+          {item.authorId === ME && (
+            <button
+              type="button"
+              className="sr-forum-reply"
+              onClick={() => {
+                if (confirm("删除这条评论？")) onDeleteComment(item.id);
+              }}
+            >
+              删除
+            </button>
+          )}
+        </div>
+      </>
+    );
   };
 
   return (
@@ -314,6 +420,8 @@ export function StudyRoomForumPostView({
       </div>
 
       <div className="sr-forum-sub-body">
+        {/* 帖子上半部：作者、正文、操作。浮层里它单独滚，评论区另外滚，互不带动 */}
+        <div className="sr-post-top">
         <div className="sr-forum-author">
           <span className="sr-forum-avatar" aria-hidden>
             {avatar ? (
@@ -337,8 +445,6 @@ export function StudyRoomForumPostView({
           </span>
         </div>
 
-        {post.title && <h2 className="sr-forum-detail-title">{post.title}</h2>}
-
         {editing ? (
           <>
             <textarea className="sr-css-editor" rows={7} value={draft} onChange={(event) => setDraft(event.target.value)} aria-label="帖子正文" />
@@ -361,20 +467,20 @@ export function StudyRoomForumPostView({
             </div>
           </>
         ) : (
-          <p className="sr-forum-body sr-forum-detail-body" data-spoiler={post.spoiler ? "true" : undefined}>
-            {post.body}
-          </p>
-        )}
-
-        {post.images && post.images.length > 0 && (
-          <div className="sr-forum-images">
-            {post.images.map((image, index) => (
-              <span key={index} className="sr-forum-image">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={image} alt="" />
-              </span>
-            ))}
-          </div>
+          <SpoilerBlock spoiler={post.spoiler}>
+            {post.title && <h2 className="sr-forum-detail-title">{post.title}</h2>}
+            <p className="sr-forum-body sr-forum-detail-body">{post.body}</p>
+            {post.images && post.images.length > 0 && (
+              <div className="sr-forum-images">
+                {post.images.map((image, index) => (
+                  <span key={index} className="sr-forum-image">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={image} alt="" />
+                  </span>
+                ))}
+              </div>
+            )}
+          </SpoilerBlock>
         )}
 
         {post.bookTitle && (
@@ -403,65 +509,53 @@ export function StudyRoomForumPostView({
             <Gift size={16} strokeWidth={1.8} />
             送礼物
           </button>
+          <button type="button" className="sr-forum-act" onClick={() => setSharing(true)}>
+            <Send size={16} strokeWidth={1.8} />
+            分享
+          </button>
+        </div>
+        {sharing && <ShareSheet item={shareItemFromPost(post)} onClose={() => setSharing(false)} />}
+
         </div>
 
+        <div className="sr-post-replies">
         <div className="sr-forum-detail-label">评论 {post.comments.length > 0 ? post.comments.length : ""}</div>
         {replyPanel}
         {post.comments.length === 0 ? (
           <p className="sr-note-meta">还没有评论。说点什么，或点「生成评论」请书友来聊。</p>
         ) : (
           <ul className="sr-forum-comments">
-            {post.comments.map((item) => {
-              const target = item.replyToId ? post.comments.find((entry) => entry.id === item.replyToId) : undefined;
-              const asking = pendingReplyIds?.has(item.id) ?? false;
+            {threadComments(post.comments).map(({ root, replies }) => {
+              const open = openThreads.has(root.id);
               return (
-                <li key={item.id}>
-                  <div className="sr-forum-comment-head">
-                    <button
-                      type="button"
-                      className="sr-forum-comment-author sr-forum-name--link"
-                      onClick={() => item.authorKind === "npc" && onOpenAuthor(item.authorId)}
-                    >
-                      {nameOf(item.authorId, item.authorName)}
-                    </button>
-                    {target && <span className="sr-note-meta">回复 {nameOf(target.authorId, target.authorName)}</span>}
-                    <span className="sr-note-meta" style={{ marginLeft: "auto" }}>
-                      {new Date(item.createdAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  </div>
-                  <p className="sr-forum-comment-body">{item.body}</p>
-                  <div className="sr-forum-comment-tools">
-                    <button type="button" className="sr-forum-reply" onClick={() => setReplyTo(item.id)}>
-                      回复
-                    </button>
-                    {onAskReply && (
+                <li key={root.id}>
+                  {renderComment(root)}
+                  {replies.length > 0 && (
+                    <>
                       <button
                         type="button"
-                        className="sr-forum-reply"
-                        onClick={() => onAskReply(item.id)}
-                        disabled={asking}
-                        aria-busy={asking || undefined}
+                        className="sr-forum-thread-toggle"
+                        aria-expanded={open}
+                        onClick={() => toggleThread(root.id)}
                       >
-                        {asking ? "书友回复中…" : "请书友回复这条"}
+                        <ChevronDown size={14} strokeWidth={1.8} aria-hidden data-open={open || undefined} />
+                        {open ? "收起回复" : `展开回复 ${replies.length}`}
                       </button>
-                    )}
-                    {item.authorId === ME && (
-                      <button
-                        type="button"
-                        className="sr-forum-reply"
-                        onClick={() => {
-                          if (confirm("删除这条评论？")) onDeleteComment(item.id);
-                        }}
-                      >
-                        删除
-                      </button>
-                    )}
-                  </div>
+                      {open && (
+                        <ul className="sr-forum-thread">
+                          {replies.map((item) => (
+                            <li key={item.id}>{renderComment(item)}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
+                  )}
                 </li>
               );
             })}
           </ul>
         )}
+        </div>
       </div>
 
       <form
@@ -480,6 +574,16 @@ export function StudyRoomForumPostView({
           </div>
         )}
         <div className="sr-forum-comment-box">
+          <button
+            type="button"
+            className="sr-forum-comment-spoiler"
+            aria-pressed={commentSpoiler}
+            aria-label={commentSpoiler ? "已标记含剧透，点一下取消" : "标记这条评论含剧透"}
+            title="含剧透"
+            onClick={() => setCommentSpoiler((value) => !value)}
+          >
+            <EyeOff size={17} strokeWidth={1.8} aria-hidden />
+          </button>
           <input
             className="sr-appear-input"
             value={comment}
