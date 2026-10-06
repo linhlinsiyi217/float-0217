@@ -12,6 +12,7 @@ import type { Book, BookChapter } from "@/lib/reading-types";
 import type { ApiConfig } from "@/lib/settings-types";
 import { formatCharacterRelationsForPrompt } from "@/lib/character-world-storage";
 import { loadApiConfigs, loadBindingConfig, loadWorldBooks, resolveBinding } from "@/lib/settings-storage";
+import { STUDYROOM_WRITING_SCOPE, composeWritingWorldbook } from "@/lib/study-room/writing-worldbook";
 
 const DRAFTS_KEY = "ai_phone_studyroom_creative_drafts_v1";
 registerKvMigration(DRAFTS_KEY);
@@ -383,9 +384,15 @@ function recentContext(draft: CreativeDraft): string {
     .join("\n\n");
 }
 
+/** 书房写作规范（只给书房写书用）：用设定与前文匹配关键词，按预算挑条目。 */
+function writingNorms(draft: CreativeDraft): string {
+  return composeWritingWorldbook(STUDYROOM_WRITING_SCOPE, `${draftBrief(draft)}\n${recentContext(draft)}`).block;
+}
+
 export function buildOutlinePrompt(draft: CreativeDraft): string {
   return [
     identityInstruction(draft, "写作助手"),
+    writingNorms(draft),
     "",
     "请根据下面的设定，给出这本书的大纲：分 5–8 幕，每幕一到两句写清推进；再列 3–5 个主要人物，写清他们是谁、想要什么。",
     "只输出大纲本身，不要客套话。",
@@ -415,6 +422,7 @@ export function buildChapterBrief(draft: CreativeDraft, chapterNumber: number): 
 export function buildChapterPrompt(draft: CreativeDraft, chapterNumber: number): string {
   return [
     identityInstruction(draft, "写作助手"),
+    writingNorms(draft),
     "",
     `请写第 ${chapterNumber} 章的正文。`,
     "要求：直接开始写正文，第一行用「第N章 标题」格式给出本章标题，之后是正文；不要写解说、不要总结自己的过程。",

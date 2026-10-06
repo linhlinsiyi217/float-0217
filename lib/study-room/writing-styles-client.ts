@@ -22,6 +22,8 @@ export type StyleMeta = {
   name: string;
   summary: string;
   tags: string[];
+  /** 出处短语，如「仪仪原创文风」「改编自《…》」 */
+  origin?: string;
 };
 
 /** 用户自建/导入的文风（只在本机使用，默认私人）。 */

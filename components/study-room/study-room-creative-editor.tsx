@@ -794,8 +794,8 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
 
               <div className="sr-section-label" style={{ marginTop: 12 }}>文风</div>
               <div className="sr-note-meta" style={{ marginBottom: 6, lineHeight: 1.7 }}>
-                内置四套为仪仪原创文风，完整规则在服务端组词、不会下发到浏览器；自建文风只存在本机。
-                文风只管叙述与句法，不覆盖人物设定。
+                内置文风的完整规则在服务端组词、不会下发到浏览器，每套都标了出处；自建文风只存在本机。
+                文风只管叙述与句法，不覆盖人物设定和已写剧情。另有一份书房写作规范（去套话、人物反应等），只在书房写书时自动带上，聊天和书友圈不用。
               </div>
               {builtinStyles.length === 0 ? (
                 <p className="sr-note-meta">正在读取内置文风…</p>
@@ -812,7 +812,7 @@ export function StudyRoomCreativeEditor({ draftId, onBack, onOpenBook }: StudyRo
                           aria-pressed={active}
                         >
                           <span className="sr-style-name">{style.name}</span>
-                          <span className="sr-style-origin">仪仪原创文风</span>
+                          <span className="sr-style-origin">{style.origin ?? "仪仪原创文风"}</span>
                           <span className="sr-note-meta">{style.summary}</span>
                           <span className="sr-chip-row" style={{ marginTop: 4 }}>
                             {style.tags.map((tag) => (
