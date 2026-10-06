@@ -1,36 +1,19 @@
 // lib/study-room/share-reader.ts — 角色按需读取聊天里分享过的书房内容（内部工具「读取书房分享」）。
 //
 // 只读真实存储：书从书房书库按 bookId 取章节，帖子从书友圈按 postId 取。
-// 权限：只能读当前聊天里确实分享过的书/帖子；剧透帖只有分享时用户勾选了「附上剧透正文」才给正文。
+// 权限（规则在 share-access.ts，与本地资料库共用）：只能读当前聊天里确实分享过的书/帖子；
+// 剧透帖只有分享时用户勾选了「附上剧透正文」才给正文。
 // 长书按章、按段读取，一次不超过 PART_SIZE 字，不把整本书塞进上下文。
 
-import { loadChatMessages } from "@/lib/chat-storage";
 import { hydrateReadingStorage, loadBooks, loadChapters, loadProgress } from "@/lib/reading-storage";
 import { loadForum } from "./forum";
-import { readStudyRoomSharePayload, studyRoomTargetOfMessage, STUDYROOM_APP_ID } from "./share-card";
+import { findShareInSession } from "./share-access";
 
 const PART_SIZE = 2500;
 const POST_MAX = 6000;
 const DIRECTORY_LIMIT = 200;
 
 export type ShareReadResult = { ok: true; text: string } | { ok: false; error: string };
-
-type ShareRecord = { found: boolean; spoilerAllowed: boolean };
-
-function findShareInSession(sessionId: string | undefined, kind: "book" | "post", id: string): ShareRecord {
-  if (!sessionId) return { found: false, spoilerAllowed: false };
-  let found = false;
-  let spoilerAllowed = false;
-  for (const message of loadChatMessages(sessionId)) {
-    if (message.mediaType !== "app_card" || message.mediaData?.appId !== STUDYROOM_APP_ID) continue;
-    const target = studyRoomTargetOfMessage(message.mediaData);
-    if (!target || target.kind !== kind) continue;
-    if ((target.kind === "book" ? target.bookId : target.postId) !== id) continue;
-    found = true;
-    if (readStudyRoomSharePayload(message.mediaData)?.spoilerAllowed === true) spoilerAllowed = true;
-  }
-  return { found, spoilerAllowed };
-}
 
 function positiveInt(value: unknown): number | undefined {
   const n = typeof value === "string" ? Number(value.trim()) : typeof value === "number" ? value : NaN;

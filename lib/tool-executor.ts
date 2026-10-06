@@ -788,7 +788,7 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
     if (isMusicControlToolName(call.name)) return executeMusicControlTool(call, context);
     if (isCalendarToolName(call.name)) return executeCalendarTool(call, context);
     if (call.name === STUDYROOM_READ_TOOL_NAME) return executeStudyRoomShareReadTool(call, context);
-    if (isLocalDataToolName(call.name)) return executeLocalDataTool(call);
+    if (isLocalDataToolName(call.name)) return executeLocalDataTool(call, context);
     if (isToolboxManagementToolName(call.name)) return executeToolboxManagementTool(call);
     if (call.name === "发送文件") return executeSendFileTool(call);
     if (call.name === "角色电脑") return executeAgentComputerTool(call, context);
@@ -1114,7 +1114,7 @@ function stringArrayArg(args: Record<string, unknown>, key: string): string[] | 
     return items.length > 0 ? items : undefined;
 }
 
-async function executeLocalDataTool(call: ToolCall): Promise<ToolResult> {
+async function executeLocalDataTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {
     const capability = getInternalCapability(LOCAL_DATA_LIBRARY_CAPABILITY_ID);
     if (!capability || !capability.enabled || capability.mode === "off") {
         return {
@@ -1126,15 +1126,20 @@ async function executeLocalDataTool(call: ToolCall): Promise<ToolResult> {
     }
 
     try {
+        // 书房正文与剧透走和「读取书房分享」同一套授权（share-access.ts），资料库其他内容不受影响
+        const { studyRoomLocalDataGuard } = await import("./study-room/share-access");
+        const guard = studyRoomLocalDataGuard(context?.sessionId);
         let data: unknown;
         if (call.name === "列出资料目录") {
             data = await listLocalDataDirectory({
+                guard,
                 path: optionalStringArg(call.args, "path"),
                 limit: Number(call.args.limit),
                 offset: Number(call.args.offset),
             });
         } else if (call.name === "读取资料文件") {
             data = await readLocalDataFile({
+                guard,
                 path: requiredStringArg(call.args, "path"),
                 limit: Number(call.args.limit),
                 offset: Number(call.args.offset),
@@ -1143,11 +1148,13 @@ async function executeLocalDataTool(call: ToolCall): Promise<ToolResult> {
             });
         } else if (call.name === "查看资料字段") {
             data = await inspectLocalDataFields({
+                guard,
                 path: requiredStringArg(call.args, "path"),
                 sample: Number(call.args.sample),
             });
         } else if (call.name === "搜索资料记录") {
             data = await searchLocalDataRecords({
+                guard,
                 path: optionalStringArg(call.args, "path"),
                 query: typeof call.args.query === "string" ? call.args.query : "",
                 limit: Number(call.args.limit),
@@ -1157,6 +1164,7 @@ async function executeLocalDataTool(call: ToolCall): Promise<ToolResult> {
             });
         } else {
             data = await readLocalDataRecord({
+                guard,
                 path: requiredStringArg(call.args, "path"),
                 key: requiredStringArg(call.args, "key"),
                 fields: stringArrayArg(call.args, "fields"),
