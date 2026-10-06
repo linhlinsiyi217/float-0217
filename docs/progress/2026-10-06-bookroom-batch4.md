@@ -17,20 +17,18 @@
 
 ### 2. 状态
 - 当前分支 `feat/bookroom-batch4`（工作树 `C:\Users\Administrator\Desktop\float-0217-b4`），已与 main 同步。
-- main 最新提交：`8108074`（只改进度文档）；最近一次产品发布提交：`17b5d39`（Vercel Production 成功）。
+- 最近一次产品发布：`d8e7140` + 文档 `a626e16`，由维护者推到 main，Vercel Production 成功（见「第 3/4 组发布结果」）。
   新对话开工先 `git fetch` 查真实状态，不要按这里的提交号重置。
 - 正式网址：https://float-0217.vercel.app （核对用 `/api/release` 看部署提交与发布标识）。
-- 已线上的发布标识：总日志 0.6.2 `system-2026-10-06-v062`、书房 0.7.1 `studyroom-2026-10-06-v071`。
-- 本地已提交、**尚未推送上线**：`d8e7140`，标识总日志 0.6.3 `system-2026-10-06-v063`、书房 0.7.2 `studyroom-2026-10-06-v072`。
-  推送到 main 时被 Claude Code 权限拦截（没有绕过）。维护者放行后：`git fetch` → 确认 origin/main 仍是 d8e7140 的祖先 →
-  `git push origin HEAD:main` → 查 Vercel Production 与 `/api/release`。如果 main 期间有新发布，需重新换标识。
+- 已线上的发布标识：总日志 0.6.3 `system-2026-10-06-v063`、书房 0.7.2 `studyroom-2026-10-06-v072`。
+  下次发布必须换新标识（0.6.4 / 0.7.3 或更高）。
 
 | 组 | 内容（原文章节） | 状态 |
 |---|---|---|
 | 1 | 联网搜书 + 完整内置书库（一、二） | 已完成并发布；手机未实测；Google Books 缺 `GOOGLE_BOOKS_API_KEY` |
 | 2 | 书房内容分享到聊天：卡片 + AI 读取（三） | 未开始 |
-| 3 | 头像状态气泡 + 书友圈发布按钮越界（五、六） | 代码已完成（d8e7140），**未推送**（推送被权限拦截）；手机未实测 |
-| 4 | 主题纯白 + 自有删除/排序面板 + 书友圈布局重做（四、七、八） | 书友圈部分 + 灰底迁移已完成（d8e7140），**未推送**；其他文件的 confirm() 与各页底色审计未做 |
+| 3 | 头像状态气泡 + 书友圈发布按钮越界（五、六） | 已发布（d8e7140，Production a626e16）；手机未实测 |
+| 4 | 主题纯白 + 自有删除/排序面板 + 书友圈布局重做（四、七、八） | 书友圈部分 + 灰底迁移已发布（同上）；其他文件的 confirm() 与各页底色审计未做 |
 | 5 | 文风接入核查（九） | 未开始 |
 | 收尾 | 每组上线按第十节 + CLAUDE.md 第四节 | 每组做 |
 
@@ -193,7 +191,7 @@
   需要维护者在 Vercel 环境变量里加这个密钥。
 - 没有实测（仍在 pending）：手机上的弹窗弹出/确认/重弹、书城搜索与内置书阅读观感。
 
-## 第 3/4 组记录（2026-10-06，本地提交 d8e7140，未上线）
+## 第 3/4 组记录（2026-10-06，d8e7140，已上线）
 
 已修：
 - 主题：`lib/study-room/appearance.ts` `sanitizeState()` 把存档里的旧默认灰 `#f1f2f6` 迁回 `#ffffff`；自选色/背景图/夜间不动。
@@ -210,15 +208,27 @@
 `npm run check:updates` 通过（已读模拟 9/9）。没有跑本地生产构建（之前内存不足）；没有在手机或浏览器里看过真实效果。
 
 剩余待办：
-- 推送上线并在正式域名核对（见上面「状态」）。
 - 第 4 组剩余：书房其他文件仍有浏览器 `confirm()`（backup、creative-editor、creative-panel、draw、gifts、messages、notes、npc-panel、reading-memory）；
   书城/书架/书桌/抽卡等各页底色真机审计。
 - 第 3 组剩余：360/390/430 宽实测气泡（无内容/短句/长句/表情/长名字）与发布按钮、键盘弹出。
 - 第 2 组分享、第 5 组文风：未开始。
 
+## 第 3/4 组发布结果（2026-10-06）
+
+- 推送：维护者自己把 main 推到 `a626e16`（含产品提交 d8e7140）；Claude 的推送曾被权限拦截，没有绕过。
+- Vercel Production：提交 a626e16 状态 success（Deployment has completed），Production 部署 sha a626e16。
+- `/api/release`（正式域名）：commit `a626e16af27e…`、env production；总日志 0.6.3 `system-2026-10-06-v063`，
+  includes `studyroom-2026-10-06-v072`，涉及「书房」；书房 0.7.2 `studyroom-2026-10-06-v072`。全部符合。
+- 正式站 CSS 已含本次样式：`sr-pf-avatar-wrap`、气泡蒙版 `100% * 284 / 226`、`sr-pf-status-add`、
+  `sr-fpost-acts`、`sr-confirm-mask`、`sr-pop-menu`、`sr-forum-publish-text`、浮层评论区 `clamp(150px…`。
+- 未核对完：书房组件所在的 JS 分块（灰底迁移、确认弹窗文案、「设置状态」）没有在正式站资源里定位到；
+  批量下载全部分块被 Claude Code 权限拦截，没有绕过。`/api/release` 与 CSS 都是新版，JS 来自同一次构建，大概率已是新版，
+  但没直接看到，需手机打开书房确认。
+- 没有在手机上实测（仍在 pending）：气泡位置、小＋、书友圈列表与菜单、确认弹窗、白底、更新弹窗。
+
 ## 下一步
 
-先处理 d8e7140 的推送上线（需维护者放行推送权限），再从「第 2 组：书房内容分享到聊天」开始。第 2 组先读这些文件：
+从「第 2 组：书房内容分享到聊天」开始（等维护者说开始）。第 2 组先读这些文件：
 - lib/study-room/share-to-chat.ts（结构化分享消息）
 - components/study-room/share-sheet.tsx（发送前预览、取消、防重复）
 - components/study-room/study-room-app.tsx（从卡片回跳打开书/帖子）
