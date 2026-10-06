@@ -3670,134 +3670,244 @@ html[data-theme="dark"] .sr3-tag { background: #34322e; color: #cfc8bb; }
   background: var(--c-input);
 }
 
-/* ── 抽一本：钱包条、卡组、分类揭晓、翻牌 ── */
-.sr-draw-wallet {
+/* ── 抽一本 V3：纯白舞台、有体积的书形卡、结果面板 ──
+ * 一屏放下：顶部余额与规则 → 中间舞台（flex 1）→ 底部单抽 / 五连与费用。
+ * 舞台底色与页面一致是纯白，只用少量冷蓝做聚能与揭晓的强调；没有深色大矩形、没有条纹牌背。 */
+.sr-gacha .sr-gacha-body {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 12px;
-  padding: 10px 12px;
-  border-radius: var(--sr-card-radius, 14px);
-  background: var(--c-input);
-  font-size: 13px;
-  color: var(--c-text-title);
-  margin-bottom: 10px;
-}
-.sr-draw-wallet > span:first-child { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
-
-.sr-draw-badge[data-kind="duplicate"] {
-  background: color-mix(in srgb, var(--c-text) 10%, transparent);
-  border-color: transparent;
-  color: var(--c-text);
-}
-
-/* 抽卡舞台：局部深色，只在这一块；日常界面保持纯白 */
-.sr-draw-stage {
-  position: relative;
-  min-height: 300px;
-  border-radius: 20px;
-  padding: 22px 12px 54px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 16px calc(12px + env(safe-area-inset-bottom, 0px));
   overflow: hidden;
-  isolation: isolate;
+  background: #fff;
+}
+.sr-gacha-top { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.sr-gacha-wallet {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  background: var(--c-input, #f3f5f8);
+  color: var(--c-text-title, #1d1d1f);
+  font-size: 13px;
+}
+.sr-gacha-wallet-num { font-weight: 600; font-variant-numeric: tabular-nums; }
+.sr-gacha-wallet-unit { color: var(--c-text-sub, #8a919c); }
+.sr-gacha-step { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--c-text-sub, #8a919c); }
+.sr-gacha-last {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--c-text-title, #1d1d1f);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+.sr-gacha-notice { min-height: 18px; margin: 0; font-size: 12.5px; line-height: 1.45; color: #3f5f96; }
+
+.sr-gacha-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 240px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(120% 80% at 50% 38%, #26304a 0%, #151a28 58%, #0d111a 100%);
-  color: #eef2fa;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 10px 26px rgba(14, 18, 28, 0.18);
+  isolation: isolate;
+  overflow: hidden;
+  background: #fff;
+  color: var(--c-text-title, #1d1d1f);
 }
-.sr-draw-stage[data-rarity="shimmer"] { background: radial-gradient(120% 80% at 50% 38%, #2a3657 0%, #161c2c 58%, #0d111a 100%); }
-.sr-draw-stage[data-rarity="burst"] { background: radial-gradient(120% 80% at 50% 38%, #34406a 0%, #181f33 58%, #0d111a 100%); }
-
-/* 蓄力：旋转光环 */
-.sr-draw-aura {
+/* 地面：一道极浅的冷色椭圆阴影，让书「放」在台面上 */
+.sr-gacha-floor {
   position: absolute;
-  left: 50%;
-  top: 46%;
-  width: 190px;
-  height: 190px;
-  margin: -95px 0 0 -95px;
+  left: 12%;
+  right: 12%;
+  bottom: 14%;
+  height: 26px;
   border-radius: 50%;
-  background: conic-gradient(from 0deg, transparent 0 12%, rgba(176, 200, 255, 0.75) 22%, transparent 34% 52%, rgba(255, 255, 255, 0.6) 64%, transparent 76% 100%);
-  -webkit-mask: radial-gradient(circle, transparent 56%, #000 58%, #000 66%, transparent 68%);
-  mask: radial-gradient(circle, transparent 56%, #000 58%, #000 66%, transparent 68%);
-  opacity: 0;
-  transform: scale(0.6);
+  background: radial-gradient(closest-side, rgba(40, 60, 100, 0.12), transparent);
   pointer-events: none;
   z-index: 0;
 }
-.sr-draw-stage[data-phase="charge"] .sr-draw-aura {
+
+/* 聚能环：冷蓝细环向内收 */
+.sr-gacha-aura {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 220px;
+  height: 220px;
+  margin: -110px 0 0 -110px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0 14%, rgba(76, 122, 204, 0.55) 24%, transparent 36% 54%, rgba(150, 182, 236, 0.6) 66%, transparent 78% 100%);
+  -webkit-mask: radial-gradient(circle, transparent 60%, #000 61%, #000 64%, transparent 65%);
+  mask: radial-gradient(circle, transparent 60%, #000 61%, #000 64%, transparent 65%);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.sr-gacha-stage[data-phase="charge"] .sr-gacha-aura {
   opacity: 1;
   animation: sr-aura-spin 1.1s linear infinite, sr-aura-gather 1.1s cubic-bezier(0.22, 0.9, 0.32, 1) both;
 }
-.sr-draw-stage[data-phase="burst"] .sr-draw-aura { animation: sr-aura-out 0.52s ease-out both; }
+.sr-gacha-stage[data-phase="burst"] .sr-gacha-aura { animation: sr-aura-out 0.48s ease-out both; }
 @keyframes sr-aura-spin { to { rotate: 360deg; } }
 @keyframes sr-aura-gather {
-  from { transform: scale(1.35); opacity: 0; }
-  to { transform: scale(0.72); opacity: 1; }
+  from { transform: scale(1.3); opacity: 0; }
+  to { transform: scale(0.62); opacity: 1; }
 }
 @keyframes sr-aura-out {
-  from { transform: scale(0.72); opacity: 1; }
-  to { transform: scale(1.9); opacity: 0; }
+  from { transform: scale(0.62); opacity: 1; }
+  to { transform: scale(1.7); opacity: 0; }
 }
 
-/* 爆发：中心粒子向外散开（有节制，不频闪） */
-.sr-draw-particles { position: absolute; left: 50%; top: 46%; width: 0; height: 0; pointer-events: none; z-index: 1; }
-.sr-draw-particles i {
+/* 黑洞核心：聚能时由点长成深色小核，爆发时坍缩成一道冷光 */
+.sr-gacha-core {
   position: absolute;
-  width: 5px;
-  height: 5px;
-  margin: -2.5px;
+  left: 50%;
+  top: 46%;
+  width: 64px;
+  height: 64px;
+  margin: -32px 0 0 -32px;
   border-radius: 50%;
-  background: #dfe8ff;
-  box-shadow: 0 0 8px rgba(190, 210, 255, 0.9);
+  background: radial-gradient(circle, #10141c 0 46%, #24324d 58%, rgba(76, 122, 204, 0.35) 70%, transparent 74%);
+  box-shadow: 0 0 0 1px rgba(76, 122, 204, 0.18), 0 0 26px rgba(76, 122, 204, 0.28);
+  opacity: 0;
+  transform: scale(0.1);
+  pointer-events: none;
+  z-index: 1;
+}
+.sr-gacha-stage[data-phase="charge"] .sr-gacha-core { animation: sr-core-grow 1.1s cubic-bezier(0.3, 0.7, 0.3, 1) both; }
+.sr-gacha-stage[data-phase="burst"] .sr-gacha-core { animation: sr-core-collapse 0.48s cubic-bezier(0.5, 0, 0.3, 1) both; }
+@keyframes sr-core-grow {
+  from { opacity: 0; transform: scale(0.1); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes sr-core-collapse {
+  0% { opacity: 1; transform: scale(1); }
+  45% { opacity: 1; transform: scale(0.18); box-shadow: 0 0 0 1px rgba(76, 122, 204, 0.4), 0 0 40px rgba(120, 160, 230, 0.7); }
+  100% { opacity: 0; transform: scale(0.05); }
+}
+
+/* 爆发粒子：冷蓝，数量随新书多少，不频闪 */
+.sr-gacha-particles { position: absolute; left: 50%; top: 46%; width: 0; height: 0; pointer-events: none; z-index: 1; }
+.sr-gacha-particles i {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  margin: -2px;
+  border-radius: 50%;
+  background: #6f95d8;
   opacity: 0;
 }
-.sr-draw-stage[data-phase="burst"] .sr-draw-particles i {
-  animation: sr-particle 0.52s cubic-bezier(0.22, 0.9, 0.32, 1) var(--d, 0ms) both;
+.sr-gacha-stage[data-phase="burst"] .sr-gacha-particles i {
+  animation: sr-particle 0.5s cubic-bezier(0.22, 0.9, 0.32, 1) var(--d, 0ms) both;
 }
-.sr-draw-stage[data-rarity="calm"] .sr-draw-particles i:nth-child(even) { display: none; }
+.sr-gacha-stage[data-rarity="calm"] .sr-gacha-particles i:nth-child(even) { display: none; }
+.sr-gacha-stage[data-step="category"] .sr-gacha-particles i:nth-child(3n) { display: none; }
 @keyframes sr-particle {
-  from { opacity: 1; transform: rotate(var(--a)) translateX(0) scale(1); }
-  to { opacity: 0; transform: rotate(var(--a)) translateX(118px) scale(0.4); }
+  from { opacity: 0.9; transform: rotate(var(--a)) translateX(0) scale(1); }
+  to { opacity: 0; transform: rotate(var(--a)) translateX(112px) scale(0.4); }
 }
 
-.sr-draw-charge-text { position: absolute; bottom: 18px; left: 0; right: 0; text-align: center; font-size: 12.5px; color: rgba(230, 236, 248, 0.72); }
+.sr-gacha-charge-text { position: absolute; bottom: 6%; left: 0; right: 0; text-align: center; font-size: 12.5px; color: var(--c-text-sub, #8a919c); }
 
-/* 待抽：一叠卡背 */
-.sr-draw-idle { position: relative; z-index: 2; display: flex; align-items: center; justify-content: center; min-height: 220px; }
-.sr-draw-pile { position: relative; width: 132px; height: 194px; }
-.sr-draw-pile-card {
+/* 书形卡：书脊 + 书页厚度（叠层阴影）+ 正面封面；背面是统一书封，不用条纹 */
+.sr-gbook {
+  position: relative;
+  display: block;
+  border-radius: 4px 10px 10px 4px;
+  box-shadow:
+    1px 1px 0 #f4f5f7,
+    2px 2px 0 #e6e8ec,
+    3px 3px 0 #f4f5f7,
+    4px 4px 0 #dfe2e7,
+    5px 6px 14px rgba(28, 38, 60, 0.18);
+}
+.sr-gbook::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 9px;
+  border-radius: 4px 0 0 4px;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.22), rgba(255, 255, 255, 0.12) 55%, rgba(0, 0, 0, 0.08));
+  pointer-events: none;
+  z-index: 2;
+}
+.sr-gbook--back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(165deg, color-mix(in srgb, var(--accent, #5c6b8a) 46%, #37404f), color-mix(in srgb, var(--accent, #5c6b8a) 22%, #232a36));
+  color: rgba(244, 247, 252, 0.9);
+}
+.sr-gbook--back::after {
+  content: "";
+  position: absolute;
+  inset: 8px 8px 8px 16px;
+  border: 1px solid rgba(240, 245, 255, 0.28);
+  border-radius: 3px 6px 6px 3px;
+  pointer-events: none;
+}
+.sr-gbook-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  margin-left: 6px;
+  border-radius: 50%;
+  border: 1px solid rgba(240, 245, 255, 0.5);
+  font-size: 16px;
+  font-weight: 600;
+}
+.sr-gbook--front { background: #fff; color: #1c1f24; overflow: hidden; }
+
+/* 待抽：一组扇形摆开的书 */
+.sr-gacha-idle { position: relative; z-index: 2; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+.sr-gacha-fan { position: relative; width: 116px; height: 168px; }
+.sr-gacha-fan .sr-gbook {
   position: absolute;
   inset: 0;
-  border-radius: 14px;
-  background:
-    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.05) 0 6px, transparent 6px 12px),
-    linear-gradient(160deg, color-mix(in srgb, var(--accent) 70%, #1b2236), #121725);
-  border: 1px solid rgba(220, 230, 255, 0.28);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
-  transform: translate(calc(var(--i) * 3px), calc(var(--i) * -3px)) rotate(calc((var(--i) - 2) * 2.5deg));
+  transform-origin: 50% 110%;
+  transform: rotate(calc((var(--i) - 2) * 9deg)) translateY(calc(var(--i) * -1px));
+  transition: transform 0.4s cubic-bezier(0.22, 0.9, 0.32, 1);
 }
+.sr-gacha-stage[data-phase="idle"] .sr-gacha-fan .sr-gbook { animation: sr-fan-in 0.5s cubic-bezier(0.22, 0.9, 0.32, 1) calc(var(--i) * 50ms) both; }
+@keyframes sr-fan-in {
+  from { opacity: 0; transform: rotate(0deg) translateY(10px); }
+}
+.sr-gacha-solo { width: 140px; height: 196px; }
 
 /* 卡位：横向排开，放不下就横滑 */
-.sr-draw-slots {
+.sr-gacha-slots {
   position: relative;
   z-index: 2;
   display: flex;
-  gap: 12px;
+  gap: 14px;
   width: 100%;
-  padding: 6px 8px 10px;
+  padding: 8px 10px 14px;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   justify-content: safe center;
   scrollbar-width: none;
 }
-.sr-draw-slots::-webkit-scrollbar { display: none; }
+.sr-gacha-slots::-webkit-scrollbar { display: none; }
 
 .sr-flip {
   flex: 0 0 auto;
-  width: 124px;
-  aspect-ratio: 0.68;
+  width: 112px;
+  aspect-ratio: 0.7;
   padding: 0;
   border: 0;
   background: none;
@@ -3809,11 +3919,11 @@ html[data-theme="dark"] .sr3-tag { background: #34322e; color: #cfc8bb; }
   animation: sr-card-drop 0.42s cubic-bezier(0.22, 0.9, 0.32, 1) calc(var(--i) * 70ms) both;
   transition: transform 0.24s cubic-bezier(0.22, 0.9, 0.32, 1);
 }
-.sr-flip[data-kind="category"] { width: 158px; }
+.sr-flip[data-kind="category"] { width: 150px; }
 .sr-flip:not(:disabled) { cursor: pointer; }
-.sr-flip[data-selected="true"] { transform: translateY(-6px) rotateX(5deg) rotateY(-4deg); }
+.sr-flip[data-selected="true"] { transform: translateY(-6px); }
 @keyframes sr-card-drop {
-  from { opacity: 0; transform: translateY(-26px) scale(0.86); }
+  from { opacity: 0; transform: translateY(-22px) scale(0.9); }
   to { opacity: 1; transform: none; }
 }
 .sr-flip-inner {
@@ -3828,56 +3938,28 @@ html[data-theme="dark"] .sr3-tag { background: #34322e; color: #cfc8bb; }
 .sr-flip-face {
   position: absolute;
   inset: 0;
-  border-radius: 14px;
-  overflow: hidden;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }
-.sr-flip-back {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background:
-    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.05) 0 6px, transparent 6px 12px),
-    linear-gradient(160deg, color-mix(in srgb, var(--accent) 64%, #1b2236), #10141f);
-  border: 1px solid rgba(220, 230, 255, 0.32);
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.4), inset 0 0 0 5px rgba(255, 255, 255, 0.04);
-}
-.sr-flip-emblem {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  border: 1px solid rgba(230, 238, 255, 0.5);
-  font-size: 17px;
-  font-weight: 600;
-  color: rgba(240, 244, 255, 0.86);
-}
-.sr-flip-front {
-  transform: rotateY(180deg);
-  background: #f7f9fc;
-  color: #1c1f24;
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.42);
-}
-.sr-flip[data-selected="true"] .sr-flip-front { outline: 2px solid #c9d8ff; outline-offset: 2px; }
+.sr-flip-front { transform: rotateY(180deg); }
+.sr-flip[data-selected="true"] .sr-flip-front { outline: 2px solid #4c7acc; outline-offset: 3px; }
 /* 翻开后扫一道光（只一次） */
 .sr-flip-front::after {
   content: "";
   position: absolute;
   inset: -20% -60%;
-  background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.75) 50%, transparent 60%);
+  background: linear-gradient(105deg, transparent 40%, rgba(190, 210, 245, 0.6) 50%, transparent 60%);
   transform: translateX(-70%);
   opacity: 0;
   pointer-events: none;
+  z-index: 3;
 }
 .sr-flip[data-flipped="true"] .sr-flip-front::after { animation: sr-sweep 0.9s ease-out 0.42s both; }
 @keyframes sr-sweep {
   from { transform: translateX(-70%); opacity: 1; }
   to { transform: translateX(70%); opacity: 0; }
 }
+.sr-gacha-stage[data-rarity="calm"] .sr-flip-front::after { display: none; }
 
 /* 分类卡面 */
 .sr-draw-catface {
@@ -3887,27 +3969,20 @@ html[data-theme="dark"] .sr3-tag { background: #34322e; color: #cfc8bb; }
   gap: 6px;
   width: 100%;
   height: 100%;
-  padding: 16px 14px;
+  padding: 16px 14px 16px 20px;
   text-align: left;
   background:
-    radial-gradient(90% 60% at 80% 10%, color-mix(in srgb, var(--accent) 34%, transparent), transparent 70%),
-    linear-gradient(180deg, #ffffff, #eef2f8);
-  border-top: 4px solid var(--accent);
-}
-.sr-draw-catface[data-small="true"] {
-  width: 132px;
-  height: 194px;
-  border-radius: 14px;
-  color: #1c1f24;
-  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.42);
+    radial-gradient(90% 60% at 80% 10%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%),
+    #fff;
+  border-top: 3px solid var(--accent);
 }
 .sr-draw-catface-kicker { font-size: 11.5px; color: #8a93a1; letter-spacing: 0.1em; }
-.sr-draw-catface-name { font-size: 26px; font-weight: 600; line-height: 1.15; }
+.sr-draw-catface-name { font-size: 24px; font-weight: 600; line-height: 1.15; }
 .sr-draw-catface-tags { font-size: 12px; color: #5b6472; }
 
-/* 书卡面：真实封面 + 书名 / 作者 / 来源 */
+/* 书卡面：真实封面 + 书名 / 作者 */
 .sr-draw-bookface { display: flex; flex-direction: column; width: 100%; height: 100%; text-align: left; }
-.sr-draw-bookface-cover { position: relative; flex: 1 1 auto; min-height: 0; background: #e4e8ee; }
+.sr-draw-bookface-cover { position: relative; flex: 1 1 auto; min-height: 0; background: #eef1f5; }
 .sr-draw-bookface-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .sr-draw-bookface-initial {
   display: flex;
@@ -3915,10 +3990,10 @@ html[data-theme="dark"] .sr3-tag { background: #34322e; color: #cfc8bb; }
   justify-content: center;
   width: 100%;
   height: 100%;
-  font-size: 30px;
+  font-size: 28px;
   font-weight: 600;
   color: #5b6472;
-  background: linear-gradient(160deg, #eef2f8, #dde3ec);
+  background: linear-gradient(160deg, #f4f6f9, #e3e8ef);
 }
 .sr-draw-bookface-new {
   position: absolute;
@@ -3927,10 +4002,10 @@ html[data-theme="dark"] .sr3-tag { background: #34322e; color: #cfc8bb; }
   padding: 1px 6px;
   border-radius: 6px;
   font-size: 11px;
-  background: #2F6FD0;
+  background: #2f6fd0;
   color: #fff;
 }
-.sr-draw-bookface-meta { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px 8px; }
+.sr-draw-bookface-meta { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px 8px 14px; }
 .sr-draw-bookface-title {
   font-size: 12.5px;
   font-weight: 600;
@@ -3942,33 +4017,119 @@ html[data-theme="dark"] .sr3-tag { background: #34322e; color: #cfc8bb; }
 }
 .sr-draw-bookface-sub { font-size: 11px; color: #8a93a1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.sr-draw-stage-tools { position: absolute; right: 10px; bottom: 10px; z-index: 3; display: flex; gap: 6px; }
-.sr-draw-ghost {
+.sr-gacha-skip {
+  position: absolute;
+  right: 0;
+  bottom: 4px;
+  z-index: 3;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(220, 230, 255, 0.28);
-  background: rgba(255, 255, 255, 0.08);
-  color: #eef2fa;
+  border: 0;
+  background: none;
+  color: var(--c-text-sub, #8a919c);
   font: inherit;
-  font-size: 12.5px;
-  white-space: nowrap;
+  font-size: 13px;
   cursor: pointer;
 }
 
-.sr-draw-confirm, .sr-draw-chosen { margin-top: 12px; }
+/* 底部操作：黑色主按钮 + 次按钮，费用写在按钮里 */
+.sr-gacha-bar { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; }
+.sr-gacha-btns { display: flex; gap: 10px; }
+.sr-gacha-btn { flex: 1 1 0; min-height: 50px; justify-content: center; gap: 6px; font-size: 15px; }
+.sr-gacha-btn--wide { flex-basis: 100%; }
+.sr-gacha-btn.sr-btn-primary { background: #111418; border-color: #111418; color: #fff; }
+.sr-gacha-btn:disabled { opacity: 0.45; }
+.sr-gacha-cost {
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid currentColor;
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.78;
+}
+.sr-gacha-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; }
+.sr-gacha-hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--c-text-sub, #8a919c); }
+.sr-gacha-skipchip { flex: 0 0 auto; }
 
-/* 减少动态效果：保留全部步骤（卡背 → 翻开 → 选择），去掉光环、粒子与位移 */
+/* 面板：确认 / 结果 / 记录 */
+.sr-gacha-sheet { outline: none; gap: 10px; }
+.sr-gacha-sheet-head { display: flex; align-items: center; justify-content: space-between; min-height: 44px; margin: -6px -6px 0 0; }
+.sr-gacha-sheet-title { font-size: 17px; font-weight: 600; color: var(--c-text-title, #1d1d1f); }
+.sr-gacha-sheet-text { margin: 6px 0 12px; font-size: 14px; line-height: 1.6; color: var(--c-text, #3a3f47); }
+.sr-gacha-results, .sr-gacha-history {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sr-gacha-result { border-bottom: 0.5px solid var(--c-card-border, #e7e9ee); }
+.sr-gacha-result-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 84px;
+  padding: 10px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.sr-gacha-result-cover {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 68px;
+  border-radius: 3px 6px 6px 3px;
+  overflow: hidden;
+  background: linear-gradient(160deg, #f4f6f9, #e3e8ef);
+  color: #5b6472;
+  font-size: 18px;
+  font-weight: 600;
+  box-shadow: 1px 1px 0 #e6e8ec, 2px 2px 0 #f4f5f7, 3px 3px 6px rgba(28, 38, 60, 0.14);
+}
+.sr-gacha-result-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sr-gacha-result-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sr-gacha-result-title { font-size: 15px; font-weight: 600; color: var(--c-text-title, #1d1d1f); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-gacha-result-meta { font-size: 12.5px; color: var(--c-text-sub, #8a919c); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-gacha-result-tags { display: flex; gap: 6px; }
+.sr-gacha-result-more { padding: 0 0 12px 60px; }
+.sr-gacha-result-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.sr-gacha-result-actions .sr-btn-sm { min-height: 40px; }
+
+.sr-draw-badge[data-kind="duplicate"] {
+  background: color-mix(in srgb, var(--c-text) 10%, transparent);
+  border-color: transparent;
+  color: var(--c-text);
+}
+.sr-draw-badge[data-kind="new"] { background: rgba(47, 111, 208, 0.1); border-color: transparent; color: #2f6fd0; }
+
+/* 减少动态效果：保留全部步骤（书背 → 翻开 → 结果），去掉光环、核心、粒子与位移 */
 @media (prefers-reduced-motion: reduce) {
-  .sr-draw-aura, .sr-draw-particles { display: none; }
-  .sr-flip, .sr-flip-inner, .sr-flip-front::after { animation: none !important; transition: none; }
+  .sr-gacha-aura, .sr-gacha-core, .sr-gacha-particles { display: none; }
+  .sr-flip, .sr-flip-inner, .sr-flip-front::after, .sr-gacha-fan .sr-gbook { animation: none !important; transition: none; }
   .sr-flip[data-selected="true"] { transform: none; }
 }
-.sr-draw-stage[data-reduced="true"] .sr-draw-aura,
-.sr-draw-stage[data-reduced="true"] .sr-draw-particles { display: none; }
+.sr-gacha-stage[data-reduced="true"] .sr-gacha-aura,
+.sr-gacha-stage[data-reduced="true"] .sr-gacha-core,
+.sr-gacha-stage[data-reduced="true"] .sr-gacha-particles { display: none; }
+@media (max-height: 640px) {
+  .sr-gacha-stage { min-height: 200px; }
+  .sr-flip { width: 96px; }
+  .sr-flip[data-kind="category"] { width: 128px; }
+  .sr-gacha-solo { width: 120px; height: 168px; }
+}
 
 /* ── AI 朗读：正在朗读的段落高亮 ── */
 .sr-para[data-speaking="true"] {
