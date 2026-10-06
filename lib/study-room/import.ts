@@ -34,6 +34,8 @@ export async function importBookFromBlob(
   fileName: string,
   onProgress?: (stage: string) => void,
   cover?: string,
+  /** 联网来源的书目信息（来源名、原站链接），用于去重和在书架上标明出处 */
+  meta?: Pick<Book, "sourceLabel" | "sourceUrl" | "description">,
 ): Promise<Book> {
   const ext = fileName.split(".").pop()?.toLowerCase();
   let parsed: ParsedLike;
@@ -78,6 +80,7 @@ export async function importBookFromBlob(
     totalChapters: parsed.chapters.length,
     createdAt: new Date().toISOString(),
     cover: cover || undefined,
+    ...meta,
   };
 
   const chapters: BookChapter[] = parsed.chapters.map((chapter, index) => {

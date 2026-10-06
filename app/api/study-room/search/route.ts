@@ -7,7 +7,7 @@
 import { NextResponse } from "next/server";
 
 import { searchAllSources } from "@/lib/study-room/providers";
-import { normalizeQuery, toSimplified, type BookKind, type BookSearchResult, type SearchFailure } from "@/lib/study-room/book-source";
+import { normalizeQuery, toSimplified, type BookKind, type BookSearchResult, type SearchFailure, type SourceReport } from "@/lib/study-room/book-source";
 import { dedupeFailures, rankResults } from "@/lib/study-room/search-rank";
 import { aliasFor } from "@/lib/study-room/aliases";
 
@@ -19,6 +19,8 @@ const KINDS: Array<BookKind | "all"> = ["all", "novel", "comic", "material"];
 type SearchResponse = {
   results: BookSearchResult[];
   failed: SearchFailure[];
+  /** 每个来源本次的耗时与条数（排查用；不含密钥） */
+  sources?: SourceReport[];
   query: string;
   /** 命中人工维护别名时，实际额外使用的检索词（用于给用户一句说明） */
   alias?: string;
@@ -48,10 +50,11 @@ function cacheSet(key: string, body: SearchResponse): void {
 }
 
 async function runSearch(query: string, kind: BookKind | "all"): Promise<SearchResponse> {
-  const { results, failed, terms } = await searchAllSources({ query, kind, limit: 20 });
+  const { results, failed, sources, terms } = await searchAllSources({ query, kind, limit: 20 });
   return {
     results: rankResults(results, terms, kind),
     failed: dedupeFailures(failed),
+    sources,
     query,
     alias: aliasFor(query)?.others[0],
   };
@@ -84,6 +87,7 @@ export async function GET(request: Request) {
           ...retry,
           query,
           failed: dedupeFailures([...payload.failed, ...retry.failed]),
+          sources: [...(payload.sources ?? []), ...(retry.sources ?? [])],
         };
       }
     }
@@ -94,7 +98,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("[study-room/search]", error);
     return NextResponse.json(
-      { results: [], failed: [{ id: "all", label: "全部来源", reason: "搜索服务暂时不可用" }], query },
+      { results: [], failed: [{ id: "all", label: "全部来源", reason: "搜索服务暂时不可用", kind: "network" }], query },
       { status: 502 },
     );
   }

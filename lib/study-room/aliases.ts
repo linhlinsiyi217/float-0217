@@ -16,14 +16,20 @@ export type AliasEntry = {
   latin: string[];
   /** 作品类型倾向，用于把别名送到更合适的来源 */
   kind: "novel" | "comic";
+  /**
+   * 原作者（拉丁字母写法，取姓即可）。写了就作为别名检索的作者约束：
+   * 用英文名去英文来源查时，只保留作者对得上的结果——
+   * 否则「呐喊 → Call to Arms」会刷出一堆同名但无关的英文书。
+   */
+  authors?: string[];
 };
 
 export const ALIASES: AliasEntry[] = [
   // ── 小说：通行中文译名 ↔ 原书名 ──
-  { zh: ["简爱", "简·爱", "简 爱"], latin: ["Jane Eyre"], kind: "novel" },
-  { zh: ["傲慢与偏见"], latin: ["Pride and Prejudice"], kind: "novel" },
+  { zh: ["简爱", "简·爱", "简 爱"], latin: ["Jane Eyre"], kind: "novel", authors: ["Brontë", "Bronte"] },
+  { zh: ["傲慢与偏见"], latin: ["Pride and Prejudice"], kind: "novel", authors: ["Austen"] },
   { zh: ["理智与情感"], latin: ["Sense and Sensibility"], kind: "novel" },
-  { zh: ["呼啸山庄"], latin: ["Wuthering Heights"], kind: "novel" },
+  { zh: ["呼啸山庄"], latin: ["Wuthering Heights"], kind: "novel", authors: ["Brontë", "Bronte"] },
   { zh: ["老人与海"], latin: ["The Old Man and the Sea"], kind: "novel" },
   { zh: ["小王子"], latin: ["The Little Prince"], kind: "novel" },
   { zh: ["安娜·卡列尼娜", "安娜卡列尼娜"], latin: ["Anna Karenina"], kind: "novel" },
@@ -53,8 +59,17 @@ export const ALIASES: AliasEntry[] = [
   { zh: ["追风筝的人"], latin: ["The Kite Runner"], kind: "novel" },
   { zh: ["三体"], latin: ["The Three-Body Problem"], kind: "novel" },
   { zh: ["围城"], latin: ["Fortress Besieged"], kind: "novel" },
-  { zh: ["呐喊"], latin: ["Call to Arms"], kind: "novel" },
-  { zh: ["阿Q正传", "阿q正传"], latin: ["The True Story of Ah Q"], kind: "novel" },
+  // 中文作品：zh 里同时写简体与维基文库等来源使用的繁体标题；latin 为通行英译名，必须带作者约束
+  { zh: ["呐喊", "吶喊"], latin: ["Call to Arms"], kind: "novel", authors: ["Lu Xun", "Lu Hsun"] },
+  { zh: ["彷徨"], latin: ["Wandering"], kind: "novel", authors: ["Lu Xun", "Lu Hsun"] },
+  { zh: ["朝花夕拾"], latin: ["Dawn Blossoms Plucked at Dusk"], kind: "novel", authors: ["Lu Xun", "Lu Hsun"] },
+  { zh: ["阿Q正传", "阿q正传"], latin: ["The True Story of Ah Q"], kind: "novel", authors: ["Lu Xun", "Lu Hsun"] },
+  { zh: ["红楼梦", "紅樓夢", "石头记"], latin: ["Dream of the Red Chamber", "The Story of the Stone"], kind: "novel", authors: ["Cao Xueqin", "Tsao Hsueh"] },
+  { zh: ["西游记", "西遊記"], latin: ["Journey to the West"], kind: "novel", authors: ["Wu Cheng"] },
+  { zh: ["三国演义", "三國演義"], latin: ["Romance of the Three Kingdoms"], kind: "novel", authors: ["Luo Guanzhong", "Lo Kuan"] },
+  { zh: ["水浒传", "水滸傳"], latin: ["Water Margin", "Outlaws of the Marsh"], kind: "novel", authors: ["Shi Nai"] },
+  { zh: ["儒林外史"], latin: ["The Scholars"], kind: "novel", authors: ["Wu Jingzi", "Wu Ching"] },
+  { zh: ["聊斋志异", "聊齋志異", "聊斋"], latin: ["Strange Stories from a Chinese Studio", "Strange Tales from a Chinese Studio"], kind: "novel", authors: ["Pu Songling", "P'u Sung"] },
   { zh: ["骆驼祥子"], latin: ["Rickshaw Boy", "Camel Xiangzi"], kind: "novel" },
 
   // ── 漫画：通行中文译名 ↔ 原名/英文名 ──
@@ -127,6 +142,22 @@ export function zhAliasesFor(query: string): string[] {
   const hit = aliasFor(query);
   if (!hit) return [];
   return hit.entry.zh.filter((v) => normalizeForMatch(v) !== normalizeForMatch(query));
+}
+
+/**
+ * 别名检索的作者约束：用英文别名查到的结果，作者要对得上才保留。
+ * 条目没写作者时返回 null（不约束）。用户直接输入英文名时不约束——那是用户自己的词。
+ */
+export function aliasAuthorsFor(query: string): string[] | null {
+  const hit = aliasFor(query);
+  return hit?.entry.authors?.length ? hit.entry.authors : null;
+}
+
+/** 作者是否符合约束（按去掉空格、重音的小写比较，取包含关系）。 */
+export function authorsMatch(authors: string[], required: string[]): boolean {
+  const fold = (v: string) => v.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z一-鿿]/g, "");
+  const names = authors.map(fold);
+  return required.some((r) => names.some((n) => n.includes(fold(r))));
 }
 
 /** 该查询所属作品的类型倾向（用于把别名送到更合适的来源）。 */

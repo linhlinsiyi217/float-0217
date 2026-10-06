@@ -5,8 +5,10 @@ import { BookOpen, Compass, Download, Eye, Heart, Loader2, Upload, X } from "luc
 
 import type { Book } from "@/lib/reading-types";
 import { importBookFromBlob, UnsupportedBookFormatError } from "@/lib/study-room/import";
+import { importSearchResult, SourceImportError } from "@/lib/study-room/import-result";
 import {
   CATEGORY_LABEL,
+  editionLanguageLabel,
   READABILITY_LABEL,
   type BookSearchResult,
 } from "@/lib/study-room/book-source";
@@ -39,19 +41,14 @@ export function StudyRoomSourceDetail({ item, versions = [], onClose, onRead, on
     setBusy("import");
     setNotice(null);
     try {
-      // 书房自己的接口（如维基文库正文）直接用相对地址；外部来源走服务端代理
-      const url = item.importFile.url.startsWith("/")
-        ? item.importFile.url
-        : `/api/study-room/fetch?url=${encodeURIComponent(item.importFile.url)}`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("取正文失败");
-      const blob = await response.blob();
-      const book = await importBookFromBlob(blob, `${item.title}.${item.importFile.format}`, undefined, item.cover);
-      setNotice(`《${item.title}》已加入书架`);
+      const { book, existed } = await importSearchResult(item, (stage) => setNotice(stage));
+      setNotice(existed ? `《${book.title}》已经在书架上，直接打开。` : `《${item.title}》已加入书架`);
       return book;
     } catch (error) {
       setNotice(
-        error instanceof UnsupportedBookFormatError ? error.message : "取正文失败，可能是来源暂时不可用，稍后再试。",
+        error instanceof UnsupportedBookFormatError || error instanceof SourceImportError
+          ? error.message
+          : "取正文失败，可能是来源暂时不可用，稍后再试。",
       );
       return null;
     } finally {
@@ -116,7 +113,7 @@ export function StudyRoomSourceDetail({ item, versions = [], onClose, onRead, on
               <span className="sr-src-tag">{item.sourceLabel}</span>
               {item.category && <span className="sr-src-tag">{CATEGORY_LABEL[item.category]}</span>}
               {item.year && <span className="sr-src-tag">{item.year}</span>}
-              {item.language && <span className="sr-src-tag">{item.language}</span>}
+              {item.language && <span className="sr-src-tag">{editionLanguageLabel(item.language)}</span>}
             </div>
           </div>
         </div>
@@ -124,7 +121,9 @@ export function StudyRoomSourceDetail({ item, versions = [], onClose, onRead, on
         {item.description && <p className="sr-src-desc">{item.description}</p>}
 
         <p className="sr-note-meta" style={{ lineHeight: 1.75 }}>
-          {item.readability === "readable"
+          {item.importFile?.format === "builtin"
+            ? "书房内置的公版原文，随应用提供，不依赖联网来源。加入书架后可以全文阅读、批注与共读。"
+            : item.readability === "readable"
             ? "来源提供可下载的正文，导入后可以在书房里全文阅读、批注与共读。"
             : item.readability === "preview"
               ? "来源提供在线预览。预览由来源决定能否在应用内显示；看不清时可以到原站查看。"
@@ -197,7 +196,7 @@ export function StudyRoomSourceDetail({ item, versions = [], onClose, onRead, on
                   <button type="button" onClick={() => onSwitch?.(version)}>
                     <span className="sr-src-version-title">{version.title}</span>
                     <span className="sr-note-meta">
-                      {[version.sourceLabel, version.language, version.year, READABILITY_LABEL[version.readability]]
+                      {[version.sourceLabel, version.language && editionLanguageLabel(version.language), version.year, READABILITY_LABEL[version.readability]]
                         .filter(Boolean)
                         .join(" · ")}
                     </span>

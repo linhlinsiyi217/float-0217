@@ -7,6 +7,7 @@ import {
   CATEGORY_LABEL,
   KIND_LABEL,
   READABILITY_LABEL,
+  editionLanguageLabel,
   hasCJK,
   languageLabel,
   normalizeLanguage,
@@ -16,6 +17,7 @@ import {
   type Readability,
   type SearchFailure,
 } from "@/lib/study-room/book-source";
+import { builtinToResult, listBuiltinBooks, searchBuiltinLibrary } from "@/lib/study-room/builtin-library";
 import { groupVersions, type ResultGroup } from "@/lib/study-room/search-rank";
 import { addToWishlist, loadWishlist, removeFromWishlist } from "@/lib/study-room/wishlist";
 import type { Book } from "@/lib/reading-types";
@@ -105,8 +107,21 @@ export function StudyRoomStore({ onRead, initialQuery }: StudyRoomStoreProps) {
     const controller = new AbortController();
     abortRef.current = controller;
 
+    // 内置书库在本地匹配，不依赖联网：联网来源全挂了也能给出这些书
+    const builtin = k === "all" || k === "novel" ? searchBuiltinLibrary(q) : [];
+    // 联网失败但内置书库有结果：照常列出内置书，失败原因放在提示行，而不是整页报错
+    const fallBackToBuiltin = (reason: string) => {
+      setResults(builtin);
+      setFailedSources([{ id: "network", label: "联网书源", reason, kind: "network" }]);
+    };
+
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       setLastQuery(q);
+      if (builtin.length > 0) {
+        setFailure(null);
+        fallBackToBuiltin("手机当前离线");
+        return;
+      }
       setResults([]);
       setFailure({ kind: "offline" });
       return;
@@ -133,7 +148,7 @@ export function StudyRoomStore({ onRead, initialQuery }: StudyRoomStoreProps) {
         | null;
       if (controller.signal.aborted) return;
       if (!data) throw new TypeError("bad response");
-      const list = data.results ?? [];
+      const list = [...builtin, ...(data.results ?? [])];
       const failed = data.failed ?? [];
       setResults(list);
       setFailedSources(failed);
@@ -144,12 +159,14 @@ export function StudyRoomStore({ onRead, initialQuery }: StudyRoomStoreProps) {
       }
     } catch (err) {
       if (timedOut && abortRef.current === controller) {
+        if (builtin.length > 0) return fallBackToBuiltin(`等了 ${SEARCH_TIMEOUT_MS / 1000} 秒没有响应`);
         setResults([]);
         setFailure({ kind: "timeout" });
         return;
       }
       if (controller.signal.aborted) return;
       if (err instanceof DOMException && err.name === "AbortError") return;
+      if (builtin.length > 0) return fallBackToBuiltin("没连上书城服务");
       setResults([]);
       setFailure({ kind: typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "network" });
     } finally {
@@ -191,6 +208,7 @@ export function StudyRoomStore({ onRead, initialQuery }: StudyRoomStoreProps) {
   };
 
   const all = useMemo(() => results ?? [], [results]);
+  const builtinBooks = useMemo(() => listBuiltinBooks(), []);
 
   // 筛选项只列这次结果里真有的，并带上数量
   const groupCounts = useMemo(
@@ -285,7 +303,7 @@ export function StudyRoomStore({ onRead, initialQuery }: StudyRoomStoreProps) {
             <span className={`sr-res-read sr-res-read--${book.readability}`}>{READABILITY_LABEL[book.readability]}</span>
             <span className="sr-res-source">{book.sourceLabel}</span>
             <span className="sr-res-kind">{book.category ? CATEGORY_LABEL[book.category] : KIND_LABEL[book.kind]}</span>
-            {book.language && <span className="sr-res-kind">{languageLabel(book.language)}</span>}
+            {book.language && <span className="sr-res-kind">{editionLanguageLabel(book.language)}</span>}
             {entry.versions.length > 0 && (
               <button type="button" className="sr-res-more" onClick={() => setDetail({ item: book, versions: entry.versions })}>
                 另 {entry.versions.length} 个版本
@@ -398,7 +416,8 @@ export function StudyRoomStore({ onRead, initialQuery }: StudyRoomStoreProps) {
 
       {!loading && partialFailure && (
         <p className="sr-store-hint">
-          {failedSources.map((src) => src.label).join("、")} 这次没响应，下面是其它来源的结果
+          {failedSources.map((src) => (src.reason ? `${src.label}（${src.reason}）` : src.label)).join("、")}
+          这次没有返回结果，下面是其它来源的结果
         </p>
       )}
 
@@ -470,6 +489,30 @@ export function StudyRoomStore({ onRead, initialQuery }: StudyRoomStoreProps) {
           <Compass size={36} strokeWidth={1.1} />
           <p>中文名、原名或作者都能搜，比如「简爱」或「Jane Eyre」。</p>
         </div>
+      )}
+
+      {!loading && !failure && results === null && (
+        <section aria-label="内置书库">
+          <div className="sr-section-label">
+            内置书库 · {builtinBooks.length} 本
+            <HelpTip id="store-builtin" label="内置书库说明">
+              公有领域中文名著，正文整理自中文维基文库原文（简体），随书房一起提供，不用等联网来源。
+              每本都在详情里写明版本与来源链接。
+            </HelpTip>
+          </div>
+          <ul className="sr-src-versions">
+            {builtinBooks.map((book) => (
+              <li key={book.id}>
+                <button type="button" onClick={() => setDetail({ item: builtinToResult(book), versions: [] })}>
+                  <span className="sr-src-version-title">{book.title}</span>
+                  <span className="sr-note-meta">
+                    {book.author} · {book.chapters} 章 · 约 {Math.round(book.totalChars / 10000)} 万字
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {!loading && !failure && results !== null && all.length === 0 && (

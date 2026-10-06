@@ -43,8 +43,11 @@ export type BookSearchResult = {
   readability: Readability;
   externalUrl: string;
   description?: string;
-  /** 仅当 readability="readable" 且来源提供可下载文件时存在 */
-  importFile?: { url: string; format: "txt" | "epub" };
+  /**
+   * 仅当 readability="readable" 时存在：txt/epub 为可下载文件；
+   * builtin 为书房内置书库（url 填书的 id，正文随应用一起部署）
+   */
+  importFile?: { url: string; format: "txt" | "epub" | "builtin" };
   /** 同一作品不同版本/译本的稳定键，用于合并展示 */
   workKey?: string;
   /** 由来源直接判定的匹配方式（如按作者分类检索）；留空则由标题/作者自动判定 */
@@ -60,16 +63,44 @@ export type SourceSearchParams = {
 /** 结果与关键词的匹配方式：标题/作者命中才算「搜到了这本书」。 */
 export type MatchKind = "title" | "author";
 
-export type SearchFailure = { id: string; label: string; reason?: string };
+/**
+ * 来源失败的类别——前端据此给不同说法，不能把所有失败都说成「没有这本书」：
+ *  timeout 超时 / http 来源返回错误状态 / rate_limit 被限流 / config 缺少密钥或配置 /
+ *  parse 返回内容解析不了 / network 连不上
+ */
+export type FailureKind = "timeout" | "http" | "rate_limit" | "config" | "parse" | "network";
+
+export type SearchFailure = {
+  id: string;
+  label: string;
+  reason?: string;
+  kind?: FailureKind;
+  /** 来源返回的 HTTP 状态码（有的话） */
+  status?: number;
+  /** 本次请求耗时（毫秒） */
+  ms?: number;
+};
+
+/** 每个来源本次检索的概况：用于排查「哪个来源慢/空」，不含任何密钥。 */
+export type SourceReport = { id: string; label: string; ms: number; count: number; ok: boolean; via?: string };
 
 const PUNCTUATION = /[\s·・．.。…—\-–—_~`'"“”‘’《》〈〉「」『』【】〔〕（）()\[\]{}!！?？,，;；:：、|/\\+*#@$%^&]+/g;
 
+const CJK_CHAR = "[㐀-䶿一-鿿豈-﫿]";
+
 /**
- * 中文检索规范化：去掉标点与空白，让「简·爱」能命中「简爱」，
- * 书名片段、作者片段、带括号的副标题也能落在同一关键词上。
+ * 发给书源的检索词规范化：去掉书名号、引号与多余标点；中文之间的空格和间隔号去掉
+ * （「简·爱」「简 爱」→「简爱」），英文单词之间保留一个空格（「Jane  Eyre」→「Jane Eyre」，
+ * 不能粘成「JaneEyre」，否则英文书源查不到）。
  */
 export function normalizeQuery(query: string): string {
-  return query.replace(PUNCTUATION, "").trim();
+  return query
+    .replace(/[《》〈〉「」『』【】〔〕“”‘’"'`]+/g, " ")
+    .replace(/[,，;；:：、|/\\!！?？。…~*#@$%^&+=]+/g, " ")
+    .replace(new RegExp(`(${CJK_CHAR})[\\s·・．.]+(?=${CJK_CHAR})`, "g"), "$1")
+    .replace(/\s+/g, " ")
+    .replace(new RegExp(`\\s+(?=${CJK_CHAR})|(?<=${CJK_CHAR})\\s+`, "g"), "")
+    .trim();
 }
 
 /** 是否包含 CJK 字符——用于判断该走中文为主的来源。 */
@@ -85,6 +116,27 @@ const TRAD_TO_SIMP: Record<string, string> = {
   裏: "里", 裡: "里", 為: "为", 與: "与", 從: "从", 會: "会", 兒: "儿", 頭: "头",
   體: "体", 無: "无", 萬: "万", 錢: "钱", 銀: "银", 雲: "云", 電: "电", 車: "车",
   馬: "马", 鳥: "鸟", 魚: "鱼", 龍: "龙", 鳳: "凤", 紅: "红", 綠: "绿", 藍: "蓝",
+  // 常见书名、作者用字（维基文库等来源的标题多为繁体：吶喊、紅樓夢、聊齋誌異…）
+  吶: "呐", 樓: "楼", 夢: "梦", 遊: "游", 齋: "斋", 誌: "志", 異: "异", 義: "义", 傳: "传",
+  滸: "浒", 華: "华", 鄉: "乡", 雜: "杂", 錄: "录", 選: "选", 詩: "诗", 筆: "笔", 魯: "鲁",
+  濤: "涛", 鬥: "斗", 戰: "战", 爭: "争", 劍: "剑", 俠: "侠", 傷: "伤", 獨: "独", 離: "离",
+  燈: "灯", 樂: "乐", 歡: "欢", 聽: "听", 豐: "丰", 舊: "旧", 歲: "岁", 憶: "忆", 莊: "庄",
+  漢: "汉", 東: "东", 島: "岛", 灣: "湾", 貓: "猫", 雞: "鸡", 鴨: "鸭", 豬: "猪", 蟲: "虫",
+  葉: "叶", 蘭: "兰", 蓮: "莲", 漁: "渔", 農: "农", 師: "师", 將: "将", 軍: "军", 雙: "双",
+  張: "张", 劉: "刘", 陳: "陈", 黃: "黄", 趙: "赵", 吳: "吴", 鄭: "郑", 孫: "孙", 楊: "杨",
+  紀: "纪", 經: "经", 論: "论", 譯: "译", 編: "编", 輯: "辑", 鐘: "钟", 鍾: "钟", 後: "后",
+  發: "发", 復: "复", 臺: "台", 劇: "剧", 聲: "声", 圖: "图", 畫: "画", 寫: "写", 興: "兴",
+  亂: "乱", 歸: "归", 嶺: "岭", 遠: "远", 滅: "灭", 靈: "灵", 燒: "烧", 熱: "热", 風: "风",
+  淚: "泪", 憐: "怜", 戀: "恋", 戲: "戏", 樹: "树", 橋: "桥", 園: "园", 題: "题", 顏: "颜",
+  願: "愿", 響: "响", 媽: "妈", 爺: "爷", 兩: "两", 歷: "历", 號: "号", 處: "处", 聯: "联",
+  誰: "谁", 談: "谈", 講: "讲", 識: "识", 證: "证", 護: "护", 讓: "让", 變: "变", 盡: "尽",
+  隨: "随", 險: "险", 陽: "阳", 陰: "阴", 雖: "虽", 難: "难", 須: "须", 領: "领", 飛: "飞",
+  餘: "余", 騎: "骑", 驚: "惊", 齊: "齐", 塵: "尘", 壽: "寿", 寶: "宝", 對: "对", 尋: "寻",
+  層: "层", 殘: "残", 氣: "气", 溫: "温", 滿: "满", 煙: "烟", 燭: "烛", 爾: "尔", 獄: "狱",
+  環: "环", 畢: "毕", 眾: "众", 衆: "众", 窮: "穷", 紙: "纸", 細: "细", 絲: "丝", 給: "给",
+  續: "续", 總: "总", 線: "线", 織: "织", 羅: "罗", 聖: "圣", 蘇: "苏", 術: "术", 衛: "卫",
+  裝: "装", 親: "亲", 覺: "觉", 許: "许", 試: "试", 誤: "误", 貝: "贝", 貴: "贵", 買: "买",
+  賣: "卖", 跡: "迹", 輕: "轻", 輪: "轮", 邊: "边", 鄰: "邻", 鏡: "镜", 夾: "夹", 頁: "页",
 };
 
 export function toSimplified(text: string): string {
@@ -198,6 +250,13 @@ export function languageLabel(code: string | undefined | null): string {
   const key = normalizeLanguage(code);
   if (!key) return "未知语言";
   return LANGUAGE_LABEL[key] ?? LANGUAGE_LABEL[key.split("-")[0]] ?? "其他语言";
+}
+
+/** 版本语言的说法：外文版本标明「英文原版」，不让人误以为是中文全文。 */
+export function editionLanguageLabel(code: string | undefined | null): string {
+  const key = normalizeLanguage(code);
+  if (!key || key === "zh" || key === "zh-hant") return languageLabel(code);
+  return `${languageLabel(code)}原版`;
 }
 
 /** 由「小说/漫画/资料」这类粗分类推细分类型（兜底用） */

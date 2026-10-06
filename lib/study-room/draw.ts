@@ -101,7 +101,7 @@ export type DrawCandidate = {
   book?: Book;
   /** 存档后的书架藏书 id（存档不带整本书） */
   shelfBookId?: string;
-  importFile?: { url: string; format: "txt" | "epub" };
+  importFile?: BookSearchResult["importFile"];
   externalUrl?: string;
   raw?: BookSearchResult;
   /** 这次抽到的是不是重复（已在书架或之前抽到过） */

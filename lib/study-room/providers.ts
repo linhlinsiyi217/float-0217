@@ -4,42 +4,53 @@
 // 每个来源都明确三件事：参与检索的条件、面向它的检索词、以及结果的真实类型。
 // 单个来源失败不影响其他来源，失败按来源维度回报（含可读的名称与原因）。
 
-import type { BookKind, BookSearchResult, SearchFailure, SourceSearchParams } from "./book-source";
+import type { BookKind, BookSearchResult, FailureKind, SearchFailure, SourceReport, SourceSearchParams } from "./book-source";
 import { hasCJK, normalizeForMatch, classifyKind, classifyCategory, titleMatchScore } from "./book-source";
-import { latinAliasesFor, zhAliasesFor } from "./aliases";
+import { aliasAuthorsFor, authorsMatch, latinAliasesFor, zhAliasesFor } from "./aliases";
 
-const UA = "LinH-Float-StudyRoom/1.0 (book search; contact: site owner)";
+// 维基、Gutenberg 等公共接口要求 User-Agent 带可联系的网址，否则容易被限流或拒绝
+const UA = "LinH-Float-StudyRoom/1.0 (https://float-0217.vercel.app; book search)";
+const PROVIDER_TIMEOUT_MS = 8000;
 
 type SearchContext = {
   /** 规范化后的用户查询（去标点、简体） */
   query: string;
   /** 面向英文/日文来源的别名检索词；没有则为 null */
   latin: string | null;
+  /** 别名检索的作者约束（如 Jane Eyre → Brontë）；用户原词检索不受约束 */
+  latinAuthors: string[] | null;
   /** 面向中文来源的别名检索词 */
   zh: string[];
   kind: BookKind | "all";
   limit: number;
 };
 
+/** 用别名词查到的结果，作者对不上就丢掉（「Call to Arms」不能刷出别人的同名书）。 */
+function keepAliasHits(items: BookSearchResult[], ctx: SearchContext, viaAlias: boolean): BookSearchResult[] {
+  if (!viaAlias || !ctx.latinAuthors) return items;
+  return items.filter((item) => authorsMatch(item.authors, ctx.latinAuthors!));
+}
+
 type Provider = {
   id: string;
   label: string;
   /** 该来源在什么情况下值得参与检索（避免拿中文词去查只收英文的库） */
   supports: (ctx: SearchContext) => boolean;
-  search: (ctx: SearchContext, signal: AbortSignal) => Promise<BookSearchResult[]>;
+  /** 返回结果；via 标注本次实际走的通道（如主接口失败后用了备用目录） */
+  search: (ctx: SearchContext, signal: AbortSignal) => Promise<BookSearchResult[] | { items: BookSearchResult[]; via?: string }>;
 };
 
 /** 网络类错误重试一次（连接被拒/瞬时失败），HTTP 状态错误不重试。 */
-async function fetchJson(url: string, signal: AbortSignal, init?: RequestInit): Promise<unknown> {
+async function fetchText(url: string, signal: AbortSignal, init?: RequestInit, accept = "application/json"): Promise<string> {
   const attempt = async () => {
     const response = await fetch(url, {
       ...init,
       signal,
-      headers: { "User-Agent": UA, Accept: "application/json", ...(init?.headers ?? {}) },
+      headers: { "User-Agent": UA, Accept: accept, ...(init?.headers ?? {}) },
       cache: "no-store",
     });
     if (!response.ok) throw new HttpError(response.status);
-    return response.json();
+    return response.text();
   };
   try {
     return await attempt();
@@ -49,19 +60,41 @@ async function fetchJson(url: string, signal: AbortSignal, init?: RequestInit): 
   }
 }
 
+async function fetchJson(url: string, signal: AbortSignal, init?: RequestInit): Promise<unknown> {
+  const text = await fetchText(url, signal, init);
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new ParseError();
+  }
+}
+
 class HttpError extends Error {
   constructor(public status: number) {
     super(`HTTP ${status}`);
   }
 }
 
-function failureReason(error: unknown): string {
-  if (error instanceof HttpError) {
-    if (error.status === 429) return "请求过多被限流";
-    return `接口返回 ${error.status}`;
+class ParseError extends Error {
+  constructor() {
+    super("来源返回的内容无法解析");
   }
-  if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) return "响应超时";
-  return "网络不可达";
+}
+
+/** 缺少密钥/配置导致的失败（例如 Google Books 公共额度用完且没有配置密钥）。 */
+class ConfigError extends Error {}
+
+/** 把异常归类成前端能区分的失败：超时、限流、HTTP 错误、配置缺失、解析失败、连不上。 */
+function classifyFailure(error: unknown): { kind: FailureKind; reason: string; status?: number } {
+  if (error instanceof ConfigError) return { kind: "config", reason: error.message };
+  if (error instanceof ParseError) return { kind: "parse", reason: error.message };
+  if (error instanceof HttpError) {
+    if (error.status === 429) return { kind: "rate_limit", reason: "请求过多被限流", status: 429 };
+    if (error.status === 401 || error.status === 403) return { kind: "http", reason: `来源拒绝访问（${error.status}）`, status: error.status };
+    return { kind: "http", reason: `接口返回 ${error.status}`, status: error.status };
+  }
+  if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) return { kind: "timeout", reason: "响应超时" };
+  return { kind: "network", reason: "网络不可达" };
 }
 
 function cjkLength(text: string): number {
@@ -80,11 +113,14 @@ type OpenLibraryDoc = {
   subject?: string[];
 };
 
-async function openLibraryTerm(term: string, limit: number, signal: AbortSignal): Promise<BookSearchResult[]> {
+async function openLibraryTerm(term: string, limit: number, signal: AbortSignal, author?: string): Promise<BookSearchResult[]> {
   const isLatin = !hasCJK(term);
   // 中文短词（如「简爱」两个字）用 q= 会被 Open Library 判为「查询过短」，改用 title=
   const useTitle = !isLatin && cjkLength(term) < 3;
-  const param = useTitle ? `title=${encodeURIComponent(term)}` : `q=${encodeURIComponent(term)}`;
+  // 别名检索带上作者：title + author 精确得多
+  const param = author
+    ? `title=${encodeURIComponent(term)}&author=${encodeURIComponent(author)}`
+    : useTitle ? `title=${encodeURIComponent(term)}` : `q=${encodeURIComponent(term)}`;
   const fields = "key,title,author_name,first_publish_year,cover_i,language,subject";
   const url = `https://openlibrary.org/search.json?${param}&limit=${limit}&fields=${fields}`;
   const data = (await fetchJson(url, signal)) as { docs?: OpenLibraryDoc[] };
@@ -116,9 +152,11 @@ const openLibrary: Provider = {
   label: "Open Library",
   supports: (ctx) => ctx.kind !== "comic",
   async search(ctx, signal) {
-    const terms = [ctx.query, ...(ctx.latin ? [ctx.latin] : [])].slice(0, 2);
-    const batches = await Promise.all(terms.map((term) => openLibraryTerm(term, ctx.limit, signal)));
-    return batches.flat();
+    const [own, alias] = await Promise.all([
+      openLibraryTerm(ctx.query, ctx.limit, signal),
+      ctx.latin ? openLibraryTerm(ctx.latin, ctx.limit, signal, ctx.latinAuthors?.[0]) : Promise.resolve([]),
+    ]);
+    return [...own, ...keepAliasHits(alias, ctx, true)];
   },
 };
 
@@ -138,9 +176,22 @@ type GoogleVolume = {
   accessInfo?: { viewability?: string; previewLink?: string; webReaderLink?: string };
 };
 
-async function googleBooksTerm(term: string, limit: number, signal: AbortSignal): Promise<BookSearchResult[]> {
-  const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(term)}&maxResults=${Math.min(limit, 40)}&printType=books`;
-  const data = (await fetchJson(url, signal)) as { items?: GoogleVolume[] };
+async function googleBooksTerm(term: string, limit: number, signal: AbortSignal, author?: string): Promise<BookSearchResult[]> {
+  // 没有密钥时走公共额度，Vercel 出口 IP 共享额度经常 429；配置 GOOGLE_BOOKS_API_KEY 后使用自己的额度
+  const key = process.env.GOOGLE_BOOKS_API_KEY?.trim();
+  const q = author ? `intitle:${term} inauthor:${author}` : term;
+  const url =
+    `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=${Math.min(limit, 40)}&printType=books` +
+    (key ? `&key=${encodeURIComponent(key)}` : "");
+  let data: { items?: GoogleVolume[] };
+  try {
+    data = (await fetchJson(url, signal)) as { items?: GoogleVolume[] };
+  } catch (error) {
+    if (!key && error instanceof HttpError && error.status === 429) {
+      throw new ConfigError("公共额度已用完（未配置 Google Books 密钥）");
+    }
+    throw error;
+  }
   const items = Array.isArray(data.items) ? data.items : [];
   return items
     .filter((item) => item.id && item.volumeInfo?.title)
@@ -174,9 +225,11 @@ const googleBooks: Provider = {
   supports: () => true,
   async search(ctx, signal) {
     // 中文书名也带一个原名检索：两边的版本都值得看
-    const terms = [ctx.query, ...(ctx.latin ? [ctx.latin] : [])].slice(0, 2);
-    const batches = await Promise.all(terms.map((term) => googleBooksTerm(term, ctx.limit, signal)));
-    return batches.flat();
+    const [own, alias] = await Promise.all([
+      googleBooksTerm(ctx.query, ctx.limit, signal),
+      ctx.latin ? googleBooksTerm(ctx.latin, ctx.limit, signal, ctx.latinAuthors?.[0]) : Promise.resolve([]),
+    ]);
+    return [...own, ...keepAliasHits(alias, ctx, true)];
   },
 };
 
@@ -198,6 +251,58 @@ const gutenberg: Provider = {
   supports: (ctx) => ctx.kind !== "comic" && (!hasCJK(ctx.query) || Boolean(ctx.latin)),
   async search(ctx, signal) {
     const term = ctx.latin ?? ctx.query;
+    const viaAlias = Boolean(ctx.latin);
+    // Gutendex 是第三方公共实例，从 Vercel 访问实测返回 403、有时又很慢；
+    // 只给它一半时间，失败或超时都改查 Gutenberg 官方 OPDS 目录
+    try {
+      const gutendexSignal = AbortSignal.any([signal, AbortSignal.timeout(Math.round(PROVIDER_TIMEOUT_MS * 0.55))]);
+      return { items: keepAliasHits(await gutendexSearch(term, ctx, gutendexSignal), ctx, viaAlias), via: "Gutendex" };
+    } catch (error) {
+      if (signal.aborted) throw error;
+      const items = await gutenbergOpdsSearch(term, ctx, signal);
+      return { items: keepAliasHits(items, ctx, viaAlias), via: "gutenberg.org 官方目录（Gutendex 不可用时的备用）" };
+    }
+  },
+};
+
+/** Gutenberg 官方 OPDS 检索（Atom XML）。加 l.en 只取英文本，语言标注才可靠。 */
+async function gutenbergOpdsSearch(term: string, ctx: SearchContext, signal: AbortSignal): Promise<BookSearchResult[]> {
+  const url = `https://www.gutenberg.org/ebooks/search.opds/?query=${encodeURIComponent(`${term} l.en`)}`;
+  const xml = await fetchText(url, signal, undefined, "application/atom+xml");
+  if (!xml.includes("<feed")) throw new ParseError();
+  const decode = (v: string) =>
+    v.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+  const out: BookSearchResult[] = [];
+  for (const chunk of xml.split("<entry>").slice(1)) {
+    const id = /<id>https?:\/\/www\.gutenberg\.org\/ebooks\/(\d+)\.opds<\/id>/.exec(chunk)?.[1];
+    const title = /<title>([^<]*)<\/title>/.exec(chunk)?.[1];
+    if (!id || !title) continue;
+    const content = decode(/<content[^>]*>([^<]*)<\/content>/.exec(chunk)?.[1] ?? "");
+    // content 是作者名；没有作者时站点会写下载次数，不能当作者
+    const authors = content && !/downloads?$/i.test(content) ? [content] : [];
+    out.push({
+      id: `gutenberg:${id}`,
+      sourceId: "gutenberg",
+      sourceLabel: "Project Gutenberg",
+      title: decode(title),
+      authors,
+      cover: `https://www.gutenberg.org/cache/epub/${id}/pg${id}.cover.medium.jpg`,
+      language: "en",
+      kind: "novel",
+      category: "classic",
+      readability: "readable",
+      externalUrl: `https://www.gutenberg.org/ebooks/${id}`,
+      description: "英文原版（Project Gutenberg 公有领域电子书）",
+      importFile: { url: `https://www.gutenberg.org/cache/epub/${id}/pg${id}.txt`, format: "txt" },
+      workKey: `gut:${normalizeForMatch(decode(title))}`,
+    });
+    if (out.length >= ctx.limit) break;
+  }
+  return out;
+}
+
+async function gutendexSearch(term: string, ctx: SearchContext, signal: AbortSignal): Promise<BookSearchResult[]> {
+  {
     const url = `https://gutendex.com/books/?search=${encodeURIComponent(term)}`;
     const data = (await fetchJson(url, signal)) as { results?: GutendexBook[] };
     const results = Array.isArray(data.results) ? data.results : [];
@@ -230,8 +335,8 @@ const gutenberg: Provider = {
           workKey: book.title ? `gut:${normalizeForMatch(book.title)}` : undefined,
         };
       });
-  },
-};
+  }
+}
 
 // ── 中文维基文库（公版中文文本，跳转原站阅读）──
 // 只保留「标题里真的有这个词」的页面，避免正文提到关键词的判决书、公告混进书单；
@@ -252,13 +357,20 @@ const wikisource: Provider = {
   async search(ctx, signal) {
     const term = hasCJK(ctx.query) ? ctx.query : ctx.zh[0];
     if (!term) return [];
+    // 前缀检索不做简繁转换：维基文库标题多为繁体（吶喊、紅樓夢），别名表里的繁体写法也查一次
+    const traditional = ctx.zh.find((z) => hasCJK(z) && z !== term);
 
-    const [prefix, fulltext] = await Promise.all([
+    const [prefix, prefixTrad, fulltext] = await Promise.all([
       wikiApi({ action: "query", list: "prefixsearch", pssearch: term, psnamespace: "0", pslimit: String(ctx.limit) }, signal),
+      traditional
+        ? wikiApi({ action: "query", list: "prefixsearch", pssearch: traditional, psnamespace: "0", pslimit: String(ctx.limit) }, signal)
+        : Promise.resolve({} as Record<string, unknown>),
       wikiApi({ action: "query", list: "search", srsearch: term, srnamespace: "0", srlimit: String(ctx.limit) }, signal),
     ]);
 
-    const prefixItems = ((prefix.query as { prefixsearch?: WikiSearchItem[] } | undefined)?.prefixsearch ?? []);
+    const prefixOf = (data: Record<string, unknown>) =>
+      (data.query as { prefixsearch?: WikiSearchItem[] } | undefined)?.prefixsearch ?? [];
+    const prefixItems = [...prefixOf(prefixTrad), ...prefixOf(prefix)];
     const searchItems = ((fulltext.query as { search?: WikiSearchItem[] } | undefined)?.search ?? []);
 
     const byTitle = new Map<string, WikiSearchItem>();
@@ -283,13 +395,16 @@ const wikisource: Provider = {
     const termKey = normalizeForMatch(term);
     const out: BookSearchResult[] = [];
     for (const [title, item] of byTitle) {
+      // 「吶喊/孔乙己」这类子篇：整部作品已在结果里时不再单列（导入整部时会汇总各篇）
+      const parent = title.includes("/") ? title.slice(0, title.lastIndexOf("/")) : null;
+      if (parent && byTitle.has(parent)) continue;
       const categories = categoriesOf.get(title) ?? [];
       // 消歧义页只是一串链接，没有正文，不能标成全文可读
       if (/消歧[义義]/.test(title) || categories.some((c) => /消歧[义義]/.test(c))) continue;
       const snippet = (item.snippet ?? "").replace(/<[^>]+>/g, "").slice(0, 120);
 
       // 标题命中：这本书真的叫这个名字（「简爱」不会命中含「爱简」的判决书）
-      const titleHit = titleMatchScore(title, term) > 0;
+      const titleHit = titleMatchScore(title, term) > 0 || (traditional ? titleMatchScore(title, traditional) > 0 : false);
       // 分类命中：页面挂在以关键词命名的分类下（作者/主题检索，如 Category:魯迅）
       const categoryHit = categories.some((c) => normalizeForMatch(c) === termKey);
       if (!titleHit && !categoryHit) continue;
@@ -458,23 +573,30 @@ function providersFor(ctx: SearchContext): Provider[] {
  */
 export async function searchAllSources(
   params: SourceSearchParams,
-): Promise<{ results: BookSearchResult[]; failed: SearchFailure[]; terms: string[] }> {
+): Promise<{ results: BookSearchResult[]; failed: SearchFailure[]; sources: SourceReport[]; terms: string[] }> {
+  const latin = latinAliasesFor(params.query)[0] ?? null;
   const ctx: SearchContext = {
     query: params.query,
-    latin: latinAliasesFor(params.query)[0] ?? null,
+    latin,
+    latinAuthors: latin ? aliasAuthorsFor(params.query) : null,
     zh: zhAliasesFor(params.query),
     kind: params.kind,
     limit: params.limit,
   };
   const providers = providersFor(ctx);
 
+  // 每个来源各自计时、各自超时，一个慢或失败不拖累其他来源
   const settled = await Promise.allSettled(
     providers.map(async (provider) => {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 8000);
+      const started = Date.now();
+      const timer = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
       try {
-        const items = await provider.search(ctx, controller.signal);
-        return { items };
+        const outcome = await provider.search(ctx, controller.signal);
+        const { items, via } = Array.isArray(outcome) ? { items: outcome, via: undefined } : outcome;
+        return { items, via, ms: Date.now() - started };
+      } catch (error) {
+        throw { error, ms: Date.now() - started };
       } finally {
         clearTimeout(timer);
       }
@@ -483,14 +605,25 @@ export async function searchAllSources(
 
   const results: BookSearchResult[] = [];
   const failed: SearchFailure[] = [];
+  const sources: SourceReport[] = [];
   settled.forEach((entry, index) => {
     const provider = providers[index];
     if (entry.status === "fulfilled") {
       results.push(...entry.value.items);
+      sources.push({ id: provider.id, label: provider.label, ms: entry.value.ms, count: entry.value.items.length, ok: true, via: entry.value.via });
     } else {
-      failed.push({ id: provider.id, label: provider.label, reason: failureReason(entry.reason) });
+      const { error, ms } = entry.reason as { error: unknown; ms: number };
+      const failure = classifyFailure(error);
+      failed.push({ id: provider.id, label: provider.label, ms, ...failure });
+      sources.push({ id: provider.id, label: provider.label, ms, count: 0, ok: false });
     }
   });
 
-  return { results, failed, terms: searchTerms(params.query) };
+  // 服务器日志只记来源名、耗时、条数与失败类别，不记录任何密钥或用户信息
+  console.info(
+    `[study-room/search] "${params.query}" ` +
+      sources.map((s) => `${s.id}:${s.ok ? s.count : failed.find((f) => f.id === s.id)?.kind}/${s.ms}ms`).join(" "),
+  );
+
+  return { results, failed, sources, terms: searchTerms(params.query) };
 }

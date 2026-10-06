@@ -60,3 +60,12 @@ Workflow references (concept only, no code copied):
   该项目以 AGPL-3.0-only 为基础并另附商业授权条款；本项目只借鉴流程概念，
   没有复制其代码、提示词或界面，相关实现（lib/study-room/creative.ts、
   components/study-room/study-room-desk-start.tsx 等）为本项目自写。
+
+Built-in public-domain library (书房内置书库):
+
+- public/study-room/library/** and lib/study-room/builtin-library.generated.ts:
+  呐喊、彷徨、朝花夕拾、西游记、红楼梦、三国演义、儒林外史、聊斋志异 的正文整理自
+  中文维基文库（https://zh.wikisource.org），由 scripts/study-room/build-library.mjs
+  脚本抓取、去导航、分章，并使用维基文库自身的简繁转换（zh-hans）。原作品均已进入公有领域；
+  维基文库页面的排版与整理按 CC BY-SA 4.0 提供，每本书的 manifest.json 保留了来源链接。
+  正文没有经过模型改写或生成。

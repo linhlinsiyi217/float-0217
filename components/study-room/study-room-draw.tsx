@@ -17,7 +17,7 @@ import {
   X,
 } from "lucide-react";
 
-import { importBookFromBlob } from "@/lib/study-room/import";
+import { importSearchResult, SourceImportError } from "@/lib/study-room/import-result";
 import { HelpFoot, HelpTip } from "./help-tip";
 import {
   AVAILABILITY_LABEL,
@@ -279,17 +279,29 @@ export function StudyRoomDraw({ onBack, onRead, onImported }: StudyRoomDrawProps
     if (!item.importFile || importingId) return;
     setImportingId(item.id);
     try {
-      const url = item.importFile.url.startsWith("/")
-        ? item.importFile.url
-        : `/api/study-room/fetch?url=${encodeURIComponent(item.importFile.url)}`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("fetch failed");
-      const blob = await response.blob();
-      await importBookFromBlob(blob, `${item.title}.${item.importFile.format}`, undefined, item.cover);
+      // 抽到的书和书城同一条导入路径：内置书库读本地整理好的正文，已在书架的不再新建
+      const result: BookSearchResult = item.raw ?? {
+        id: item.id,
+        sourceId: "draw",
+        sourceLabel: item.sourceLabel ?? "",
+        title: item.title,
+        authors: item.author ? [item.author] : [],
+        cover: item.cover,
+        kind: "novel",
+        readability: "readable",
+        externalUrl: item.externalUrl ?? item.importFile.url,
+        importFile: item.importFile,
+      };
+      const { existed } = await importSearchResult(result);
+      if (existed) {
+        flash(`《${item.title}》已经在书架上了。`, 3200);
+        onImported();
+        return;
+      }
       flash(`《${item.title}》已加入书架，可以开始读了。`, 3200);
       onImported();
-    } catch {
-      flash("导入失败，请稍后重试；也可以先点「详情」在原站看看。", 3600);
+    } catch (error) {
+      flash(error instanceof SourceImportError ? error.message : "导入失败，请稍后重试；也可以先点「详情」在原站看看。", 3600);
     } finally {
       setImportingId(null);
     }
