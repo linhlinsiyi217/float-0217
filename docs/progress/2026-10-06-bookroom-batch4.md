@@ -20,15 +20,17 @@
 - main 最新提交：`8108074`（只改进度文档）；最近一次产品发布提交：`17b5d39`（Vercel Production 成功）。
   新对话开工先 `git fetch` 查真实状态，不要按这里的提交号重置。
 - 正式网址：https://float-0217.vercel.app （核对用 `/api/release` 看部署提交与发布标识）。
-- 当前发布标识：总日志 0.6.2 `system-2026-10-06-v062`、书房 0.7.1 `studyroom-2026-10-06-v071`。
-  下一次正式发布必须换新的（见 CLAUDE.md 第四节）。
+- 已线上的发布标识：总日志 0.6.2 `system-2026-10-06-v062`、书房 0.7.1 `studyroom-2026-10-06-v071`。
+- 本地已提交、**尚未推送上线**：`d8e7140`，标识总日志 0.6.3 `system-2026-10-06-v063`、书房 0.7.2 `studyroom-2026-10-06-v072`。
+  推送到 main 时被 Claude Code 权限拦截（没有绕过）。维护者放行后：`git fetch` → 确认 origin/main 仍是 d8e7140 的祖先 →
+  `git push origin HEAD:main` → 查 Vercel Production 与 `/api/release`。如果 main 期间有新发布，需重新换标识。
 
 | 组 | 内容（原文章节） | 状态 |
 |---|---|---|
 | 1 | 联网搜书 + 完整内置书库（一、二） | 已完成并发布；手机未实测；Google Books 缺 `GOOGLE_BOOKS_API_KEY` |
 | 2 | 书房内容分享到聊天：卡片 + AI 读取（三） | 未开始 |
-| 3 | 头像状态气泡 + 书友圈发布按钮越界（五、六） | 未开始 |
-| 4 | 主题纯白 + 自有删除/排序面板 + 书友圈布局重做（四、七、八） | 未开始 |
+| 3 | 头像状态气泡 + 书友圈发布按钮越界（五、六） | 代码已完成（d8e7140），**未推送**（推送被权限拦截）；手机未实测 |
+| 4 | 主题纯白 + 自有删除/排序面板 + 书友圈布局重做（四、七、八） | 书友圈部分 + 灰底迁移已完成（d8e7140），**未推送**；其他文件的 confirm() 与各页底色审计未做 |
 | 5 | 文风接入核查（九） | 未开始 |
 | 收尾 | 每组上线按第十节 + CLAUDE.md 第四节 | 每组做 |
 
@@ -191,9 +193,32 @@
   需要维护者在 Vercel 环境变量里加这个密钥。
 - 没有实测（仍在 pending）：手机上的弹窗弹出/确认/重弹、书城搜索与内置书阅读观感。
 
+## 第 3/4 组记录（2026-10-06，本地提交 d8e7140，未上线）
+
+已修：
+- 主题：`lib/study-room/appearance.ts` `sanitizeState()` 把存档里的旧默认灰 `#f1f2f6` 迁回 `#ffffff`；自选色/背景图/夜间不动。
+- 气泡：`study-room-profile-parts.tsx` 气泡移进头像包装 `.sr-pf-avatar-wrap` 绝对定位在头像左上（108px，窄屏 96px）；
+  蒙版只取素材上部 480×226（`mask-size: 100% calc(100% * 284 / 226)`，top 对齐），裁掉独立小圆点，不拉伸；
+  文字 2 行截断；按压只缩放无回弹；空状态 `.sr-pf-status-add` 小「＋」（24px，点按区 44px）。
+- 书友圈：新 `components/study-room/confirm-sheet.tsx`（`ConfirmSheet` 应用内确认、`PopMenu` 锚点菜单）；
+  帖子卡片改连续列表 `.sr-fpost`（4 行截断、一行书籍引用、赞/评/分享/礼物、「更多」菜单：自己=删除，书友=不感兴趣/屏蔽）；
+  详情里删帖/删评/屏蔽改用 ConfirmSheet；排序改 PopMenu；次分类当前项深色胶囊；搜索 `min-width:0`、≤359px 发布只留图标。
+- 我的动态浮层：`onOpenAuthor` 不再跳书友圈；评论区固定 `clamp(150px, 28dvh, 210px)` 内部滚动；回复原本已默认折叠。
+- DESIGN.md 8.5 / 8.6 同步修订（气泡位置、小＋、书友圈列表、确认弹窗、浮层、页面底色）。
+
+验证：`npx tsc --noEmit` 只剩既有的工坊错误 `lib/qa-chat-store.ts(610)`（不属本批）；改动文件 `next lint` 无警告；
+`npm run check:updates` 通过（已读模拟 9/9）。没有跑本地生产构建（之前内存不足）；没有在手机或浏览器里看过真实效果。
+
+剩余待办：
+- 推送上线并在正式域名核对（见上面「状态」）。
+- 第 4 组剩余：书房其他文件仍有浏览器 `confirm()`（backup、creative-editor、creative-panel、draw、gifts、messages、notes、npc-panel、reading-memory）；
+  书城/书架/书桌/抽卡等各页底色真机审计。
+- 第 3 组剩余：360/390/430 宽实测气泡（无内容/短句/长句/表情/长名字）与发布按钮、键盘弹出。
+- 第 2 组分享、第 5 组文风：未开始。
+
 ## 下一步
 
-新对话从「第 2 组：书房内容分享到聊天」开始（第 2–5 组均未动）。第 2 组先读这些文件：
+先处理 d8e7140 的推送上线（需维护者放行推送权限），再从「第 2 组：书房内容分享到聊天」开始。第 2 组先读这些文件：
 - lib/study-room/share-to-chat.ts（结构化分享消息）
 - components/study-room/share-sheet.tsx（发送前预览、取消、防重复）
 - components/study-room/study-room-app.tsx（从卡片回跳打开书/帖子）
