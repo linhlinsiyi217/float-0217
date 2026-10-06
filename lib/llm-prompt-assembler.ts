@@ -17,6 +17,7 @@ import { formatCharacterRelationsForPrompt } from "./character-world-storage";
 import { buildCharacterTimeContext, buildGroupTimeContext, type CharacterTimeContext } from "./character-time";
 import { formatShoppingPaymentRequestHistory } from "./shopping-payment-request";
 import { buildGroupAdminBracketText } from "./group-admin";
+import { formatStudyRoomShareForPrompt } from "./study-room/share-card";
 
 export type LLMMessageRole = "system" | "user" | "assistant" | "tool";
 export type LLMToolCallPayload = { id: string; name: string; args: Record<string, unknown>; thoughtSignature?: string };
@@ -1163,6 +1164,9 @@ export function formatRichMediaForHistory(msg: ChatMessage, userName: string, ch
         case "contact_card":
             return `[名片:${d?.contactCardName || d?.label || "联系人"}]`;
         case "app_card": {
+            // 书房分享卡：按结构化内容写清角色实际读到什么，不给网址
+            const studyRoomText = formatStudyRoomShareForPrompt(d);
+            if (studyRoomText) return studyRoomText;
             const historyText = d?.appHistoryText?.trim();
             if (historyText) return historyText;
             const appName = d?.appName || "APP";

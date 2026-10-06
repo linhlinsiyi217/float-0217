@@ -597,7 +597,22 @@ function normalizeCustomPanelHeight(value: unknown): string | undefined {
     return undefined;
 }
 
+// 输入草稿按会话存在 sessionStorage：去别的应用（如点开书房分享卡）再回来，没发出的字还在
+const CHAT_DRAFT_PREFIX = "chat-input-draft:";
+function readChatDraft(key: string | null): string {
+    if (!key || typeof window === "undefined") return "";
+    try { return window.sessionStorage.getItem(key) || ""; } catch { return ""; }
+}
+function writeChatDraft(key: string | null, text: string): void {
+    if (!key || typeof window === "undefined") return;
+    try {
+        if (text) window.sessionStorage.setItem(key, text);
+        else window.sessionStorage.removeItem(key);
+    } catch { /* 存储不可用时只是不保留草稿 */ }
+}
+
 const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
+    draftKey?: string;
     characterName: string;
     characterId: string;
     stickerCharacterIds?: string[];
@@ -629,6 +644,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     onTriggerAIResponse: () => void;
 	onSendSticker: (name: string, url?: string) => void;
 }>(function ChatTextInputBar({
+    draftKey,
     characterName,
     characterId,
     stickerCharacterIds,
@@ -660,8 +676,26 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     onTriggerAIResponse,
     onSendSticker,
 }, ref) {
-    const [inputText, setInputText] = useState("");
+    const draftStorageKey = draftKey ? CHAT_DRAFT_PREFIX + draftKey : null;
+    const [inputText, setInputText] = useState(() => readChatDraft(draftStorageKey));
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const draftKeyRef = useRef(draftStorageKey);
+    useEffect(() => {
+        if (draftKeyRef.current !== draftStorageKey) {
+            // 换了会话：读新会话的草稿，不把旧会话的字带过去
+            draftKeyRef.current = draftStorageKey;
+            setInputText(readChatDraft(draftStorageKey));
+            return;
+        }
+        writeChatDraft(draftStorageKey, inputText);
+    }, [draftStorageKey, inputText]);
+    useEffect(() => {
+        // 恢复草稿后按内容撑开输入框
+        const ta = textareaRef.current;
+        if (!ta || !ta.value) return;
+        ta.style.height = "auto";
+        ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
+    }, [draftStorageKey]);
     // 表情包搜索联想：ESC/失焦置 true 隐藏，输入变化重新开启
     const [suggestClosed, setSuggestClosed] = useState(false);
     // 围观群/被禁言：输入与富媒体入口全部锁定，只留线下切换和生成按钮
@@ -6225,6 +6259,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             ) : (
             <ChatTextInputBar
                 ref={chatTextInputRef}
+                draftKey={session.id}
                 characterName={character?.name || "对方"}
                 characterId={session.contactId}
 	                stickerCharacterIds={session.isGroup ? session.participantIds : undefined}

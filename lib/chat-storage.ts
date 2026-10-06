@@ -222,6 +222,8 @@ export type ChatMessage = {
         appCardSummary?: string;
         appCardTone?: string;
         appCardLayout?: Record<string, unknown>;
+        /** 书房分享卡片的结构化内容（lib/study-room/share-card.ts StudyRoomSharePayload） */
+        studyRoomShare?: Record<string, unknown> | object;
         appDirectiveId?: string;
         appDirectiveLabel?: string;
         appDirectiveArgs?: string[];

@@ -21,6 +21,7 @@ import type { DiaryEntry, DiaryEntryBlock } from "./diary-entry-types";
 import { loadNoteWallProjectionEntries } from "./notewall-memory";
 import { loadXiaohongshuProjectionEntries } from "./xiaohongshu-memory";
 import { formatXiaohongshuShareForPrompt } from "./chat-share";
+import { formatStudyRoomShareForPrompt } from "./study-room/share-card";
 import { loadBlackMarketTheaterProjectionEntries } from "./black-market-storage";
 import { loadInterviewMagazineProjectionEntries } from "./interview-magazine-memory";
 import { loadCoCreateProjectionEntries } from "./cocreate-memory";
@@ -352,6 +353,9 @@ export function loadNativeTimeline(
                     items: msg.mediaData?.paymentRequestItems,
                     itemsText: msg.mediaData?.paymentRequestItemsText,
                 });
+                else if (msg.mediaType === "app_card" && formatStudyRoomShareForPrompt(msg.mediaData)) {
+                    content = formatStudyRoomShareForPrompt(msg.mediaData) || "";
+                }
                 else if (msg.mediaType === "app_card") {
                     const appName = msg.mediaData?.appName || "APP";
                     const title = msg.mediaData?.appCardTitle || msg.mediaData?.label || "应用卡片";

@@ -73,6 +73,7 @@ import {
 } from "./local-data-fs";
 import { makeTimedWakeId, saveTimedWakeSchedule } from "./timed-wake-storage";
 import { resolveUserIdentity } from "./settings-storage";
+import { STUDYROOM_READ_TOOL_NAME } from "./study-room/share-card";
 import { attachAbortSignal, isAbortError, throwIfAborted } from "./abort-utils";
 import {
     deleteShortcutCommandMediaUrl,
@@ -786,6 +787,7 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
     if (isNoteWallToolName(call.name)) return executeNoteWallTool(call, context);
     if (isMusicControlToolName(call.name)) return executeMusicControlTool(call, context);
     if (isCalendarToolName(call.name)) return executeCalendarTool(call, context);
+    if (call.name === STUDYROOM_READ_TOOL_NAME) return executeStudyRoomShareReadTool(call, context);
     if (isLocalDataToolName(call.name)) return executeLocalDataTool(call);
     if (isToolboxManagementToolName(call.name)) return executeToolboxManagementTool(call);
     if (call.name === "发送文件") return executeSendFileTool(call);
@@ -1028,6 +1030,30 @@ function isCalendarToolName(name: string): boolean {
         || name === "添加日程"
         || name === "修改日程"
         || name === "取消日程";
+}
+
+// 书房分享卡的原文读取：只读本会话里分享过的书/帖子，剧透按分享时的授权；不走网页抓取
+async function executeStudyRoomShareReadTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {
+    try {
+        const { readStudyRoomShare } = await import("./study-room/share-reader");
+        const result = await readStudyRoomShare(call.args, context?.sessionId);
+        if (result.ok) {
+            return { name: call.name, success: true, data: truncate(result.text), userNotice: "读取书房分享完成" };
+        }
+        return {
+            name: call.name,
+            success: false,
+            error: `${result.error}（没有读到原文，不要假装读过）`,
+            userNotice: "书房分享内容读取失败",
+        };
+    } catch (err) {
+        return {
+            name: call.name,
+            success: false,
+            error: `书房内容读取失败：${err instanceof Error ? err.message : String(err)}（没有读到原文，不要假装读过）`,
+            userNotice: "书房分享内容读取失败",
+        };
+    }
 }
 
 function isLocalDataToolName(name: string): boolean {
@@ -3276,7 +3302,50 @@ function renderRestHeaders(
     return rendered;
 }
 
+/** 「查看网页」（Jina Reader）只接受真实的公网网址：中文/乱拼域名、本应用自己的页面在发请求前就拦下 */
+const OWN_APP_HOSTS = ["float-0217.vercel.app"];
+export function checkWebReaderUrl(raw: unknown): string | null {
+    const text = typeof raw === "string" ? raw.trim() : "";
+    if (!text) return "缺少网址";
+    if (text.length > 2000) return "网址太长，不是有效网页地址";
+    const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(text) ? text : `https://${text}`;
+    if (!/^https?:\/\//i.test(withScheme)) return "只能读取 http/https 网页";
+    const hostPart = withScheme.replace(/^https?:\/\//i, "").split(/[/?#]/)[0].replace(/^[^@]*@/, "").replace(/:\d+$/, "");
+    if (/[^\x21-\x7e]/.test(hostPart)) return `「${hostPart.slice(0, 40)}」不是真实的网站域名（含中文或特殊字符），可能是把标题拼成了网址`;
+    let url: URL;
+    try { url = new URL(withScheme); } catch { return "网址格式不正确"; }
+    const host = url.hostname.toLowerCase();
+    if (!host.includes(".") || host.length > 253 || host.split(".").some(label => !label || label.length > 63)) {
+        return `「${host.slice(0, 60)}」不是有效的网站域名`;
+    }
+    const tld = host.split(".").pop() || "";
+    if (!/^(?:[a-z]{2,24}|xn--[a-z0-9-]{2,59})$/.test(tld) && !/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) {
+        return `「${host.slice(0, 60)}」不是有效的网站域名`;
+    }
+    const ownHosts = [...OWN_APP_HOSTS, "localhost"];
+    if (typeof window !== "undefined" && window.location?.hostname) ownHosts.push(window.location.hostname.toLowerCase());
+    if (ownHosts.includes(host) || /^(?:127\.|10\.|192\.168\.|0\.)/.test(host)) {
+        return "这是小手机自己的页面，网页工具读不到里面的书和帖子；书房分享请用卡片里给出的内容或「读取书房分享」";
+    }
+    return null;
+}
+
+function isWebReaderTool(tool: RestToolConfig): boolean {
+    return tool.id === "builtin_web_reader" || /^https?:\/\/r\.jina\.ai\//i.test(tool.endpoint);
+}
+
 async function executeRestTool(tool: RestToolConfig, args: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult> {
+    if (isWebReaderTool(tool) && typeof args.url === "string") {
+        const problem = checkWebReaderUrl(args.url);
+        if (problem) {
+            return {
+                name: tool.name,
+                success: false,
+                error: `没有发出请求：${problem}。你没有读到这个网页的内容，不要假装读过。`,
+                userNotice: `${tool.name}：网址无效，未请求`,
+            };
+        }
+    }
     try {
         throwIfAborted(signal);
         const typedFixed: Record<string, unknown> = {};

@@ -135,8 +135,9 @@ export default function StudyRoomApp({ onClose, launchContext }: StudyRoomAppPro
     }
     setView({ kind: "tabs" });
     setForumCompose(false);
-    setForumPostId(target.postId);
     setTab("forum");
+    if (loadForum().posts.some((post) => post.id === target.postId)) setForumPostId(target.postId);
+    else setLaunchNotice("这条帖子已经被删除了");
   }, [ready, launchContext]);
   useEffect(() => {
     if (!launchNotice) return;

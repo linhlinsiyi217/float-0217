@@ -29,7 +29,7 @@ import { ScanPayCard } from "@/components/chat/scan-pay-card";
 import { payWithWalletBalance } from "@/lib/wallet-storage";
 import { formatShoppingPaymentRequestHistory } from "@/lib/shopping-payment-request";
 import { toCustomAppIconId } from "@/lib/custom-app-types";
-import { STUDYROOM_APP_ID, readStudyRoomTarget } from "@/lib/study-room/share-to-chat";
+import { STUDYROOM_APP_ID, studyRoomTargetOfMessage } from "@/lib/study-room/share-card";
 import { ChatPluginSlot } from "@/components/chat/chat-plugin-slot";
 import { CHAT_PLUGIN_SLOTS_CHANGED_EVENT, getChatPluginRuntime } from "@/lib/chat-plugin-runtime";
 
@@ -801,9 +801,11 @@ function AppCardBubble({ msg, characterId, characterName }: { msg: ChatMessage; 
         if (!d?.appId || typeof window === "undefined") return;
         // 书房分享卡：书房是内置应用，按卡片里记的书或帖子直接打开
         if (d.appId === STUDYROOM_APP_ID) {
-            const target = readStudyRoomTarget(d.appCardLayout);
+            const target = studyRoomTargetOfMessage(d);
+            // returnTo：从卡片进书房，关闭书房时回到这个聊天
+            const returnTo = { appId: "chat", sessionId: msg.sessionId };
             window.dispatchEvent(new CustomEvent("open-app", {
-                detail: { appId: STUDYROOM_APP_ID, launchContext: target ? { studyRoomTarget: target } : {} },
+                detail: { appId: STUDYROOM_APP_ID, launchContext: target ? { studyRoomTarget: target, returnTo } : { returnTo } },
             }));
             return;
         }

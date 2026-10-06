@@ -26,6 +26,8 @@ export function ShareSheet({ item, onClose }: ShareSheetProps) {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState<{ name: string; sessionId: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 剧透帖：默认只发安全摘要，用户勾选后才把正文一起分享给角色
+  const [includeSpoiler, setIncludeSpoiler] = useState(false);
   // 防重复：一次面板只发一次
   const sentRef = useRef(false);
 
@@ -52,16 +54,18 @@ export function ShareSheet({ item, onClose }: ShareSheetProps) {
 
   const target = contacts?.find((contact) => contact.characterId === selected) ?? null;
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!target || sending || sentRef.current) return;
+    // 先占位，避免连点在异步读取期间发出两张卡片
+    sentRef.current = true;
     setSending(true);
     setError(null);
     try {
-      const sessionId = sendStudyRoomShare(target.characterId, item);
-      sentRef.current = true;
+      const sessionId = await sendStudyRoomShare(target.characterId, item, { includeSpoiler: item.spoiler ? includeSpoiler : false });
       setSent({ name: target.name, sessionId });
     } catch {
-      setError("没有发出去，请稍后再试。");
+      sentRef.current = false;
+      setError("没有发出去，可以再点一次发送重试。");
     } finally {
       setSending(false);
     }
@@ -164,6 +168,21 @@ export function ShareSheet({ item, onClose }: ShareSheetProps) {
                     <span className="sr-share-preview-summary">{item.summary}</span>
                   </div>
                 </div>
+              )}
+              {target && item.spoiler && (
+                <label className="sr-share-spoiler">
+                  <input
+                    type="checkbox"
+                    checked={includeSpoiler}
+                    onChange={(event) => setIncludeSpoiler(event.target.checked)}
+                  />
+                  <span>
+                    附上剧透正文
+                    <span className="sr-share-spoiler-sub">
+                      {includeSpoiler ? "对方能读到被遮住的正文" : "不勾选时，对方只知道这是含剧透的帖子"}
+                    </span>
+                  </span>
+                </label>
               )}
               {error && <p className="sr-share-error">{error}</p>}
               <button

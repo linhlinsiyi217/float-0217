@@ -682,7 +682,23 @@ const LOCAL_DATA_READ_RECORD_PARAMETER_SCHEMA = JSON.stringify({
     required: ["path", "key"],
 });
 
+const STUDYROOM_SHARE_READ_PARAMETER_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {
+        type: { type: "string", enum: ["book", "post"], description: "分享卡片的类型：book 书籍，post 书友圈帖子" },
+        id: { type: "string", description: "卡片里给出的书籍或帖子 ID" },
+        chapter: { type: "number", description: "书籍章节序号（从 1 开始）；不填返回目录" },
+        part: { type: "number", description: "长章节分段序号（从 1 开始），每段约 2500 字" },
+    },
+    required: ["type", "id"],
+});
+
 const LOCAL_DATA_LIBRARY_SUBTOOLS: InternalToolDefinition[] = [
+    {
+        name: "读取书房分享",
+        description: "读取聊天里对方分享给你的书房书籍或书友圈帖子原文（按章节分段）。只能读当前聊天分享过的内容；含剧透的帖子要对方分享时允许才有正文。不要用「查看网页」读书房内容。",
+        parameterSchema: STUDYROOM_SHARE_READ_PARAMETER_SCHEMA,
+    },
     {
         name: "列出资料目录",
         description: "列出本地资料库虚拟目录、数据源、文件、IndexedDB store 或记录键。",
@@ -723,6 +739,16 @@ const LOCAL_DATA_LIBRARY_USAGE_GUIDE = [
     "- /social：朋友圈、小红书、好友申请和社交互动状态",
     "- /memory：长期记忆、核心记忆和事件计数",
     "- /settings：预设、世界书、正则、工具箱和绑定设置",
+    "",
+    "动作：读取书房分享",
+    "说明：对方在聊天里分享了书房的书或帖子时用。书房内容没有网址，不要用「查看网页」。",
+    "参数：",
+    "  - type (string, 必填): book 或 post",
+    "  - id (string, 必填): 分享卡片里给出的 ID",
+    "  - chapter (number): 书的章节序号，不填返回目录",
+    "  - part (number): 长章节的分段序号",
+    "示例：",
+    '[执行动作:读取书房分享({"type":"book","id":"book_xxx","chapter":1})]',
     "",
     "动作：列出资料目录",
     "参数：",

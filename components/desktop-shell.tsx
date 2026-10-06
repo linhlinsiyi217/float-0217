@@ -3968,6 +3968,24 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     setActiveApp(null);
   }
 
+  // 从聊天里的书房分享卡进来的：关闭书房回到原来的聊天会话（输入草稿由聊天自己保存）
+  function closeStudyRoom(): void {
+    const returnTo = studyRoomLaunchContext?.returnTo as { appId?: unknown; sessionId?: unknown } | undefined;
+    setStudyRoomLaunchContext(null);
+    if (returnTo?.appId === "chat") {
+      const sessionId = typeof returnTo.sessionId === "string" && returnTo.sessionId ? returnTo.sessionId : null;
+      setActiveApp("chat" as IconId);
+      setChatInitSessionId(sessionId);
+      if (sessionId) {
+        window.setTimeout(() => {
+          window.dispatchEvent(new CustomEvent(CHAT_OPEN_SESSION_EVENT, { detail: { sessionId } }));
+        }, 0);
+      }
+      return;
+    }
+    setActiveApp(null);
+  }
+
   function dismissPendingCustomAppUpdate(): void {
     if (customAppUpdateBusy || !customAppUpdatePrompt) return;
     setCustomAppUpdatePrompt(null);
@@ -4140,7 +4158,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     }
 
     if (activeApp === "studyroom") {
-      return <StudyRoomApp onClose={() => setActiveApp(null)} launchContext={studyRoomLaunchContext} />;
+      return <StudyRoomApp onClose={closeStudyRoom} launchContext={studyRoomLaunchContext} />;
     }
 
     if (activeApp === "mapmode") {
