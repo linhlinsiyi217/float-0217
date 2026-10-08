@@ -10,6 +10,29 @@ import type { Release } from "./types";
 
 export const SYSTEM_RELEASES: Release[] = [
   {
+    version: "0.6.7",
+    releaseId: "system-2026-10-08-v067",
+    date: "2026-10-08",
+    name: "书友圈规则生效、书房内私信",
+    summary: "书房：书友圈规则页能滚动和保存；私信改在书房里聊；你设的规则和书友资料真的传给模型，论坛有了自己的活人感规则；一次多帖不再整批作废，等待时显示已等几秒；更新应用：书房",
+    includes: { studyroom: "studyroom-2026-10-08-v076" },
+    entries: [
+      {
+        id: "sys-067-forum-check",
+        category: "tweak",
+        app: "项目 · 开发检查",
+        title: "新增书友圈请求检查",
+        items: [
+          "新增一个不调用模型的检查：确认用户规则、书友资料、活人感规则真的进入发给模型的内容，各家模型的格式转换不丢字，调试记录里没有正文和密钥",
+          "公共 API 层这次没有改动：其他应用的请求方式、模型和接口地址都不变",
+        ],
+      },
+    ],
+    pending: [
+      "书房部分全部没有在浏览器或手机上实测，也没有调用付费接口测速，详见书房 0.7.6 的待确认",
+    ],
+  },
+  {
     version: "0.6.6",
     releaseId: "system-2026-10-07-v066",
     date: "2026-10-07",

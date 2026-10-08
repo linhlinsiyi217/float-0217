@@ -6,12 +6,20 @@
 //  - 生成规则可编辑，但默认开箱可用；生成按需触发、可停止、带冷却。
 
 import { simpleLLMCall } from "@/lib/api-helpers";
-import { loadCharacters } from "@/lib/character-storage";
-import { loadBindingConfig, loadWorldBooks, resolveBinding } from "@/lib/settings-storage";
 import { avatarFromKey } from "./npc-avatar";
 import {
+  buildForumCommentMessages,
+  FORUM_COMMENT_TIMEOUT_MS,
+  forumDeadline,
+  forumRequestMeta,
+  forumRuleFields,
+  logForumRequest,
+} from "./forum-prompt";
+import {
   DEFAULT_FORUM_RULES,
+  forumMessagesFor,
   generateNpc,
+  npcHiddenContext,
   pickParticipants,
   resolveForumApiConfig,
   type ForumComment,
@@ -469,68 +477,6 @@ export function isDuplicateComment(post: ForumPost, npcId: string, body: string)
   });
 }
 
-/**
- * 角色卡书友的隐藏背景：沿用小手机里给这个角色绑定的世界书（书房应用的绑定，没有就继承角色/全局默认），
- * 只取常驻条目，限制长度；不在界面上显示，只作为生成时的背景。
- */
-export function npcHiddenContext(npc: ForumNpc): string {
-  if (!npc.characterId) return "";
-  try {
-    const character = loadCharacters().find((item) => item.id === npc.characterId);
-    const slot = resolveBinding(loadBindingConfig(), npc.characterId, "studyroom");
-    const books = loadWorldBooks().filter((book) => (slot.worldBookIds ?? []).includes(book.id));
-    const lore = books
-      .flatMap((book) => book.entries.filter((entry) => !entry.disable && entry.constant).map((entry) => entry.content.trim()))
-      .filter(Boolean)
-      .join("\n")
-      .slice(0, 1200);
-    return [
-      character?.persona ? `你的人设（只作背景，别照念）：${character.persona.slice(0, 600)}` : "",
-      lore ? `世界设定（只作背景）：\n${lore}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n");
-  } catch {
-    return "";
-  }
-}
-
-export function buildCommentPrompt(post: ForumPost, npc: ForumNpc, rules: ForumRules, target?: ForumComment): string {
-  const recent = post.comments
-    .slice(-6)
-    .map((comment) => `- ${comment.authorName}：${comment.body.slice(0, 80)}`)
-    .join("\n");
-  return [
-    `你是${npc.nickname}，读书论坛「书友圈」里的书友。`,
-    npc.occupation ? `职业/领域：${npc.occupation}。` : "",
-    npc.personality ? `性格：${npc.personality}。` : "",
-    npc.speechStyle ? `说话习惯：${npc.speechStyle}。` : "",
-    npc.readingTaste ? `阅读偏好：${npc.readingTaste}。` : "",
-    npc.relations ? `与对方的关系：${npc.relations}` : "",
-    "",
-    "下面是论坛里的一条帖子，请用这个身份回一条评论。",
-    `作者：${post.authorName}${post.authorId === USER_ID ? "（和你认识的用户）" : ""}`,
-    post.bookTitle ? `关联书籍：《${post.bookTitle}》` : "",
-    post.title ? `标题：${post.title}` : "",
-    `正文：${post.body.slice(0, 600)}`,
-    recent ? `已有评论（不要重复这些说法）：\n${recent}` : "",
-    target
-      ? `你这次是回复 ${target.authorName}${target.authorId === USER_ID ? "（用户本人）" : ""} 的这条评论：「${target.body.slice(0, 200)}」。直接接着这句说，不要另起话题。`
-      : "",
-    npcHiddenContext(npc),
-    "",
-    `评论要求：${rules.commentLength}；${rules.commentTone}；${rules.commentRelation}。`,
-    "写法：像真人在论坛回帖——可以只回一句，也可以问一句；不要客服腔、不要说教、不要每次都用同一种句式。",
-    "不要把用户的书架、阅读进度或现实生活当成已知事实；不知道就别装作知道。",
-    rules.commentFollowUp ? "如果有想问的，可以顺着追问一句。" : "不要反问，直接回应就好。",
-    "口吻跟着你自己的说话习惯，不要模仿其他评论的句式。网络梗少用：只有符合你的说话习惯时偶尔用一个，不重复已有评论里的梗；话题严肃、有人难过时一个都不用。",
-    "允许剧透，但不要辱骂、不要攻击现实中的群体。如果这条评论透露了剧情走向、结局或关键反转，在最开头写上「[剧透]」标记（会被自动遮住，别在正文里再提）。",
-    "只输出评论本身，不要加引号、不要写自己的昵称。",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
 export function cleanComment(raw: string): string | null {
   const text = raw
     .trim()
@@ -555,15 +501,43 @@ export async function generateComment(
   rules: ForumRules,
   signal?: AbortSignal,
   target?: ForumComment,
+  /** 用户的显示名，只写进提示词让书友知道「楼主是 TA」；不传就不提。 */
+  meName?: string,
 ): Promise<CommentResult> {
   const apiConfig = resolveForumApiConfig();
   if (!apiConfig) return { status: "no-api" };
-  const result = await simpleLLMCall(apiConfig, [{ role: "user", content: buildCommentPrompt(post, npc, rules, target) }], {
-    temperature: 0.9,
-    max_tokens: 400,
-    signal,
-    label: "studyroom-forum-comment",
-  });
+  const background = npcHiddenContext(npc);
+  const messages = forumMessagesFor(
+    apiConfig,
+    buildForumCommentMessages({ post, npc, rules, target, meName, background }),
+  );
+  const startedAt = Date.now();
+  // 用户的「停止」+ 单条评论的总时长上限
+  const deadline = forumDeadline(signal, FORUM_COMMENT_TIMEOUT_MS);
+  const timeoutMessage = `等了 ${Math.round(FORUM_COMMENT_TIMEOUT_MS / 1000)} 秒还没回上来，已停止，可以重试`;
+  let result: Awaited<ReturnType<typeof simpleLLMCall>>;
+  try {
+    result = await simpleLLMCall(apiConfig, messages, {
+      temperature: 0.9,
+      max_tokens: 400,
+      signal: deadline.signal,
+      label: "studyroom-forum-comment",
+    });
+  } catch (error) {
+    if (deadline.timedOut()) return { status: "error", message: timeoutMessage };
+    throw error;
+  } finally {
+    deadline.done();
+  }
+  if (deadline.timedOut()) return { status: "error", message: timeoutMessage };
+  logForumRequest(
+    forumRequestMeta(messages, target ? "comment-reply" : "comment", {
+      npcCount: 1,
+      backgroundCount: background ? 1 : 0,
+      ruleFields: forumRuleFields(rules),
+      elapsedMs: Date.now() - startedAt,
+    }),
+  );
   if (result.error) return { status: "error", message: result.error };
   const raw = result.content ? cleanComment(result.content) : null;
   if (!raw) return { status: "error", message: "模型返回了空内容" };

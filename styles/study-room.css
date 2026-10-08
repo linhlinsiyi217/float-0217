@@ -1597,6 +1597,20 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 书房私信：未读数 */
+.sr-msg-list-unread {
+  flex: 0 0 auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #007aff;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
 
 /* ══════════════════════════════════════════
    书城：联网搜索结果
@@ -1840,6 +1854,13 @@
   outline: none;
 }
 .sr-css-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+/* 规则页：动作行固定在展开区底部，不随字段滚走（只作用于规则页，不影响书房其他按钮行） */
+.sr-rule-body > .sr-css-actions {
+  flex: 0 0 auto;
+  margin-top: 0;
+  padding: 8px 0 10px;
+  border-top: 0.5px solid var(--c-card-border);
+}
 .sr-css-actions .sr-chip { display: inline-flex; align-items: center; gap: 5px; }
 
 /* ── 半屏调色面板 ── */
@@ -3127,6 +3148,9 @@
 
 /* 生成规则分组 */
 .sr-rule-group {
+  /* 外层 .sr-forum-sub-body 是 flex 列，不写死 flex 的话这几张卡片会被压缩，
+     展开后的「恢复默认 / 取消 / 保存」就被卡片自己的 overflow:hidden 裁掉（图三）。 */
+  flex: 0 0 auto;
   border-radius: 14px;
   border: 0.5px solid var(--c-card-border);
   background: var(--sr-card-bg, #fff);
@@ -3147,7 +3171,27 @@
 }
 .sr-rule-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .sr-rule-label { font-size: 14px; font-weight: 600; color: var(--c-text-title); }
-.sr-rule-body { padding: 0 12px 12px; border-top: 0.5px solid var(--c-card-border); padding-top: 10px; }
+/* 展开区：标题留在外层始终可见；字段区自己纵向滚；动作行固定在卡片底部，不被字段顶掉。
+   --sr-rule-max 由 study-room-forum-settings.tsx 按当前可见高度写入（键盘弹出后的变化也算）。 */
+.sr-rule-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: var(--sr-rule-max, 380px);
+  padding: 0 12px;
+  border-top: 0.5px solid var(--c-card-border);
+}
+.sr-rule-fields {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 10px 0 6px;
+  /* 字段获得焦点、键盘弹出时浏览器把字段滚进可见区，留出动作行的位置 */
+  scroll-padding-bottom: 84px;
+}
+.sr-rule-fields .sr-appear-row:last-of-type { border-bottom: 0; }
 @media (prefers-reduced-motion: reduce) {
   .sr-drawer, .sr-drawer-mask { animation: none; }
 }

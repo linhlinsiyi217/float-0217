@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronLeft, RotateCcw, Save, Users } from "lucide-react";
 
 import type { ForumRules, ForumState } from "@/lib/study-room/forum";
@@ -86,6 +86,32 @@ export function StudyRoomForumSettings({
   const [expanded, setExpanded] = useState<string | null>("feed");
   const [draft, setDraft] = useState<ForumRules>(state.rules);
   const [nameDraft, setNameDraft] = useState(state.name);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // 展开区的最大高度按当前可见高度算（键盘弹出时可见高度会变小）。
+  // 只写一个 CSS 变量、不动 state，所以键盘开合和窗口变化都不会重新挂载表单，未保存内容不会丢。
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const apply = () => {
+      const height = window.visualViewport?.height ?? window.innerHeight;
+      // 约占可见高度的一半：其余留给标题、动作行和后面几个分组
+      const max = Math.max(160, Math.min(420, Math.round(height * 0.46)));
+      root.style.setProperty("--sr-rule-max", max + "px");
+    };
+    apply();
+    window.visualViewport?.addEventListener("resize", apply);
+    window.addEventListener("resize", apply);
+    return () => {
+      window.visualViewport?.removeEventListener("resize", apply);
+      window.removeEventListener("resize", apply);
+    };
+  }, []);
+
+  // 别处（书友管理、我的主页）改过规则时跟着更新，草稿不会停在旧值上
+  useEffect(() => {
+    setDraft(state.rules);
+  }, [state.rules]);
 
   const setField = (key: keyof ForumRules, value: string | number | boolean) => {
     setDraft((prev) => ({ ...prev, [key]: value }) as ForumRules);
@@ -111,8 +137,20 @@ export function StudyRoomForumSettings({
     onNotice("已改回默认值，点保存后生效");
   };
 
+  /** 取消只放弃这一组没保存的改动，不动其他分组里还没保存的内容。 */
+  const cancelGroup = (group: Group) => {
+    setDraft((prev) => {
+      const next = { ...prev };
+      for (const field of group.fields) {
+        (next as Record<string, unknown>)[field.key] = state.rules[field.key];
+      }
+      return next;
+    });
+    onNotice("已取消这一组的未保存修改");
+  };
+
   return (
-    <div className="sr-forum-sub">
+    <div className="sr-forum-sub" ref={rootRef}>
       <div className="sr-forum-sub-head">
         <button type="button" className="sr-icon-btn" onClick={onBack} aria-label="返回">
           <ChevronLeft size={22} strokeWidth={1.6} />
@@ -174,6 +212,7 @@ export function StudyRoomForumSettings({
 
               {open && (
                 <div className="sr-rule-body">
+                  <div className="sr-rule-fields">
                   {group.fields.map((field) =>
                     field.kind === "toggle" ? (
                       <div key={field.key} className="sr-appear-row">
@@ -213,20 +252,14 @@ export function StudyRoomForumSettings({
                       </div>
                     ),
                   )}
+                  </div>
 
                   <div className="sr-css-actions">
                     <button type="button" className="sr-btn sr-btn-sm" onClick={() => resetGroup(group)}>
                       <RotateCcw size={13} strokeWidth={1.8} />
                       恢复默认
                     </button>
-                    <button
-                      type="button"
-                      className="sr-btn-text"
-                      onClick={() => {
-                        setDraft(state.rules);
-                        onNotice("已取消这一组的未保存修改");
-                      }}
-                    >
+                    <button type="button" className="sr-btn-text" onClick={() => cancelGroup(group)}>
                       取消
                     </button>
                     <button type="button" className="sr-btn sr-btn-sm sr-btn-primary" onClick={() => saveGroup(group)}>

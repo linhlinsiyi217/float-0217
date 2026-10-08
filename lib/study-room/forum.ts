@@ -8,15 +8,29 @@
 // 论坛是开放的：不受用户阅读进度限制，可以聊书架以外的书，也允许剧透；
 // 只做不辱骂、不破坏的基本管理，并提供「不感兴趣」与「屏蔽」。
 
-import { simpleLLMCall } from "@/lib/api-helpers";
+import { isNativeAnthropicApi, isNativeGoogleApi, simpleLLMCall } from "@/lib/api-helpers";
+import type { ApiConfig } from "@/lib/settings-types";
 import { createCharacter, loadCharacters, saveCharacters } from "@/lib/character-storage";
 import { addChatContact, createOrGetSession, loadChatContacts } from "@/lib/chat-storage";
 import { saveMemoryEntry } from "@/lib/memory-storage";
 import type { MemoryEntry } from "@/lib/memory-types";
 import { avatarDataUrl } from "./npc-avatar";
 import { kvGet, kvSet, registerKvMigration } from "@/lib/kv-db";
-import { loadApiConfigs, loadBindingConfig } from "@/lib/settings-storage";
+import { loadApiConfigs, loadBindingConfig, loadWorldBooks, resolveBinding } from "@/lib/settings-storage";
 import { avatarFromKey, type NpcAvatar } from "./npc-avatar";
+import {
+  adaptMessagesForProvider,
+  buildForumPostMessages,
+  completeJsonObjects,
+  FORUM_FEED_TIMEOUT_MS,
+  forumDeadline,
+  forumFeedMaxTokens,
+  forumRequestMeta,
+  forumRuleFields,
+  logForumRequest,
+  type ForumProviderKind,
+  type ForumRequestMessage,
+} from "./forum-prompt";
 
 const FORUM_KEY = "ai_phone_studyroom_forum_v1";
 registerKvMigration(FORUM_KEY);
@@ -545,39 +559,58 @@ export function pickParticipants(state: ForumState, topic: ForumTopic, count = 3
     .map((item) => item.npc);
 }
 
-export function buildForumPrompt(topic: ForumTopic, participants: ForumNpc[]): string {
-  const people = participants
-    .map(
-      (npc) =>
-        `- ${npc.nickname}｜${npc.occupation}｜性格：${npc.personality}｜阅读偏好：${npc.readingTaste}｜说话习惯：${npc.speechStyle}`,
-    )
-    .join("\n");
-  return [
-    "你在模拟一个开放的读书论坛，几位书友正围绕一个话题发言。书友都是普通人，领域各不相同。",
-    "",
-    `话题：${topic.label}`,
-    topic.bookTitle ? `相关书籍：《${topic.bookTitle}》（不要求大家都读过，可以只看过简介或听过）` : "",
-    topic.prompt ? `发起人想聊的是：${topic.prompt}` : "",
-    "",
-    "参与者：",
-    people,
-    "",
-    "要求：",
-    "- 每人 1–2 条发言，观点要真的不一样：可以推荐、吐槽、抬杠、补充资料，不要一片夸奖；",
-    "- 像真人在论坛打字：长短不一，有人只回一句，有人多说两句；不要每条都排比、不要每次都总结；",
-    "- 不要用客服腔与说教腔（「我理解你」「希望对你有帮助」「记得注意休息」这类一律不要）；",
-    "- 别复读上一条：同一个人不要重复同一个句式或同一个观点；",
-    "- 不要把用户的书架情况、阅读进度或现实生活当成已知事实；不知道就说不知道；",
-    "- 允许温和反驳与追问，但禁止辱骂、骚扰与现实群体攻击；",
-    "- 允许剧透（论坛不限制进度），但含剧透的发言要在 spoiler 里标 true；标题里也不要写剧情结局或关键反转；",
-    "- 每个人的口吻跟着自己的人设走：词汇、句长、语气各不相同，别写成同一个人换名字；",
-    "- 网络梗少用：只有符合这个人的说话习惯时才偶尔用一个，不重复别人已经用过的梗；话题严肃、有人难过或在认真讨论时一个都不用；",
-    "- 不辱骂、不攻击现实中的群体，不涉及政治敏感内容；",
-    "- 发言像真人打字：有长有短，别都用排比句；",
-    "- 只输出 JSON 数组，每项字段：author（必须是上面某个昵称）、kind（post/review/recommend）、title（可空）、body、bookTitle（可空）、spoiler（true/false）。",
-  ]
-    .filter(Boolean)
-    .join("\n");
+/** 用户本人在书友圈里的 id。评论/回复里用它区分「楼主是用户本人」。 */
+export const USER_ID = "user";
+
+/** 当前配置属于哪种协议。判断沿用公共 API 层已有的规则（isNative*Api），不另写一套。 */
+export function forumProviderKind(config: ApiConfig): ForumProviderKind {
+  if (isNativeAnthropicApi(config)) return "anthropic";
+  if (isNativeGoogleApi(config)) return "gemini";
+  return "openai-compatible";
+}
+
+/** 论坛请求的最后一步：按供应商做显式角色转换（见 adaptMessagesForProvider），一个字都不丢。 */
+export function forumMessagesFor(config: ApiConfig, messages: ForumRequestMessage[]): ForumRequestMessage[] {
+  return adaptMessagesForProvider(messages, forumProviderKind(config));
+}
+
+/**
+ * 角色卡书友的隐藏背景：沿用小手机里给这个角色绑定的世界书（书房应用的绑定，没有就继承角色/全局默认），
+ * 只取常驻条目，限制长度；不在界面上显示，只作为生成时的背景。
+ *
+ * 放在 forum.ts 的原因：首页发帖（forum.ts）和评论（forum-social.ts）两条入口都要用它，
+ * 而 forum.ts 不能反过来 import forum-social（会成环）。
+ */
+export function npcHiddenContext(npc: ForumNpc): string {
+  if (!npc.characterId) return "";
+  try {
+    const character = loadCharacters().find((item) => item.id === npc.characterId);
+    const slot = resolveBinding(loadBindingConfig(), npc.characterId, "studyroom");
+    const books = loadWorldBooks().filter((book) => (slot.worldBookIds ?? []).includes(book.id));
+    const lore = books
+      .flatMap((book) => book.entries.filter((entry) => !entry.disable && entry.constant).map((entry) => entry.content.trim()))
+      .filter(Boolean)
+      .join("\n")
+      .slice(0, 1200);
+    return [
+      character?.persona ? `你的人设（只作背景，别照念）：${character.persona.slice(0, 600)}` : "",
+      lore ? `世界设定（只作背景）：\n${lore}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  } catch {
+    return "";
+  }
+}
+
+/** 一批书友的隐藏背景，按 npc.id 索引；同一位只算一次。 */
+export function collectHiddenContexts(participants: ForumNpc[]): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const npc of participants) {
+    const text = npcHiddenContext(npc);
+    if (text) map[npc.id] = text;
+  }
+  return map;
 }
 
 export type GeneratedPost = {
@@ -589,50 +622,47 @@ export type GeneratedPost = {
   spoiler: boolean;
 };
 
-/** 解析模型输出：优先 JSON；模型不听话时退回「昵称：内容」的行解析，尽量不丢内容。 */
+/**
+ * 解析模型输出：优先 JSON；模型不听话时退回「昵称：内容」的行解析，尽量不丢内容。
+ * JSON 被截断时只收**写完整**的那几项（completeJsonObjects），半截的最后一项不算一条帖子。
+ */
 export function parseForumOutput(raw: string, participants: ForumNpc[]): GeneratedPost[] {
   const names = new Set(participants.map((npc) => npc.nickname));
   const trimmed = raw.trim();
-  const jsonStart = trimmed.indexOf("[");
-  const jsonEnd = trimmed.lastIndexOf("]");
-  if (jsonStart !== -1 && jsonEnd > jsonStart) {
-    try {
-      const parsed = JSON.parse(trimmed.slice(jsonStart, jsonEnd + 1)) as unknown;
-      if (Array.isArray(parsed)) {
-        const out = parsed
-          .map((item) => {
-            if (!item || typeof item !== "object") return null;
-            const value = item as Record<string, unknown>;
-            const author = typeof value.author === "string" ? value.author.trim() : "";
-            const body = typeof value.body === "string" ? value.body.trim() : "";
-            if (!body) return null;
-            const kind = value.kind === "review" || value.kind === "recommend" ? value.kind : "post";
-            return {
-              author: names.has(author) ? author : participants[0]?.nickname ?? author,
-              kind,
-              title: typeof value.title === "string" && value.title.trim() ? value.title.trim().slice(0, 40) : undefined,
-              body: body.slice(0, 1200),
-              bookTitle: typeof value.bookTitle === "string" && value.bookTitle.trim() ? value.bookTitle.trim().slice(0, 60) : undefined,
-              spoiler: value.spoiler === true,
-            } as GeneratedPost;
-          })
-          .filter((item): item is GeneratedPost => item !== null);
-        if (out.length > 0) return out;
-      }
-    } catch {
-      // 落到行解析
-    }
-  }
+  const fromJson = (trimmed.includes("[") ? completeJsonObjects(trimmed) : [])
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const value = item as Record<string, unknown>;
+      const author = typeof value.author === "string" ? value.author.trim() : "";
+      const body = typeof value.body === "string" ? value.body.trim() : "";
+      if (!body) return null;
+      // 作者昵称必须真的是这一批书友里的某一位：认不出来就丢掉这条，
+      // 不冒名安到第一位书友头上（那会生成一条不是任何人的帖子）。
+      if (!names.has(author)) return null;
+      const kind = value.kind === "review" || value.kind === "recommend" ? value.kind : "post";
+      return {
+        author,
+        kind,
+        title: typeof value.title === "string" && value.title.trim() ? value.title.trim().slice(0, 40) : undefined,
+        body: body.slice(0, 1200),
+        bookTitle: typeof value.bookTitle === "string" && value.bookTitle.trim() ? value.bookTitle.trim().slice(0, 60) : undefined,
+        spoiler: value.spoiler === true,
+      } as GeneratedPost;
+    })
+    .filter((item): item is GeneratedPost => item !== null);
+  if (fromJson.length > 0) return fromJson;
+
+  // 没解析出可用的一项：落到行解析
   const lines = trimmed.split("\n").map((line) => line.trim()).filter(Boolean);
-  const out: GeneratedPost[] = [];
+  const fromLines: GeneratedPost[] = [];
   for (const line of lines) {
     const match = /^[-*\d.、\s]*([^：:]{1,20})[：:]\s*(.+)$/.exec(line);
     if (!match) continue;
     const name = match[1].replace(/^[-*\d.、\s]+/, "").trim();
     if (!names.has(name)) continue;
-    out.push({ author: name, kind: "post", body: match[2].trim().slice(0, 1200), spoiler: false });
+    fromLines.push({ author: name, kind: "post", body: match[2].trim().slice(0, 1200), spoiler: false });
   }
-  return out;
+  return fromLines;
 }
 
 export async function generateForumPosts(
@@ -640,16 +670,56 @@ export async function generateForumPosts(
   topic: ForumTopic,
   participants: ForumNpc[],
   signal?: AbortSignal,
+  options?: {
+    /** 参与者的隐藏背景（角色人设 + 常驻世界书），不传就按角色卡现算 */
+    backgrounds?: Record<string, string>;
+    /** 用户当前生效的规则；不传就用 state.rules 的默认值 */
+    rules?: ForumRules;
+    /** 已有帖子标题，用来避免同批撞车 */
+    recentTitles?: string[];
+  },
 ): Promise<ForumPost[]> {
   if (participants.length === 0) throw new Error("书友圈里还没有人：先生成几位书友");
   const apiConfig = resolveForumApiConfig();
   if (!apiConfig) throw new Error("还没有配置 API：先在设置里绑定模型");
-  const result = await simpleLLMCall(apiConfig, [{ role: "user", content: buildForumPrompt(topic, participants) }], {
-    temperature: 0.9,
-    max_tokens: 1600,
-    signal,
-    label: "studyroom-forum",
-  });
+
+  const rules = options?.rules ?? state.rules;
+  const backgrounds = options?.backgrounds ?? collectHiddenContexts(participants);
+  const recentTitles = options?.recentTitles ?? state.posts.slice(0, 12).map((post) => post.title ?? "").filter(Boolean);
+
+  const messages = forumMessagesFor(
+    apiConfig,
+    buildForumPostMessages({ topic, participants, rules, backgrounds, recentTitles }),
+  );
+  const startedAt = Date.now();
+  const count = typeof rules.feedCount === "number" && rules.feedCount > 0 ? rules.feedCount : participants.length;
+  // 用户的「停止」+ 总时长上限合成一个 signal；超时与手动停止分开提示
+  const deadline = forumDeadline(signal, FORUM_FEED_TIMEOUT_MS);
+  let result: Awaited<ReturnType<typeof simpleLLMCall>>;
+  try {
+    result = await simpleLLMCall(apiConfig, messages, {
+      temperature: 0.9,
+      // 按条数放大的输出上限：条数多时不至于写一半被截断、整批作废
+      max_tokens: forumFeedMaxTokens(count),
+      signal: deadline.signal,
+      label: "studyroom-forum",
+    });
+  } catch (error) {
+    if (deadline.timedOut()) throw new Error(`等了 ${Math.round(FORUM_FEED_TIMEOUT_MS / 1000)} 秒还没写完，已停止。可以重试，或把「每次生成几条」调少一点`);
+    throw error;
+  } finally {
+    deadline.done();
+  }
+  // 调试只记元数据（版本/来源/体积/耗时），不记提示词正文，也不记密钥。
+  logForumRequest(
+    forumRequestMeta(messages, "home-feed", {
+      npcCount: participants.length,
+      backgroundCount: Object.keys(backgrounds).length,
+      ruleFields: forumRuleFields(rules),
+      elapsedMs: Date.now() - startedAt,
+    }),
+  );
+  if (deadline.timedOut()) throw new Error(`等了 ${Math.round(FORUM_FEED_TIMEOUT_MS / 1000)} 秒还没写完，已停止。可以重试，或把「每次生成几条」调少一点`);
   if (result.error) throw new Error(result.error);
   if (!result.content) throw new Error("模型没有返回内容");
 

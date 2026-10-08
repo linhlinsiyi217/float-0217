@@ -7,6 +7,7 @@ import { loadBooks } from "@/lib/reading-storage";
 import type { Book } from "@/lib/reading-types";
 import { avatarDataUrl } from "@/lib/study-room/npc-avatar";
 import {
+  collectHiddenContexts,
   generateForumPosts,
   pickParticipants,
   hidePost,
@@ -49,6 +50,7 @@ import { shortError, useForumReplyEngine, useMeCard } from "./forum-reply-engine
 import { PopMenu } from "./confirm-sheet";
 import { GiftSheet } from "./gift-sheet";
 import { StudyRoomForumCompose } from "./study-room-forum-compose";
+import { StudyRoomForumDm } from "./study-room-forum-dm";
 import { StudyRoomForumDrawer } from "./study-room-forum-drawer";
 import { StudyRoomForumPostCard, StudyRoomForumPostView } from "./study-room-forum-post";
 import { StudyRoomForumProfile } from "./study-room-forum-profile";
@@ -71,6 +73,17 @@ type StudyRoomForumProps = {
   onGateAccept: () => void;
 };
 
+/** 等待时如实显示已经等了几秒（只计时，不预估「还要多久」）。挂载即开始，卸载即停。 */
+function ElapsedSeconds() {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => setSeconds(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return <span style={{ fontVariantNumeric: "tabular-nums" }}>已等 {seconds} 秒</span>;
+}
+
 /**
  * 书友圈：进来就是能读的信息流。
  * 普通用户不需要先写话题或提示词：书友与内容会自己生成和维护；
@@ -91,6 +104,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
     | { kind: "profile"; npcId: string }
     | { kind: "search"; query: string }
     | { kind: "settings" }
+    | { kind: "dm"; npcId?: string }
   >(() =>
     initialPostId ? { kind: "post", postId: initialPostId } : initialCompose ? { kind: "compose" } : { kind: "feed" },
   );
@@ -150,7 +164,11 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
         const rules = normalizeRules(current.rules);
         const topic = pickFeedTopic(current);
         const participants = pickParticipants(current, topic, Math.max(2, Math.min(rules.feedCount, 4)));
-        const created = await generateForumPosts(current, topic, participants, controller.signal);
+        const created = await generateForumPosts(current, topic, participants, controller.signal, {
+          rules,
+          backgrounds: collectHiddenContexts(participants),
+          recentTitles: current.posts.slice(0, 12).map((post) => post.title ?? "").filter(Boolean),
+        });
         if (controller.signal.aborted) return;
         const fresh = dedupePosts(loadForum().posts, created).slice(0, Math.max(1, rules.feedCount));
         const stamp = new Date().toISOString();
@@ -234,23 +252,13 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
     }
   };
 
+  /**
+   * 私信：打开书房内部的私信界面，不跳到宿主的聊天应用。
+   * 会话与消息都存在书房自己的数据里（lib/study-room/dm.ts），与聊天应用互不相通。
+   */
   const handleOpenChat = (npc: ForumNpc) => {
-    if (!npc.characterId) {
-      flash("先加为好友才能在聊天里找到 TA");
-      return;
-    }
-    // 复用宿主的聊天应用：直接跳到这个角色的会话
-    void import("@/lib/chat-storage").then(({ loadChatContacts, createOrGetSession, addChatContact }) => {
-      let contact = loadChatContacts().find((item) => item.characterId === npc.characterId);
-      if (!contact) contact = addChatContact(npc.characterId!) ?? undefined;
-      if (!contact) {
-        flash("聊天里还没加上这位好友");
-        return;
-      }
-      // 会话按角色 id 归档（与聊天应用一致），不是联系人记录的 id
-      const session = createOrGetSession(npc.characterId!);
-      window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: "chat", sessionId: session.id } }));
-    });
+    setDrawerOpen(false);
+    setView({ kind: "dm", npcId: npc.id });
   };
 
   const posts = useMemo(() => feedPosts(state, scope, sort, kind), [state, scope, sort, kind]);
@@ -288,6 +296,18 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
         }}
         onNotice={flash}
         onOpenSettings={() => setView({ kind: "settings" })}
+      />
+    );
+  }
+
+  if (view.kind === "dm") {
+    return (
+      <StudyRoomForumDm
+        state={state}
+        initialNpcId={view.npcId}
+        // 详情 → 书房私信列表（组件内部处理）；列表的返回键回到书友圈首页
+        onBack={() => setView({ kind: "feed" })}
+        onNotice={flash}
       />
     );
   }
@@ -648,7 +668,7 @@ export function StudyRoomForum({ onOpenNpcPanel, onOpenBook, onOpenMine, initial
       {busy === "feed" && (
         <div className="sr-css-actions" style={{ alignItems: "center" }}>
           <span className="sr-note-meta" style={{ marginRight: "auto", lineHeight: 1.7 }}>
-            <Loader2 size={13} className="sr-spin" /> 书友们正在写新帖…
+            <Loader2 size={13} className="sr-spin" /> 书友们正在写新帖… <ElapsedSeconds />
           </span>
           <button type="button" className="sr-btn sr-btn-sm" onClick={stopFeed}>
             <Square size={12} strokeWidth={1.8} />

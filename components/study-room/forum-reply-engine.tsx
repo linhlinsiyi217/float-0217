@@ -105,7 +105,7 @@ export function useForumReplyEngine({
         setTyping({ postId: post.id, npcName: npc.nickname, replyToId: reply.replyToId });
         let result: CommentResult;
         try {
-          result = await generateComment(post, npc, normalizeRules(current.rules), controller.signal, target);
+          result = await generateComment(post, npc, normalizeRules(current.rules), controller.signal, target, meName);
         } catch (error) {
           result = { status: "error", message: error instanceof Error ? error.message : String(error) };
         } finally {
