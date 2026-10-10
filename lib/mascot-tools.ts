@@ -254,12 +254,24 @@ const CREATE_CHARACTER_SCHEMA = {
     additionalProperties: false,
 };
 
+const SET_CHARACTER_AVATAR_SCHEMA = {
+    type: "object",
+    properties: {
+        name: { type: "string", description: "角色名（填小卷/AI助手/自己 时，会自动设置为小卷自己的头像）" },
+        sourceImageId: { type: "string", description: "可选：用户发图的 sourceImageId（如 user_image_1），自动从用户发图中取图设为头像" },
+        assetId: { type: "string", description: "可选：素材库中的 assetId（由生图或导入素材得到）" },
+        avatarUrl: { type: "string", description: "可选：外部 http(s) 图片 URL 或 data:image dataURL" },
+    },
+    required: ["name"],
+    additionalProperties: false,
+};
+
 const UPDATE_CHARACTER_FIELD_SCHEMA = {
     type: "object",
     properties: {
         name: { type: "string", description: "要修改的角色名" },
-        field: { type: "string", enum: ["name", "persona", "personality", "briefPersona"], description: "字段名" },
-        value: { type: "string", description: "新值" },
+        field: { type: "string", enum: ["name", "persona", "personality", "briefPersona", "avatar"], description: "字段名" },
+        value: { type: "string", description: "新值（如果是 avatar，可传 http(s) URL 或 data:image dataURL）" },
     },
     required: ["name", "field", "value"],
     additionalProperties: false,
@@ -946,11 +958,12 @@ export const MASCOT_TOOL_PACKAGES: MascotToolPackage[] = [
     {
         id: "character_pack",
         label: "角色卡套件",
-        description: "创建 / 修改 / 查看 角色卡。角色由 name/persona/personality 三个字段组成，可另写简量人设 briefPersona（给同世界有关联的角色看，防 OOC）。",
+        description: "创建 / 修改 / 查看 角色卡。角色由 name/persona/personality/avatar 三个主要字段组成，可设置角色卡头像，可另写简量人设 briefPersona（给同世界有关联的角色看，防 OOC）。",
         subTools: [
             { name: "读取角色", description: "不传 name 时列出所有角色；传 name 时返回完整字段。", parameterSchema: READ_CHARACTER_SCHEMA },
             { name: "创建角色", description: "新建一张角色卡。persona 必须包含 7 段式人设（基础信息/外貌/世界观/性格/补充信息/经历）。", parameterSchema: CREATE_CHARACTER_SCHEMA },
-            { name: "更新角色字段", description: "修改某角色的单个字段（name/persona/personality）。", parameterSchema: UPDATE_CHARACTER_FIELD_SCHEMA },
+            { name: "更新角色字段", description: "修改某角色的单个字段（name/persona/personality/briefPersona/avatar）。", parameterSchema: UPDATE_CHARACTER_FIELD_SCHEMA },
+            { name: "设置角色头像", description: "直接给角色卡或小卷自己更换头像。支持传入用户发送的图片 sourceImageId（如 user_image_1）、素材库 assetId 或图片 URL。", parameterSchema: SET_CHARACTER_AVATAR_SCHEMA },
         ],
         usageGuide: CHARACTER_CARD_PROMPT,
     },
@@ -1186,6 +1199,7 @@ const MASCOT_NATIVE_TOOL_NAMES: Record<string, string> = {
     "读取角色": "mascot_read_character",
     "创建角色": "mascot_create_character",
     "更新角色字段": "mascot_update_character_field",
+    "设置角色头像": "mascot_set_character_avatar",
     "列出世界卷宗": "mascot_list_character_worlds",
     "创建世界卷宗": "mascot_create_character_world",
     "重命名世界卷宗": "mascot_rename_character_world",
@@ -1340,6 +1354,7 @@ export async function executeMascotToolCall(call: ToolCall, ctx: MascotToolConte
             case "读取角色": return await handleReadCharacter(call.args);
             case "创建角色": return await handleCreateCharacter(call.args);
             case "更新角色字段": return await handleUpdateCharacterField(call.args, ctx);
+            case "设置角色头像": return await handleSetCharacterAvatar(call.args, ctx);
 
             // ─── 角色世界（世界卷宗）───
             case "列出世界卷宗": return await handleListCharacterWorlds();
@@ -1931,7 +1946,7 @@ async function handleUpdateCharacterField(args: Record<string, unknown>, ctx: Ma
     const value = args.value as string;
     const now = new Date().toISOString();
     const char = { ...chars[idx] } as Record<string, unknown>;
-    if (field === "name" || field === "persona" || field === "personality") {
+    if (field === "name" || field === "persona" || field === "personality" || field === "avatar") {
         char[field] = value;
     } else if (field === "briefPersona") {
         char.briefPersona = value;
@@ -1954,6 +1969,111 @@ async function handleUpdateCharacterField(args: Record<string, unknown>, ctx: Ma
         name: "更新角色字段",
         success: true,
         data: `${didBackup ? "已为本次任务自动备份旧卡，并" : "本次任务已备份，继续"}更新 ${args.name} 的 ${field}；当前版本 V${nextVersion}`,
+    };
+}
+
+async function handleSetCharacterAvatar(args: Record<string, unknown>, ctx: MascotToolContext): Promise<ToolResult> {
+    const targetName = typeof args.name === "string" ? args.name.trim() : "";
+    if (!targetName) return { name: "设置角色头像", success: false, error: "缺少角色名 name" };
+
+    let avatarDataUrlOrUrl = typeof args.avatarUrl === "string" ? args.avatarUrl.trim() : "";
+
+    // 1. 如果传了 assetId
+    if (!avatarDataUrlOrUrl && typeof args.assetId === "string" && args.assetId.trim()) {
+        const { getCssAssetRecord } = await import("./css-asset-storage");
+        const { loadMediaBlob } = await import("./media-cache-storage");
+        const record = getCssAssetRecord(args.assetId.trim());
+        if (record) {
+            if (record.publicUrl) {
+                avatarDataUrlOrUrl = record.publicUrl;
+            } else {
+                const media = await loadMediaBlob(record.mediaRef);
+                if (media?.blob) {
+                    avatarDataUrlOrUrl = await new Promise<string>((resolve) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result as string);
+                        reader.readAsDataURL(media.blob);
+                    });
+                }
+            }
+        }
+    }
+
+    // 2. 如果没给 url / assetId，支持从用户上传的图片中获取（默认第一张或指定 sourceImageId）
+    if (!avatarDataUrlOrUrl) {
+        const { importUserImageAsCssAsset } = await import("./css-asset-tools");
+        const sourceImageId = typeof args.sourceImageId === "string" ? args.sourceImageId.trim() : undefined;
+        const res = await importUserImageAsCssAsset({
+            history: ctx.history,
+            sourceImageId,
+            kind: "icon",
+            label: `${targetName}-头像`,
+        });
+        if (res.success && res.mediaAttachments?.[0]?.url) {
+            const { loadMediaBlob } = await import("./media-cache-storage");
+            const media = await loadMediaBlob(res.mediaAttachments[0].url);
+            if (media?.blob) {
+                avatarDataUrlOrUrl = await new Promise<string>((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.readAsDataURL(media.blob);
+                });
+            } else if (res.mediaAttachments[0].url.startsWith("data:")) {
+                avatarDataUrlOrUrl = res.mediaAttachments[0].url;
+            }
+        }
+    }
+
+    if (!avatarDataUrlOrUrl) {
+        return { name: "设置角色头像", success: false, error: "未找到可用的图片，请确认用户是否已发送图片，或传入 sourceImageId/assetId/avatarUrl" };
+    }
+
+    // 判断是否是给小卷自己改头像
+    const isMascot = targetName === "小卷" || targetName === "AI助手" || targetName === "自己";
+    if (isMascot) {
+        const { updateMascotSettings, getMascotSettingsSnapshot } = await import("./mascot-settings");
+        updateMascotSettings({ avatarImage: avatarDataUrlOrUrl });
+        const snap = getMascotSettingsSnapshot();
+        return {
+            name: "设置角色头像",
+            success: true,
+            data: `已将小卷（${snap.nickname}）的头像更换为新图片！`,
+        };
+    }
+
+    // 给角色卡换头像
+    const { loadCharacters, saveCharacters } = await import("./character-storage");
+    const { backupCharacterVersion, getCharacterCurrentVersion } = await import("./character-version-storage");
+    const chars = loadCharacters();
+    const idx = chars.findIndex((c) => c.name === targetName || c.name.includes(targetName));
+    if (idx < 0) {
+        return { name: "设置角色头像", success: false, error: `找不到角色：${targetName}` };
+    }
+
+    const backupIds = ctx.characterBackupIds ?? (ctx.characterBackupIds = new Set<string>());
+    const didBackup = !backupIds.has(chars[idx].id);
+    const nextVersion = didBackup
+        ? backupCharacterVersion(chars[idx], "mascot", "更换头像前自动备份")
+        : getCharacterCurrentVersion(chars[idx].id);
+    backupIds.add(chars[idx].id);
+
+    const now = new Date().toISOString();
+    chars[idx] = {
+        ...chars[idx],
+        avatar: avatarDataUrlOrUrl,
+        updatedAt: now,
+    };
+    saveCharacters(chars);
+
+    // 触发全局/桌面界面热更新通知
+    if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("character-updated", { detail: { characterId: chars[idx].id, char: chars[idx] } }));
+    }
+
+    return {
+        name: "设置角色头像",
+        success: true,
+        data: `已成功在角色卷宗里为「${chars[idx].name}」换上新头像（V${nextVersion}）！`,
     };
 }
 
