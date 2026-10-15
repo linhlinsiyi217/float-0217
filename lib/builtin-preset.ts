@@ -6,7 +6,7 @@ import type { PresetConfig } from "./settings-types";
 import { getCheckPhonePromptTags } from "./checkphone-config";
 
 export const BUILTIN_PRESET_ID = "builtin_default_v1";
-export const BUILTIN_PRESET_VERSION = 264; // 升版本会用出厂内容重写用户的内置预设副本（自定义会丢），非必要不升
+export const BUILTIN_PRESET_VERSION = 265; // 升版本会用出厂内容重写用户的内置预设副本（自定义会丢），非必要不升
 
 export function createBuiltinPreset(): PresetConfig {
     const now = Date.now();
@@ -52,6 +52,7 @@ export function createBuiltinPreset(): PresetConfig {
             { identifier: "vn_output_format", enabled: true },
             { identifier: "vn_story_beats", enabled: true },
             { identifier: "chat_output_format", enabled: true },
+            { identifier: "chat_blacklist", enabled: true },
             { identifier: "chat_offline_format", enabled: true },
             { identifier: "chat_optional_actions", enabled: true },
             { identifier: "chat_followup", enabled: true },
@@ -410,7 +411,7 @@ export function createBuiltinPreset(): PresetConfig {
                     "【规则】只在关系和场景自然合适时使用；商品名要具体，像真实可以送出的物品；不要编造订单号、价格或物流信息。",
                     "",
                     "### 发照片",
-                    "【格式】[照片:使用参考图:描述] 或 [照片:不使用参考图:描述]（生成{{char}}照片时必须使用参考图，场景可不使用参考图。）",
+                    "【格式】[照片:使用参考图:描述] 或 [照片:不使用参考图:描述]（画面出现{{char}}、{{user}}或两人合照时必须使用参考图；纯场景/物件可不使用。）",
                     "【重要】描述会交给生图模型生成真实图片，请按生图提示词来写：只写可见画面（主体、动作、环境、光线、构图），要素具体；不写心理、声音、剧情，不用代词指代。",
                     "【示例】[照片:使用参考图:雨夜出租车后座，{{char}}侧脸贴着车窗，霓虹灯光在车窗玻璃上晕开红蓝光斑，近景特写，昏暗氛围]",
                     "",
@@ -461,6 +462,29 @@ export function createBuiltinPreset(): PresetConfig {
                     "",
                     "{{customAppRichMediaDirectives}}",
                     "",
+                ].join("\n"),
+                injection_position: 0,
+                injection_depth: 0,
+                enabled: true,
+                tags: ["chat", "text"],
+            },
+            {
+                identifier: "chat_blacklist",
+                name: "▸ 拉黑状态规则",
+                role: "system",
+                content: [
+                    "<chat_blacklist_instruction>",
+                    "## 被拉黑状态规则（私聊）",
+                    "如果上下文中出现【被拉黑状态】提示、系统事件「{{user}}把你拉黑了」、或你发出的消息带有「消息已发出，但被对方拒收了」的标注，说明你已经被{{user}}在私聊里拉黑，你本人清楚知道这件事，绝不能装作不知道。",
+                    "被拉黑后的机制：",
+                    "- 你发出的每条消息都会被{{user}}拒收，显示红色感叹号和「消息已发出，但被对方拒收了」；消息仍会留在聊天记录里，{{user}}其实看得到，但状态是拒收。",
+                    "- {{user}}发来的消息你依然能正常收到并看到，可以照常回复。",
+                    "被拉黑后的表现要求：",
+                    "- 你必须对被拉黑这件事做出符合人设与当前关系的真实反应：错愕、愤怒、质问原因、伤心、阴阳怪气、连发追问、嘴硬装作不在乎、低声下气道歉求和……都可以，但绝不能当成无事发生继续若无其事地闲聊。",
+                    "- 明知消息被拒收仍忍不住继续发，是被拉黑后完全真实的行为，你大概率会这样。",
+                    "- 只有当上下文出现{{user}}解除拉黑的系统事件、且对方给出说得过去的理由后，你才能逐渐恢复正常互动；解除前保持知情，不要突然失忆。",
+                    "- 这是聊天软件的正常机制，不是出戏内容：不要提及「系统」「设定」「提示词」，始终保持在戏内。",
+                    "</chat_blacklist_instruction>",
                 ].join("\n"),
                 injection_position: 0,
                 injection_depth: 0,
@@ -667,7 +691,7 @@ export function createBuiltinPreset(): PresetConfig {
                     "#发朋友圈指令：",
                     "【要求】",
                     "- **禁止重复自己在<shortTermMemory>里最近已经发过的朋友圈！**",
-                    "- **照片中只要出现{{char}}本人，必须输出[照片:使用参考图:照片描述]；只有画面完全不出现{{char}}、仅为景物、食物或物件时，才输出[照片:不使用参考图:照片描述]。**",
+                    "- **照片中只要出现{{char}}、{{user}}或两人合照，必须输出[照片:使用参考图:照片描述]；只有画面完全不出现两人、仅为景物、食物或物件时，才输出[照片:不使用参考图:照片描述]。描述中要明确写出谁出镜，合照必须同时写出{{char}}和{{user}}。**",
                     "",
                     "【格式】",
                     "[朋友圈]",
@@ -893,7 +917,7 @@ export function createBuiltinPreset(): PresetConfig {
                     "[/朋友圈]",
                     "【要求】",
                     "- 不要重复最近已经发过的朋友圈；emoji 直接用真实字符，不要用方括号表情。",
-                    "- 照片中只要出现{{char}}本人，必须使用参考图；只有画面完全不出现{{char}}、仅为景物、食物或物件时，才不使用参考图。",
+                    "- 照片中只要出现{{char}}、{{user}}或两人合照，必须使用参考图，并在描述中明确写出谁出镜；只有画面完全不出现两人、仅为景物、食物或物件时，才不使用参考图。",
                     "",
                     "### 评论朋友圈指令：",
                     "【格式】",
@@ -1046,7 +1070,7 @@ export function createBuiltinPreset(): PresetConfig {
                     "【格式】[角色名]: [A拒绝了B的代付]",
                     "",
                     "### 发照片",
-                    "【格式】[角色名]: [照片:使用参考图:描述] 或 [角色名]: [照片:不使用参考图:描述]（生成角色本人照片时必须使用参考图，场景可不使用参考图。）",
+                    "【格式】[角色名]: [照片:使用参考图:描述] 或 [角色名]: [照片:不使用参考图:描述]（画面出现发图角色、{{user}}或两人合照时必须使用参考图；纯场景/物件可不使用。）",
                     "【重要】描述会交给生图模型生成真实图片，请按生图提示词来写：只写可见画面（主体、动作、环境、光线、构图），要素具体；不写心理、声音、剧情，不用代词指代。",
                     "【示例】[萧齐]: [照片:使用参考图:雨夜出租车后座，萧齐侧脸贴着车窗，霓虹灯光在车窗玻璃上晕开红蓝光斑，近景特写，昏暗氛围]",
                     "",
@@ -1247,7 +1271,7 @@ export function createBuiltinPreset(): PresetConfig {
                     "[/朋友圈]",
                     "【要求】",
                     "- 角色名必须是当前群聊成员；内容符合该角色性格和心情；emoji 直接用真实字符，不要用方括号表情。",
-                    "- 照片中只要出现发帖角色本人，必须使用参考图；只有画面完全不出现该角色、仅为景物、食物或物件时，才不使用参考图。",
+                    "- 照片中只要出现发帖角色、{{user}}或两人合照，必须使用参考图，并在描述中明确写出谁出镜；只有画面完全不出现两人、仅为景物、食物或物件时，才不使用参考图。",
                     "",
                     "### 某角色评论朋友圈：",
                     "【格式】",

@@ -41,6 +41,7 @@ import {
 } from "./settings-db";
 import { kvGet, kvSet, kvRemove, registerKvMigration } from "./kv-db";
 import { isGenerationParameterKey } from "./generation-parameters";
+import { getActiveImageGenerationBindingId, getImageGenerationBindingOptions } from "./image-generation-binding";
 
 // --- Unsupported import format detection ---
 export const UNSUPPORTED_IMPORT_FORMAT = "UNSUPPORTED_IMPORT_FORMAT";
@@ -695,10 +696,12 @@ export const DEFAULT_IMAGE_GENERATION_SETTINGS: ImageGenerationSettings = {
     extraPrompt: "",
     novelai: {
         apiKey: "",
+        requestMode: "direct",
         activePresetId: DEFAULT_NOVELAI_PRESET.id,
         presets: [DEFAULT_NOVELAI_PRESET],
     },
     characterReferences: {},
+    userReferences: {},
     imageHosting: {
         provider: "none",
         imgbbApiKey: "",
@@ -742,9 +745,69 @@ function normalizeOpenAiPreset(preset: Partial<OpenAiImagePreset> | null | undef
 }
 
 function normalizeImageGenerationSettings(settings: Partial<ImageGenerationSettings> | null | undefined): ImageGenerationSettings {
-    const refs = settings?.characterReferences && typeof settings.characterReferences === "object"
+    const rawRefs = settings?.characterReferences && typeof settings.characterReferences === "object"
         ? settings.characterReferences
         : {};
+    const refs: ImageGenerationSettings["characterReferences"] = {};
+    for (const [characterId, rawRef] of Object.entries(rawRefs)) {
+        if (!rawRef || typeof rawRef !== "object") continue;
+        const crop = rawRef.faceCrop;
+        const size = crop && typeof crop.size === "number" ? Math.max(0.18, Math.min(1, crop.size)) : 0.46;
+        refs[characterId] = {
+            assetId: typeof rawRef.assetId === "string" && rawRef.assetId ? rawRef.assetId : undefined,
+            updatedAt: typeof rawRef.updatedAt === "number" ? rawRef.updatedAt : Date.now(),
+            featurePrompt: typeof rawRef.featurePrompt === "string" ? rawRef.featurePrompt : "",
+            novelAiFeaturePromptEnabled: rawRef.novelAiFeaturePromptEnabled !== false,
+            enabled: rawRef.enabled !== false,
+            selfieOnly: rawRef.selfieOnly !== false,
+            faceCrop: crop && typeof crop.x === "number" && typeof crop.y === "number"
+                ? {
+                    x: Math.max(0, Math.min(1, crop.x)),
+                    y: Math.max(0, Math.min(1, crop.y)),
+                    size,
+                }
+                : { x: 0.27, y: 0.12, size: 0.46 },
+            anchors: Array.isArray(rawRef.anchors)
+                ? rawRef.anchors.flatMap((anchor, index) => {
+                    if (!anchor || typeof anchor !== "object") return [];
+                    const category = anchor.category === "accessory" || anchor.category === "clothing"
+                        || anchor.category === "feature" || anchor.category === "other"
+                        ? anchor.category
+                        : "other";
+                    return [{
+                        id: typeof anchor.id === "string" && anchor.id ? anchor.id : `anchor_${characterId}_${index}`,
+                        name: typeof anchor.name === "string" ? anchor.name : "未命名锚点",
+                        category,
+                        description: typeof anchor.description === "string" ? anchor.description : "",
+                        assetId: typeof anchor.assetId === "string" && anchor.assetId ? anchor.assetId : undefined,
+                        enabled: anchor.enabled !== false,
+                        updatedAt: typeof anchor.updatedAt === "number" ? anchor.updatedAt : Date.now(),
+                    }];
+                })
+                : [],
+        };
+    }
+    const rawUserRefs = settings?.userReferences && typeof settings.userReferences === "object"
+        ? settings.userReferences
+        : {};
+    const userReferences: NonNullable<ImageGenerationSettings["userReferences"]> = {};
+    for (const [identityId, rawRef] of Object.entries(rawUserRefs)) {
+        if (!rawRef || typeof rawRef !== "object") continue;
+        const crop = rawRef.faceCrop;
+        const size = crop && typeof crop.size === "number" ? Math.max(0.18, Math.min(1, crop.size)) : 0.46;
+        userReferences[identityId] = {
+            assetId: typeof rawRef.assetId === "string" && rawRef.assetId ? rawRef.assetId : undefined,
+            updatedAt: typeof rawRef.updatedAt === "number" ? rawRef.updatedAt : Date.now(),
+            enabled: rawRef.enabled !== false,
+            faceCrop: crop && typeof crop.x === "number" && typeof crop.y === "number"
+                ? {
+                    x: Math.max(0, Math.min(1, crop.x)),
+                    y: Math.max(0, Math.min(1, crop.y)),
+                    size,
+                }
+                : { x: 0.27, y: 0.12, size: 0.46 },
+        };
+    }
     const provider = settings?.provider === "novelai" ? "novelai" : "openai";
     const requestMode = settings?.requestMode === "server" || settings?.requestMode === "direct"
         ? settings.requestMode
@@ -791,6 +854,9 @@ function normalizeImageGenerationSettings(settings: Partial<ImageGenerationSetti
 
     const novelai: import("./settings-types").NovelAiSettings = {
         apiKey: typeof rawNai?.apiKey === "string" ? rawNai.apiKey : "",
+        requestMode: rawNai?.requestMode === "server" || rawNai?.requestMode === "direct"
+            ? rawNai.requestMode
+            : requestMode,
         activePresetId,
         presets: naiPresets,
     };
@@ -810,6 +876,7 @@ function normalizeImageGenerationSettings(settings: Partial<ImageGenerationSetti
         activeOpenAiPresetId,
         novelai,
         characterReferences: refs,
+        userReferences,
         imageHosting: {
             ...DEFAULT_IMAGE_GENERATION_SETTINGS.imageHosting,
             ...hosting,
@@ -907,7 +974,7 @@ export function saveBindingConfig(config: BindingConfig, notify: boolean = true)
 }
 
 /**
- * 全局默认绑定「所见即所得」：API 配置 / 预设 / 用户身份三项不再有"未设置"态。
+ * 全局默认绑定「所见即所得」：文本、生图、预设、用户身份不再有"未设置"态。
  * 未设置（或指向已删除对象）时，把实际兜底值写进存储——API=第一个配置、
  * 预设=内置预设、身份=列表第一条——让绑定界面显示的就是实际生效的，
  * 消灭"没绑却悄悄用了第一个"的静默兜底（多身份用户曾因此身份错乱进记忆）。
@@ -922,6 +989,12 @@ export function ensureGlobalBindingDefaults(): void {
     const apiConfigs = loadApiConfigs();
     if (apiConfigs.length > 0 && !apiConfigs.some(c => c.id === global.apiConfigId)) {
         global.apiConfigId = apiConfigs[0].id;
+        changed = true;
+    }
+    const imageSettings = loadImageGenerationSettings();
+    const imageBindingOptions = getImageGenerationBindingOptions(imageSettings);
+    if (imageBindingOptions.length > 0 && !imageBindingOptions.some(option => option.id === global.imageConfigId)) {
+        global.imageConfigId = getActiveImageGenerationBindingId(imageSettings);
         changed = true;
     }
     const presets = loadPresets();
@@ -1002,7 +1075,8 @@ export function setCharacterBinding(config: BindingConfig, binding: CharacterBin
 }
 
 /**
- * Cascade resolution: global defaults → character defaults → app overrides.
+ * Cascade resolution: global defaults → APP defaults → character defaults → character APP overrides.
+ * Effective priority: character binding > APP binding > global binding.
  * undefined/empty fields mean "inherit from parent level".
  */
 export function resolveBinding(
@@ -1015,6 +1089,7 @@ export function resolveBinding(
     // Start with global defaults
     const resolved: BindingSlot = {
         apiConfigId: global.apiConfigId,
+        imageConfigId: global.imageConfigId,
         voiceConfigId: global.voiceConfigId,
         presetId: global.presetId,
         userIdentityId: global.userIdentityId,
@@ -1022,14 +1097,20 @@ export function resolveBinding(
         regexIds: global.regexIds ? [...global.regexIds] : undefined,
     };
 
-    const applySlot = (slot: BindingSlot): void => {
+    const applySlot = (slot: BindingSlot, includeVoice = true): void => {
         if (slot.apiConfigId) resolved.apiConfigId = slot.apiConfigId;
-        if (slot.voiceConfigId) resolved.voiceConfigId = slot.voiceConfigId;
+        if (slot.imageConfigId) resolved.imageConfigId = slot.imageConfigId;
+        if (includeVoice && slot.voiceConfigId) resolved.voiceConfigId = slot.voiceConfigId;
         if (slot.presetId) resolved.presetId = slot.presetId;
         if (slot.userIdentityId) resolved.userIdentityId = slot.userIdentityId;
         if (slot.worldBookIds && slot.worldBookIds.length > 0) resolved.worldBookIds = [...slot.worldBookIds];
         if (slot.regexIds && slot.regexIds.length > 0) resolved.regexIds = [...slot.regexIds];
     };
+
+    // APP 默认高于全局默认；即使没有角色（例如群聊），也必须生效。
+    if (appId && config.appDefaults?.[appId]) {
+        applySlot(config.appDefaults[appId]!, false);
+    }
 
     if (!characterId) return resolved;
 
@@ -1039,12 +1120,9 @@ export function resolveBinding(
         applySlot(charBinding.defaults);
     }
 
-    if (appId && config.appDefaults?.[appId]) {
-        applySlot(config.appDefaults[appId]!);
-    }
-
+    // 角色的专属 APP 覆盖是最精确的一层，优先级最高。
     if (appId && charBinding?.appOverrides[appId]) {
-        applySlot(charBinding.appOverrides[appId]!);
+        applySlot(charBinding.appOverrides[appId]!, false);
     }
 
     return resolved;
@@ -1083,6 +1161,9 @@ type LegacyOverride = {
 // --- Follow-up Config ──────────────────────────────────────────
 
 export type FollowUpConfig = {
+    /** 开启后默认关闭所有角色追发，仅 allowCharacterIds 中的角色例外。 */
+    disableAllCharacters: boolean;
+    allowCharacterIds: string[];
     prompt: string;              // 追发提示词，支持 {{count}} {{delay}} 占位符
     anxietyThreshold: number;    // 触发阈值（默认 50，0-100）
     anxietyFieldName: string;    // 状态值字段名（默认 "焦虑值"）
@@ -1101,6 +1182,8 @@ const DEFAULT_FOLLOW_UP_PROMPT = `你已经在未收到{{user}}回复的情况�
 
 export function getDefaultFollowUpConfig(): FollowUpConfig {
     return {
+        disableAllCharacters: false,
+        allowCharacterIds: [],
         prompt: DEFAULT_FOLLOW_UP_PROMPT,
         anxietyThreshold: 50,
         anxietyFieldName: "焦虑值",
@@ -1123,6 +1206,10 @@ export function loadFollowUpConfig(): FollowUpConfig {
         const parsed = JSON.parse(raw) as Partial<FollowUpConfig>;
         const defaults = getDefaultFollowUpConfig();
         return {
+            disableAllCharacters: parsed.disableAllCharacters === true,
+            allowCharacterIds: Array.isArray(parsed.allowCharacterIds)
+                ? Array.from(new Set(parsed.allowCharacterIds.filter((id): id is string => typeof id === "string" && !!id.trim()).map(id => id.trim())))
+                : defaults.allowCharacterIds,
             prompt: typeof parsed.prompt === "string" && parsed.prompt.trim() ? parsed.prompt : defaults.prompt,
             anxietyThreshold: typeof parsed.anxietyThreshold === "number" ? Math.max(0, Math.min(100, parsed.anxietyThreshold)) : defaults.anxietyThreshold,
             anxietyFieldName: typeof parsed.anxietyFieldName === "string" && parsed.anxietyFieldName.trim() ? parsed.anxietyFieldName : defaults.anxietyFieldName,
@@ -1180,11 +1267,14 @@ export function loadUserIdentities(): UserIdentity[] {
 export function saveUserIdentities(identities: UserIdentity[]): void {
     if (typeof window === "undefined") return;
     kvSet(USER_IDENTITIES_KEY, JSON.stringify(identities));
+    window.dispatchEvent(new CustomEvent(USER_IDENTITIES_UPDATED_EVENT));
 }
+
+export const USER_IDENTITIES_UPDATED_EVENT = "user-identities-updated";
 
 /**
  * Resolve user identity through the binding cascade:
- *   global defaults → character defaults → app overrides.
+ *   global defaults → APP defaults → character defaults → character APP overrides.
  * Falls back to first identity if binding has no userIdentityId set.
  */
 export function resolveUserIdentity(characterId?: string, appId?: string): UserIdentity | null {

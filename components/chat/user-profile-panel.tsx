@@ -1,13 +1,22 @@
 "use client";
 
-import { useState, useEffect, useMemo, type CSSProperties } from "react";
+import { useState, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import CSSSchemeBar from "@/components/ui/css-scheme-picker";
 import {
     loadFollowUpConfig,
     saveFollowUpConfig,
     getDefaultFollowUpConfig,
-    resolveUserIdentity,
+    loadUserIdentities,
+    saveUserIdentities,
+    USER_IDENTITIES_UPDATED_EVENT,
 } from "@/lib/settings-storage";
+import {
+    CHAT_SCOPE_UPDATED_EVENT,
+    characterMatchesChatScope,
+    loadChatScope,
+    resolveChatScopeUserIdentity,
+} from "@/lib/chat-scope-storage";
+import { fileToUserAvatarDataUrl } from "@/lib/user-avatar-image";
 import { loadChatAppSettings, saveChatAppSettings } from "@/lib/chat-storage";
 import type { UserIdentity } from "@/components/settings/user-identity";
 import { getApiLogs, clearApiLogs, type DebugInfo } from "@/lib/chat-engine";
@@ -18,9 +27,10 @@ import { Toggle } from "@/components/ui/form";
 import { StickerManager } from "./sticker-manager";
 import { ChatPluginManager } from "./chat-plugin-manager";
 import { ChatPluginPageBoundary } from "./chat-plugin-page-boundary";
+import { GlobalChatInfoSettings } from "./global-chat-info-settings";
 import { WalletPanel } from "./wallet-panel";
 import { loadMomentsConfig, saveMomentsConfig, DEFAULT_MOMENTS_CONFIG, type MomentsInteractionConfig, getAllPosts } from "@/lib/moments-storage";
-import { loadChatContacts } from "@/lib/chat-storage";
+import { loadChatContacts, resolveChatCharacterAvatar } from "@/lib/chat-storage";
 import { loadCharacters } from "@/lib/character-storage";
 import { triggerImmediatePost } from "@/lib/moments-engine";
 import type { Character } from "@/lib/character-types";
@@ -35,9 +45,12 @@ import { addChatContact, createOrGetSession } from "@/lib/chat-storage";
 import { kvGet, kvSet, kvRemove } from "@/lib/kv-db";
 import { formatWalletAmount, getWalletBalance, loadWalletState, WALLET_UPDATED_EVENT } from "@/lib/wallet-storage";
 import { ChatFallbackAvatar } from "./chat-fallback-avatar";
+import { ChatScopeSwitcher } from "./chat-scope-switcher";
+import { findChatAltAccount } from "@/lib/chat-alt-account-storage";
 import {
     Loader2,
     Bell,
+    Camera,
     CloudUpload,
     ChevronRight,
     Clock,
@@ -145,6 +158,23 @@ function isBrowserNotificationGranted(): boolean {
         && Notification.permission === "granted";
 }
 
+function readScopedUserStats() {
+    const scope = loadChatScope();
+    const altAccount = findChatAltAccount(scope.chatAccountId);
+    const contactsCount = (altAccount
+        ? altAccount.friendCharacterIds
+        : loadChatContacts().map(contact => contact.characterId))
+        .filter(characterId => characterMatchesChatScope(characterId, scope)).length;
+    const userPostsCount = getAllPosts().filter(post => post.authorType === "user"
+        && (post.chatAccountId || null) === scope.chatAccountId
+        && (Boolean(scope.chatAccountId) || !scope.userIdentityId || !post.userIdentityId || post.userIdentityId === scope.userIdentityId)).length;
+    return {
+        chats: contactsCount,
+        moments: userPostsCount,
+        visitors: 1234 + contactsCount * 17 + userPostsCount * 43,
+    };
+}
+
 /* ══════════════════════════════════════════
    Main export
    ══════════════════════════════════════════ */
@@ -161,6 +191,8 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
     const [notifHint, setNotifHint] = useState<string | null>(null);
     const [notifChecking, setNotifChecking] = useState(false);
     const [showPushSettings, setShowPushSettings] = useState(false);
+    const [showGlobalChatInfo, setShowGlobalChatInfo] = useState(false);
+    const profileAvatarInputRef = useRef<HTMLInputElement>(null);
     const [enterToSendEnabled, setEnterToSendEnabled] = useState(false);
     const [callVibrationEnabled, setCallVibrationEnabled] = useState(true);
     const [userStats, setUserStats] = useState({ chats: 0, moments: 0, visitors: 1234 });
@@ -173,7 +205,7 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
     });
 
     useEffect(() => {
-        setIdentity(resolveUserIdentity());
+        setIdentity(resolveChatScopeUserIdentity());
         const settings = loadChatAppSettings();
         const browserGranted = isBrowserNotificationGranted();
         setNotifEnabled(settings.browserNotificationsEnabled === true && browserGranted);
@@ -189,16 +221,43 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
         });
 
         // Fetch dynamic user stats
-        try {
-            const contactsCount = loadChatContacts().length;
-            const userPostsCount = getAllPosts().filter(p => p.authorType === "user").length;
-            setUserStats({
-                chats: contactsCount,
-                moments: userPostsCount,
-                visitors: 1234 + contactsCount * 17 + userPostsCount * 43 // simple deterministic mock equation
-            });
-        } catch (e) { }
+        try { setUserStats(readScopedUserStats()); } catch { }
     }, []);
+
+    useEffect(() => {
+        const syncIdentity = () => {
+            setIdentity(resolveChatScopeUserIdentity());
+            try { setUserStats(readScopedUserStats()); } catch { }
+        };
+        window.addEventListener(USER_IDENTITIES_UPDATED_EVENT, syncIdentity);
+        window.addEventListener(CHAT_SCOPE_UPDATED_EVENT, syncIdentity);
+        return () => {
+            window.removeEventListener(USER_IDENTITIES_UPDATED_EVENT, syncIdentity);
+            window.removeEventListener(CHAT_SCOPE_UPDATED_EVENT, syncIdentity);
+        };
+    }, []);
+
+    const handleProfileAvatarChange = async (file?: File) => {
+        if (!file) return;
+        const currentIdentity = resolveChatScopeUserIdentity();
+        if (!currentIdentity) {
+            window.alert("请先在设置的“用户信息”中创建用户身份");
+            return;
+        }
+        try {
+            const avatarUrl = await fileToUserAvatarDataUrl(file);
+            const currentScope = loadChatScope();
+            const altAccount = findChatAltAccount(currentScope.chatAccountId);
+            const targetIdentityId = altAccount?.userIdentityId || currentIdentity.id;
+            const identities = loadUserIdentities();
+            saveUserIdentities(identities.map(item => (
+                item.id === targetIdentityId ? { ...item, avatarUrl } : item
+            )));
+        } catch (error) {
+            console.error("更新用户资料头像失败", error);
+            window.alert("头像读取失败，请换一张图片后重试");
+        }
+    };
 
     useEffect(() => {
         const syncWallet = () => {
@@ -256,6 +315,9 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
     }
     if (showPushSettings) {
         return <OfflinePushSettingsPage onBack={() => { window.dispatchEvent(new CustomEvent("chat-hide-tabbar", { detail: false })); setShowPushSettings(false); }} />;
+    }
+    if (showGlobalChatInfo) {
+        return <GlobalChatInfoSettings onBack={() => { window.dispatchEvent(new CustomEvent("chat-hide-tabbar", { detail: false })); setShowGlobalChatInfo(false); }} />;
     }
     if (showPluginManager) {
         return (
@@ -319,21 +381,46 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
                     display: none;
                 }
             `}</style>
-            <PageShell title="" onBack={onClose} className={`user-profile-page-root ${className || ""}`}>
+            <PageShell
+                title=""
+                onBack={onClose}
+                rightAction={<ChatScopeSwitcher />}
+                className={`user-profile-page-root ${className || ""}`}
+            >
                 <div className="relative z-[1] w-full max-w-2xl mx-auto flex flex-col pb-8">
                     
                     {/* User Info & Stats Block */}
                     <div className="flex items-center gap-5 px-6 pt-2 pb-4">
                         {/* Avatar */}
                         <div className="relative shrink-0">
-                            <div className="w-[84px] h-[84px] rounded-full overflow-hidden bg-[var(--c-card)] border-2 border-white/50 shadow-sm flex items-center justify-center relative"
-                                 style={{ boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}>
+                            <button
+                                type="button"
+                                className="w-[84px] h-[84px] rounded-full overflow-hidden bg-[var(--c-card)] border-2 border-white/50 shadow-sm flex items-center justify-center relative active:scale-[0.97] transition-transform"
+                                style={{ boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}
+                                onClick={() => profileAvatarInputRef.current?.click()}
+                                aria-label="更换用户资料头像"
+                                title="点击更换用户资料头像"
+                            >
                                 {identity?.avatarUrl ? (
                                     <img src={identity.avatarUrl} alt="User Avatar" className="w-full h-full object-cover" />
                                 ) : (
                                     <User size={38} color="var(--c-icon)" />
                                 )}
-                            </div>
+                                <span className="absolute right-0 bottom-0 w-6 h-6 rounded-full bg-black/65 text-white flex items-center justify-center border-2 border-white/80">
+                                    <Camera size={12} />
+                                </span>
+                            </button>
+                            <input
+                                ref={profileAvatarInputRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={event => {
+                                    const file = event.target.files?.[0];
+                                    event.target.value = "";
+                                    void handleProfileAvatarChange(file);
+                                }}
+                            />
                         </div>
 
                         {/* Info & Stats */}
@@ -421,6 +508,14 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
                             <div className="flex flex-col flex-1 text-left gap-0.5">
                                 <span className="ts-14 font-semibold text-[var(--c-text-title)]">离线推送与定时消息</span>
                                 <span className="ts-11 text-[var(--c-text)] opacity-70">关掉后台也能收到推送、安静时段、定时主动消息</span>
+                            </div>
+                            <ChevronRight size={16} className="text-[var(--c-icon)] opacity-50" />
+                        </button>
+                        <button className="flex items-center gap-3 py-3.5 w-full border-t border-[color-mix(in_srgb,var(--c-card-border)_20%,transparent)]" onClick={() => { window.dispatchEvent(new CustomEvent("chat-hide-tabbar", { detail: true })); setShowGlobalChatInfo(true); }}>
+                            <SlidersHorizontal size={18} className="text-[var(--c-icon)] opacity-70" strokeWidth={1.25}/>
+                            <div className="flex flex-col flex-1 text-left gap-0.5">
+                                <span className="ts-14 font-semibold text-[var(--c-text-title)]">全局聊天信息</span>
+                                <span className="ts-11 text-[var(--c-text)] opacity-70">私聊默认头像、状态栏、背景、CSS 与最近图片</span>
                             </div>
                             <ChevronRight size={16} className="text-[var(--c-icon)] opacity-50" />
                         </button>
@@ -534,6 +629,7 @@ function ChatCSSEditor({ onBack }: { onBack: () => void }) {
 function FollowUpSettingsEditor({ onBack }: { onBack: () => void }) {
     const defaults = getDefaultFollowUpConfig();
     const [config, setConfig] = useState<FollowUpConfig>(defaults);
+    const characters = loadCharacters();
 
     useEffect(() => {
         setConfig(loadFollowUpConfig());
@@ -553,6 +649,38 @@ function FollowUpSettingsEditor({ onBack }: { onBack: () => void }) {
     return (
         <PageShell title="追发设置" onBack={onBack} className="absolute inset-0 z-[100]">
             <div className="page-menu profile-settings-menu">
+                <div className="menu-group">
+                    <div className="menu-item">
+                        <ProfileSettingsIcon icon={MessageSquare} color={CONTENT_APP_ACCENTS.chat} />
+                        <div className="menu-label-group">
+                            <span className="menu-label">关闭角色追发消息</span>
+                            <span className="menu-desc">开启后所有角色默认不再追发</span>
+                        </div>
+                        <Toggle checked={config.disableAllCharacters} onChange={value => updateConfig({ disableAllCharacters: value })} />
+                    </div>
+                    {config.disableAllCharacters && characters.map(character => {
+                        const allowed = config.allowCharacterIds.includes(character.id);
+                        return (
+                            <div className="menu-item" key={character.id}>
+                                <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-[var(--c-input)]">
+                                    {resolveChatCharacterAvatar(character) ? <img src={resolveChatCharacterAvatar(character)} alt="" className="h-full w-full object-cover" /> : <ChatFallbackAvatar />}
+                                </div>
+                                <div className="menu-label-group">
+                                    <span className="menu-label">{character.name || "未命名角色"}</span>
+                                    <span className="menu-desc">{allowed ? "例外：允许追发" : "跟随全局：关闭追发"}</span>
+                                </div>
+                                <Toggle
+                                    checked={allowed}
+                                    onChange={value => updateConfig({
+                                        allowCharacterIds: value
+                                            ? Array.from(new Set([...config.allowCharacterIds, character.id]))
+                                            : config.allowCharacterIds.filter(id => id !== character.id),
+                                    })}
+                                />
+                            </div>
+                        );
+                    })}
+                </div>
                 <p className="menu-group-desc mx-2">
                     延迟计算：焦虑值={config.anxietyThreshold} → {config.anxietyMaxDelay}秒，焦虑值=100 → {config.anxietyMinDelay}秒，中间线性插值。焦虑值&lt;{config.anxietyThreshold}时不追发。
                 </p>
@@ -1076,7 +1204,7 @@ function InlineMomentsSettings({ onBack }: { onBack: () => void }) {
                     {showAutoPostList && enriched.map(c => (
                         <div key={c.characterId} className="menu-item" style={{ cursor: "default" }}>
                             <div className="chat-contact-avatar" style={{ width: 32, height: 32 }}>
-                                {c.char.avatar ? <img src={c.char.avatar} alt="" /> : <ChatFallbackAvatar />}
+                                {resolveChatCharacterAvatar(c.char) ? <img src={resolveChatCharacterAvatar(c.char)} alt="" /> : <ChatFallbackAvatar />}
                             </div>
                             <div className="menu-label-group">
                                 <span className="menu-label">{c.char.name}</span>
@@ -1116,8 +1244,8 @@ function InlineMomentsSettings({ onBack }: { onBack: () => void }) {
                                     <div className="chat-contact-avatar"
                                         style={selectedIds.has(c.characterId) ? { outline: "3px solid var(--c-success)", outlineOffset: "2px" } : undefined}
                                     >
-                                        {c.char.avatar ? (
-                                            <img src={c.char.avatar} alt="" />
+                                        {resolveChatCharacterAvatar(c.char) ? (
+                                            <img src={resolveChatCharacterAvatar(c.char)} alt="" />
                                         ) : (
                                             <ChatFallbackAvatar />
                                         )}

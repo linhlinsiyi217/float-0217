@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ChatSession, ChatMessage, loadChatMessages, pushChatMessage, getLatestCharacterStateValues } from "@/lib/chat-storage";
+import { ChatSession, ChatMessage, loadChatMessages, pushChatMessage, getLatestCharacterStateValues, resolveChatCharacterAvatar } from "@/lib/chat-storage";
 import { getStatusRegionConfig, isCustomStatusRegionActive } from "@/lib/chat-status-region";
 import type { StateValue } from "@/lib/chat-storage";
 import { parseStateValues, mergeStateValues } from "@/lib/state-value-parser";
@@ -22,6 +22,7 @@ import { CallSttWarningDialog, hideCallSttWarningPermanently, isCallSttWarningHi
 import { isAndroidBrowser, isIOSDevice } from "./voice-input-platform";
 import { CallVolumeControl } from "./call-volume-control";
 import { startIncomingCallVibration } from "@/lib/call-vibration";
+import { useCallScreenSounds } from "@/lib/chat-sound";
 
 // ── Types ───────────────────────────────────────────
 
@@ -115,6 +116,8 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
     }, [minimized]);
 
     // 来电等待接听：循环振动（开关在聊天主页，iOS 网页不支持自动无效果）
+    // + 来电/致电铃声与挂断音（角色专属提示音优先，其余在"全局聊天信息 → 提示音"）
+    useCallScreenSounds({ initiator, callState, session });
     useEffect(() => {
         if (initiator !== "character" || callState !== "CONNECTING") return;
         const stop = startIncomingCallVibration();
@@ -636,7 +639,7 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
             <button
                 type="button"
                 className="call-mini-window"
-                style={{ backgroundImage: `url(${bgImageResolved || character.avatar || ""})` }}
+                style={{ backgroundImage: `url(${bgImageResolved || resolveChatCharacterAvatar(character)})` }}
                 onClick={onRestore}
                 aria-label={`返回与${character.name}的语音通话`}
                 title="点击返回通话"
@@ -697,9 +700,9 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
                             className="voicecall-avatar"
                             {...(callState === "AI_SPEAKING" ? { "data-speaking": "" } : {})}
                         >
-                            {character.avatar ? (
+                            {resolveChatCharacterAvatar(character) ? (
                                 <img
-                                    src={character.avatar}
+                                    src={resolveChatCharacterAvatar(character)}
                                     alt={character.name}
                                     className="w-full h-full object-cover"
                                 />

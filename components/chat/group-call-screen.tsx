@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ChatSession, ChatMessage, loadChatMessages, pushChatMessage, getLatestCharacterStateValues } from "@/lib/chat-storage";
+import { ChatSession, ChatMessage, loadChatMessages, pushChatMessage, getLatestCharacterStateValues, resolveChatCharacterAvatar, resolveChatUserAvatar } from "@/lib/chat-storage";
 import { getStatusRegionConfig, isCustomStatusRegionActive } from "@/lib/chat-status-region";
 import { generateGroupChatCompletion } from "@/lib/group-chat-engine";
 import { parseAIResponse } from "@/lib/rich-message-parser";
@@ -19,6 +19,7 @@ import { useCallKeyboardOffsetStyle } from "./use-call-keyboard-offset";
 import { isAndroidBrowser, isIOSDevice } from "./voice-input-platform";
 import { CallVolumeControl } from "./call-volume-control";
 import { startIncomingCallVibration } from "@/lib/call-vibration";
+import { useCallScreenSounds } from "@/lib/chat-sound";
 
 // ── Types ───────────────────────────────────────────
 
@@ -136,6 +137,8 @@ export function GroupCallScreen({ type, session, characters, onEnd, initiator = 
     useEffect(() => { stateRef.current = callState; }, [callState]);
 
     // 来电等待接听：循环振动（开关在聊天主页，iOS 网页不支持自动无效果）
+    // + 来电/致电铃声与挂断音（角色专属提示音优先，其余在"全局聊天信息 → 提示音"）
+    useCallScreenSounds({ initiator, callState, session });
     useEffect(() => {
         if (initiator !== "character" || callState !== "CONNECTING") return;
         const stop = startIncomingCallVibration();
@@ -165,7 +168,7 @@ export function GroupCallScreen({ type, session, characters, onEnd, initiator = 
         cancelFollowUp(session.id);
         const ui = resolveUserIdentity(undefined, "group_chat");
         userNameRef.current = ui?.name || "你";
-        userAvatarRef.current = ui?.avatarUrl || null;
+        userAvatarRef.current = resolveChatUserAvatar(session, ui?.avatarUrl) || null;
         messagesRef.current = loadChatMessages(session.id);
 
         const lastMsg = messagesRef.current[messagesRef.current.length - 1];
@@ -252,7 +255,7 @@ export function GroupCallScreen({ type, session, characters, onEnd, initiator = 
                     content: displayText,
                     statusPanel: statusPanel || undefined,
                     // 自定义状态栏渲染戳：不盖的话 custom 模式下 [状态栏] 原文按 markdown 渲染
-                    statusRegionMode: statusPanel && isCustomStatusRegionActive(getStatusRegionConfig(session.id))
+                    statusRegionMode: statusPanel && isCustomStatusRegionActive(getStatusRegionConfig(session.id, false))
                         ? ("custom" as const)
                         : undefined,
                     innerMonologue: innerMonologue || undefined,
@@ -669,9 +672,9 @@ export function GroupCallScreen({ type, session, characters, onEnd, initiator = 
                             <div key={char.id} className="gcall-video-tile"
                                 style={tileBg ? { backgroundImage: `url(${tileBg})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
                             >
-                                {!tileBg && (char.avatar ? (
+                                {!tileBg && (resolveChatCharacterAvatar(char) ? (
                                     <img
-                                        src={char.avatar}
+                                        src={resolveChatCharacterAvatar(char)}
                                         alt={char.name}
                                         className={`w-full h-full object-cover transition-opacity duration-300 ${callState === "CONNECTING" ? "gcall-video-avatar-dim" : "gcall-video-avatar-bright"}`}
                                     />
@@ -777,8 +780,8 @@ export function GroupCallScreen({ type, session, characters, onEnd, initiator = 
                         return (
                             <div key={char.id} className="gcall-tile" {...(isSpeaking ? { "data-speaking": "" } : {})}>
                                 <div className="gcall-tile-avatar">
-                                    {char.avatar ? (
-                                        <img src={char.avatar} alt={char.name} />
+                                    {resolveChatCharacterAvatar(char) ? (
+                                        <img src={resolveChatCharacterAvatar(char)} alt={char.name} />
                                     ) : (
                                         <span className="gcall-tile-initial">{char.name?.[0] || "?"}</span>
                                     )}
