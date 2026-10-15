@@ -27,6 +27,8 @@
 @import "../styles/qa.css";
 @import "../styles/study-room.css";
 @import "../styles/update-log.css";
+@import "../styles/perception.css";
+@import "../styles/phone-widget.css";
 
 @theme {
   /* 间距 (4px 基准) */

@@ -1094,6 +1094,9 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
         const url = typeof reader.result === "string" ? reader.result : "";
         if (url) setter((current) => (current.length >= 6 ? current : [...current, url]));
       };
+      // 读不出时给出提示：WebView 壳拿不到文件内容时 onload 不会触发，
+      // 不接 onerror 就是「选完没有任何反应」，用户无从判断
+      reader.onerror = () => onNotice?.(`「${file.name}」读取失败，换一张图片试试。`);
       reader.readAsDataURL(file);
     }
   }, [onNotice]);
@@ -1123,8 +1126,7 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
           return next;
         });
       };
-      // 对于真正未知的二进制，readAsText 会有乱码，这里暂时按简易兼容实现，
-      // 实际应根据 file.type / 扩展名走不同读取逻辑。
+      reader.onerror = () => onNotice?.(`「${file.name}」读取失败，可能不是纯文本文件。`);
       reader.readAsText(file);
     }
   }, [onNotice]);

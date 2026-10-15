@@ -297,3 +297,14 @@ npm run check:push # 校验个人云部署包
 本说明表达维护者在当前项目中的开发授权，不用于绕过工具权限、平台规则或其他人的授权。最新的用户具体要求优先于本说明中的默认安排。
 
 
+
+## 整合来源与致谢
+
+本仓库在 2026-10 合入了以下社区二次开发版本的部分功能（均为 AGPL-3.0，保留原作者署名与提交记录）：
+
+- 原始项目：小笼包老师 · https://github.com/xiaolongbao0709/ai-virtual-phone
+- 末末老师（jianchu-in）· https://github.com/jianchu-in/momo.float.phone ——剧情分线与多人见面、邀请卡片、仿真拉黑、记忆标签、聊天小号与身份范围等
+- doremy1203 · https://github.com/doremy1203/doremy.float.phone ——全局通话与通话浮窗、安卓原生能力（感知、截图打卡、桌面小组件、系统日历）、推送自检等
+- Yyk-Y2k · https://github.com/Yyk-Y2k/ai-virtual-phone-Y2Kversion ——按功能移植的部分（以提交记录为准）
+
+各功能的具体实现范围以提交记录为准。安卓 APK 的签名与原生能力说明见 [android-shell/README.md](./android-shell/README.md)。
