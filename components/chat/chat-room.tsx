@@ -6937,7 +6937,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                                 onMeetingInviteAction={handleMeetingInviteAction}
                                                 defaultTranslationExpanded={session.collapseBilingualTranslation !== false ? false : true}
                                             />
-                                            {renderMsg.mediaType !== "quote" && (renderMsg.mediaData?.tapback || renderMsg.mediaData?.tapbacks?.length) && (
+                                            {(renderMsg.mediaData?.tapback || renderMsg.mediaData?.tapbacks?.length) && (
                                                 <IMessageTapbackBadge
                                                     tapback={renderMsg.mediaData.tapback}
                                                     tapbackBy={renderMsg.mediaData.tapbackBy || "user"}

@@ -33,6 +33,10 @@ import { STUDYROOM_APP_ID, studyRoomTargetOfMessage } from "@/lib/study-room/sha
 import { ChatPluginSlot } from "@/components/chat/chat-plugin-slot";
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 import { CHAT_PLUGIN_SLOTS_CHANGED_EVENT, getChatPluginRuntime } from "@/lib/chat-plugin-runtime";
+import { ApplePayBrand } from "./apple-pay-brand";
+import { VoiceReferenceGraphic } from "./voice-reference-graphic";
+import { currencySymbol, normalizeCurrency } from "@/lib/exchange-rates";
+import { normalizeQuotePreviewText } from "@/lib/chat-quote-preview";
 
 interface MessageBubbleProps {
     msg: ChatMessage;
@@ -772,12 +776,17 @@ function TransferBubble({ msg, charName, userName, onShowDetail }: {
     const bgClass = isDeclined
         ? "bg-declined-gradient"
         : isReceived ? "bg-opened-gradient" : "bg-transfer-gradient";
+    const currency = normalizeCurrency(d?.currency);
+    const symbol = currencySymbol(currency);
+    const amountText = formatApplePayAmount(d?.amount);
+    const statusText = isReceived ? "已收款" : isDeclined ? "已退回" : "";
 
     return (
         <div
             className="chat-transfer-card w-[240px] rounded-xl overflow-hidden cursor-pointer"
             onClick={() => onShowDetail?.(msg)}
         >
+            <div className="chat-transfer-legacy">
             <div className={`chat-transfer-body p-4 flex items-center gap-3 ${bgClass}`}>
                 <div className="ts-28 shrink-0">💰</div>
                 <div className="flex-1">
@@ -796,8 +805,29 @@ function TransferBubble({ msg, charName, userName, onShowDetail }: {
                 {isReceived && <span>已收款</span>}
                 {isDeclined && <span>已退回</span>}
             </div>
+            </div>
+            {/* iMessage 里显示为 Apple Pay 卡片（来自 Y2K），点开仍是原来的收款详情 */}
+            <div className="imessage-transfer-card hidden" aria-label={`Apple Pay 转账 ${currency} ${amountText}`}>
+                <div className="imessage-transfer-main">
+                    <ApplePayBrand />
+                    <div className="imessage-transfer-amount">{symbol}{amountText}</div>
+                </div>
+                <div className="imessage-transfer-footer">
+                    <span className="imessage-transfer-note">{d?.recipientName ? `转给 ${d.recipientName}` : (d?.label || "转账")}</span>
+                    {statusText && <span className="imessage-transfer-status">{statusText}</span>}
+                </div>
+            </div>
         </div>
     );
+}
+
+function formatApplePayAmount(value: unknown): string {
+    const amount = Number(value ?? 0);
+    if (!Number.isFinite(amount)) return "0";
+    return amount.toLocaleString("zh-CN", {
+        minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+        maximumFractionDigits: 2,
+    });
 }
 
 // ── Payment Request ─────────────────────────────
@@ -1701,13 +1731,19 @@ function StickerBubble({ msg, characterId }: { msg: ChatMessage; characterId?: s
 function QuoteBubble({ msg, displayContent, defaultTranslationExpanded = false }: { msg: ChatMessage; displayContent?: string; defaultTranslationExpanded?: boolean }) {
     const d = msg.mediaData;
     return (
-        <div className="chat-quote-message max-w-full">
+        <div className={`chat-quote-message chat-quote-message-${msg.role} max-w-full`}>
+            <span className="chat-quote-connector" aria-hidden="true" />
             {d?.quotePreview && (
                 <div className="chat-quote-preview bg-black/[0.06] border-l-[3px] border-l-black/15 px-2.5 py-1.5 ts-12 text-[var(--c-icon)] mb-1.5 rounded-r-[6px] truncate max-w-full">
-                    {d.quotePreview}
+                    {normalizeQuotePreviewText(d.quotePreview)}
                 </div>
             )}
-            {msg.content && <TextBubble content={displayContent ?? msg.content} defaultTranslationExpanded={defaultTranslationExpanded} />}
+            {msg.content && (
+                <div className="chat-quote-reply">
+                    <span className="imessage-bubble-surface" aria-hidden="true" />
+                    <TextBubble content={displayContent ?? msg.content} defaultTranslationExpanded={defaultTranslationExpanded} />
+                </div>
+            )}
         </div>
     );
 }
@@ -2467,39 +2503,12 @@ function VoiceMessageBubble({ msg, characterId, onUpdate, defaultTranslationExpa
 
     useEffect(() => () => { audioRef.current?.pause(); }, []);
 
-    // Wave bars — slightly irregular heights so the idle state already looks intentional.
-    const barCount = Math.min(Math.max(4, Math.round(duration / 2)), 9);
-    const barHeights = Array.from({ length: barCount }, (_, i) => {
-        const center = (barCount - 1) / 2;
-        const dist = Math.abs(i - center);
-        return Math.max(6, Math.round(15 - dist * 2.2));
-    });
-
+    // iMessage 语音气泡（来自 Y2K）：按参考稿绘制的播放键 + 波形 + 时长，合成与播放逻辑不变
     return (
-        <div className="voice-msg-bubble" onClick={handlePlay}
-            style={{ minWidth: `${Math.min(60 + duration * 8, 220)}px` }}
-        >
-            <div className="voice-msg-icon-shell">
-                <div className="voice-msg-icon">
-                {synthesizing ? (
-                    <svg width="16" height="16" viewBox="0 0 24 24" className="animate-spin" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" /></svg>
-                ) : playing ? (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
-                ) : (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-                )}
-                </div>
-            </div>
-            <div className="voice-msg-bars" {...(playing ? { "data-playing": "" } : {})}>
-                {barHeights.map((height, i) => (
-                    <div
-                        key={i}
-                        className="voice-msg-bar"
-                        style={{ height: `${height}px`, animationDelay: `${i * 0.08}s` }}
-                    />
-                ))}
-            </div>
-            <span className="voice-msg-dur">{synthFailed ? "合成失败·点击重试" : `${duration}"`}</span>
+        <div className="voice-msg-bubble" onClick={handlePlay} role="button" tabIndex={0}
+            aria-label={synthesizing ? "正在生成语音" : synthFailed ? "播放失败，点击重试" : playing ? "暂停语音" : "播放语音"}
+            onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handlePlay(); } }}>
+            <VoiceReferenceGraphic playing={playing} synthesizing={synthesizing} failed={synthFailed} duration={duration} />
         </div>
     );
 }
