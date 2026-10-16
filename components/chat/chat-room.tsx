@@ -93,6 +93,9 @@ import { ChatPluginSlot } from "@/components/chat/chat-plugin-slot";
 import { useChatAppearance } from "./use-chat-appearance";
 import { IMessageTapbackBadge } from "./imessage-tapback-badge";
 import { GroupSenderName } from "./group-sender-name";
+import { ChatUnreadPill } from "./chat-unread-pill";
+import { GroupAvatar } from "./group-avatar";
+import { HeaderVideoIcon } from "./header-video-icon";
 import { useGlassContrast } from "./use-glass-contrast";
 import { useChatEdgeTint } from "./use-chat-edge-tint";
 import { useGroupBubbleTint } from "./use-group-bubble-tint";
@@ -1335,6 +1338,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
     const [bgLoading, setBgLoading] = useState(!!effectiveBackgroundImage);
 
     const wrapperRef = useRef<HTMLDivElement>(null);
+    const [showHeaderCallMenu, setShowHeaderCallMenu] = useState(false);
     // iMessage 外观（来自 Y2K）：深浅色跟随系统，壁纸亮度决定文字对比
     const chatAppearance = useChatAppearance(bgImageResolved);
     const beautyPreset = resolveChatBeautyPreset(session);
@@ -6053,6 +6057,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                 "--chat-send-surface": groupBubbleTint(undefined, true)["--chat-send-surface" as keyof React.CSSProperties],
                 "--chat-send-ink": groupBubbleTint(undefined, true)["--chat-send-ink" as keyof React.CSSProperties],
             } as React.CSSProperties}
+            onPointerDown={(e) => { if (showHeaderCallMenu && !(e.target as HTMLElement).closest(".imessage-header-call-control")) setShowHeaderCallMenu(false); }}
             data-imessage-private=""
             data-chat-dark={chatAppearance.dark || undefined}
             data-glass-bubbles={beautyPreset === "glass" || undefined}
@@ -6073,26 +6078,61 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
             {/* Header */}
             <header className="page-header chat-room-main-pane" data-ui="header">
                 <div className="page-header-safe-area" />
-                <div className="page-header-content">
-                    <button className="page-back-btn" type="button" onClick={onBack} aria-label="返回">
-                        <ChevronLeft size={24} strokeWidth={1.5} />
-                    </button>
-                    <span className="page-title" style={{ position: 'relative' }}>
-                        {offlineMode ? "线下 · " : ""}
-                        {session.isGroup
-                            ? `${session.groupName || "群聊"}(${(session.participantIds?.length || 0) + (session.isSpectator ? 0 : 1)})`
-                            : (session.alias || character?.name || `User_${session.contactId.slice(-4)}`)}
+                {/* iMessage 顶栏（来自 Y2K）：返回+其他会话未读、居中头像名片（点开聊天设置）、右侧通话 */}
+                <div className="page-header-content imessage-private-header">
+                    <ChatUnreadPill sessionId={session.id} onBack={onBack} />
+                    <button className="imessage-contact-card" type="button" onClick={() => setShowSettings(true)} aria-label={session.isGroup ? "群聊设置" : "联系人详情"}>
+                        <span className="imessage-contact-avatar">
+                            {session.isGroup
+                                ? <GroupAvatar members={[...(!session.isSpectator ? [{ avatar: effectiveUserAvatar }] : []), ...groupCharacters.map(item => ({ avatar: resolveChatCharacterAvatar(item) }))]} />
+                                : (session.characterAvatarOverride || effectiveCharacterAvatar) ? <img src={session.characterAvatarOverride || effectiveCharacterAvatar} alt="" /> : <ChatFallbackAvatar />}
+                        </span>
+                        <span className="imessage-contact-name">
+                            {offlineMode ? "线下 · " : ""}
+                            {session.isGroup
+                                ? `${session.groupName || "群聊"}(${(session.participantIds?.length || 0) + (session.isSpectator ? 0 : 1)})`
+                                : (session.alias || character?.name || `User_${session.contactId.slice(-4)}`)}
+                            <span className="imessage-contact-chevron" aria-hidden="true">›</span>
+                        </span>
                         {(isGenerating || isOfflineGenerating) && (
-                            <span className="chat-typing-indicator">
+                            <span className="imessage-contact-status chat-typing-indicator">
                                 {offlineMode ? "线下生成中" : "对方正在输入"}<span className="chat-typing-dots"><i/><i/><i/></span>
                             </span>
                         )}
-                    </span>
-                    <span className="page-header-right">
-                        <button className="page-back-btn" type="button" onClick={() => setShowSettings(true)} aria-label="更多">
-                            <MoreHorizontal size={22} strokeWidth={1.5} />
+                    </button>
+                    <div className="imessage-header-call-control">
+                        <button
+                            className="imessage-header-button imessage-header-video"
+                            type="button"
+                            onClick={() => setShowHeaderCallMenu(open => !open)}
+                            aria-label={session.isGroup ? "选择群通话方式" : "选择通话方式"}
+                            aria-haspopup="menu"
+                            aria-expanded={showHeaderCallMenu}
+                        >
+                            <HeaderVideoIcon />
                         </button>
-                    </span>
+                        {showHeaderCallMenu && (
+                            <div className="imessage-header-call-menu" role="menu" aria-label="通话方式">
+                                {(["voice", "video"] as const).map(kind => (
+                                    <button
+                                        key={kind}
+                                        type="button"
+                                        className="imessage-header-call-option"
+                                        role="menuitem"
+                                        aria-label={kind === "voice" ? "语音通话" : "视频通话"}
+                                        title={kind === "voice" ? "语音通话" : "视频通话"}
+                                        onClick={() => {
+                                            cancelFollowUp(session.id);
+                                            setShowHeaderCallMenu(false);
+                                            startCall({ sessionId: session.id, characterId: session.isGroup ? "" : session.contactId, kind, initiator: "user" });
+                                        }}
+                                    >
+                                        {kind === "voice" ? <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6.62 10.79a15.46 15.46 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24c1.12.37 2.33.57 3.57.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.61 21 3 13.39 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1.02Z" /></svg> : <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="12" height="12" rx="3" /><path d="m15 10 5-3v10l-5-3Z" /></svg>}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </header>
             <ChatPluginSlot

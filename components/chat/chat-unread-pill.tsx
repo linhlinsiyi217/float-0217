@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useId, useRef } from "react";
 import { ChevronLeft } from "lucide-react";
+import { sessionMatchesChatScope } from "@/lib/chat-scope-storage";
 import { CHAT_MESSAGE_PUSHED_EVENT, CHAT_UNREAD_UPDATED_EVENT, loadChatSessions, markChatSessionRead } from "@/lib/chat-storage";
 
 export function ChatUnreadPill({ sessionId, onBack, dotOnly = false }: { sessionId: string; onBack: () => void; dotOnly?: boolean }) {
@@ -14,7 +15,7 @@ export function ChatUnreadPill({ sessionId, onBack, dotOnly = false }: { session
             // Cached chat rooms stay mounted: only the topmost visible room is read.
             const hit = rect && document.elementFromPoint(rect.left + rect.width / 2, rect.top + Math.min(100, rect.height / 2));
             if (document.visibilityState === "visible" && room && hit && room.contains(hit)) markChatSessionRead(sessionId);
-            setCount(loadChatSessions().filter(item => item.id !== sessionId).reduce((sum, item) => sum + Math.max(0, Number(item.unreadCount) || 0), 0));
+            setCount(loadChatSessions().filter(item => item.id !== sessionId && sessionMatchesChatScope(item)).reduce((sum, item) => sum + Math.max(0, Number(item.unreadCount) || 0), 0));
         };
         let frame = 0;
         const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(update); };
