@@ -51,6 +51,12 @@ export type ChatSession = {
     userAvatarOverride?: string;
     /** 仅当前私聊里展示的角色头像；不修改角色资料、剧情、动态或其他会话 */
     characterAvatarOverride?: string;
+    /** iMessage 气泡颜色（来自 Y2K 版本；旧数据缺省=系统蓝/灰） */
+    bubbleColors?: import("./chat-bubble-colors").BubbleColors;
+    /** iMessage 玻璃气泡材质 */
+    glassBubblesEnabled?: boolean;
+    /** iMessage 美化预设：classic / glass */
+    beautyPreset?: import("./chat-beauty-preset").ChatBeautyPreset;
     /** 用户更换当前会话头像后是否通知角色。未设置时默认开启 */
     notifyCharacterOnUserAvatarChange?: boolean;
     /** 角色给用户设置的私聊备注；会显示在“查手机”的真实私聊列表中。 */
@@ -144,6 +150,8 @@ export type ChatMessage = {
         | "system_instruction"
         | "group_admin_notice"
         | "media_file"
+        | "avatar_action"
+        | "tapback_action"
         | `plugin:${string}`; // 聊天插件自定义消息类型（由注册该 kind 的插件渲染气泡）
     /**
      * 消息来源。call = 通话屏产生的消息（通话中的对话轮、用户从通话界面发的）。
@@ -162,6 +170,16 @@ export type ChatMessage = {
         quoteMessageId?: string;  // 引用消息 ID
         quotePreview?: string;    // 引用消息预览文本
         quoteRole?: ChatMessageRole; // 引用消息的 role
+        currency?: string;        // 转账原币种，如 USD/EUR/GBP/JPY/CNY
+        photoGroupId?: string;    // 同一次发送的照片组 ID
+        photoGroupIndex?: number; // 组内 0-based 顺序
+        photoGroupCount?: number; // 组内照片总数
+        photoGroupActiveIndex?: number;
+        photoGroupLeadMessageId?: string;
+        photoGroupLeadLabel?: string;
+        tapback?: string;         // iMessage Tapback（私聊）
+        tapbackBy?: "user" | "assistant";
+        tapbacks?: Array<{ actorId: string; actorName: string; emoji: string }>; // 群聊 Tapback
         stickerUrl?: string;      // 表情包图片路径
         diceFace?: number;        // 骰子点数（1-6），气泡翻滚后定格并与全屏动效一致
         pokeSender?: string;      // 拍一拍发起人名字
@@ -517,6 +535,8 @@ export function getActiveChatSessionId(): string | null {
     return _activeChatSessionId;
 }
 
+export const CHAT_UNREAD_UPDATED_EVENT = "chat-unread-updated";
+
 export function markChatSessionRead(sessionId: string): void {
     const session = _sessionsCache.find(item => item.id === sessionId);
     if (!session || session.unreadCount === 0) return;
@@ -524,6 +544,7 @@ export function markChatSessionRead(sessionId: string): void {
     dbPutSessions([session]);
     if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("chat-messages-updated", { detail: { sessionId } }));
+        window.dispatchEvent(new Event(CHAT_UNREAD_UPDATED_EVENT));
     }
 }
 
