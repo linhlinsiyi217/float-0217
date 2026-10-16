@@ -96,6 +96,8 @@ import { GroupSenderName } from "./group-sender-name";
 import { ChatUnreadPill } from "./chat-unread-pill";
 import { GroupAvatar } from "./group-avatar";
 import { HeaderVideoIcon } from "./header-video-icon";
+import { SortablePlusMenu } from "./sortable-plus-menu";
+import { getQuotePreview } from "@/lib/chat-quote-preview";
 import { useGlassContrast } from "./use-glass-contrast";
 import { useChatEdgeTint } from "./use-chat-edge-tint";
 import { useGroupBubbleTint } from "./use-group-bubble-tint";
@@ -698,6 +700,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     showStickerPanel: boolean;
     showPlusMenu: boolean;
     customPlusActions: RegisteredCustomAppChatPlusAction[];
+    quoteSourceStyle?: React.CSSProperties;
     onClearQuote: () => void;
     onToggleOfflineMode: () => void;
     onClosePanels: () => void;
@@ -731,6 +734,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     showStickerPanel,
     showPlusMenu,
     customPlusActions,
+    quoteSourceStyle,
     onClearQuote,
     onToggleOfflineMode,
     onClosePanels,
@@ -770,6 +774,8 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     }, [draftStorageKey]);
     // 表情包搜索联想：ESC/失焦置 true 隐藏，输入变化重新开启
     const [suggestClosed, setSuggestClosed] = useState(false);
+    // iMessage 输入区：聚焦或有字时右侧显示蓝色发送键，否则显示语音键
+    const [inputFocused, setInputFocused] = useState(false);
     // 围观群/被禁言：输入与富媒体入口全部锁定，只留线下切换和生成按钮
     const [muteNowTick, setMuteNowTick] = useState(() => Date.now());
     useEffect(() => {
@@ -823,18 +829,27 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
         [isGroup, stickerCharacterIds, characterId],
     );
     const suggestEnabled = !inputLocked && !panelOpen && !suggestClosed && inputText.trim().length > 0;
+    // iMessage 加号菜单（来自 Y2K）：圆形应用图标 + 竖排列表，可长按拖动排序；
+    // 本项目的通话、语音条、线下/剧情入口与自定义应用入口全部保留
+    const imessageMenuIcon = (fileName: string) => (
+        <img className="imessage-plus-app-icon" src={`/imessage26/apps/${fileName}`} alt="" aria-hidden="true" draggable={false} />
+    );
+    const plusGlyph = (children: React.ReactNode) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
+    );
     const plusMenuItems = [
-        { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>, label: "照片墙", onClick: () => onOpenRichModal("photo") },
-        { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="7" y1="8" x2="17" y2="8" /><line x1="7" y1="12" x2="14" y2="12" /><line x1="7" y1="16" x2="11" y2="16" /></svg>, label: "文字图片", onClick: () => onOpenRichModal("text_photo") },
-        { icon: <AlertCircle size={22} strokeWidth={1.5} color="var(--c-text)" />, label: "系统指令", onClick: () => onOpenRichModal("system_instruction") },
-        { icon: <Clapperboard size={22} strokeWidth={1.5} color={theaterMode ? "var(--c-icon-active)" : "var(--c-text)"} />, label: "番外指令模式", active: theaterMode, onClick: onToggleTheaterMode },
-        { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" /></svg>, label: "视频通话", onClick: onStartVideoCall },
-        { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="22" /></svg>, label: "语音通话", onClick: onStartVoiceCall },
-        { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" /></svg>, label: "红包", onClick: () => onOpenRichModal("red_packet") },
-        { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><text x="12" y="16" textAnchor="middle" fontSize="12" fill="var(--c-text)" stroke="none">¥</text></svg>, label: "转账", onClick: () => onOpenRichModal(isGroup ? "transfer_target" : "transfer") },
-        { icon: <Gift size={22} strokeWidth={1.5} color="var(--c-text)" />, label: "礼物", onClick: () => onOpenRichModal("gift") },
-        { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>, label: "位置", onClick: () => onOpenRichModal("location") },
-        { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="22" /><line x1="8" y1="22" x2="16" y2="22" /></svg>, label: "语音条", onClick: () => onOpenRichModal("voice_msg") },
+        { icon: imessageMenuIcon("offline-mode.jpg"), label: storyEntryEnabled ? "剧情入口" : "线下模式", onClick: () => { onClosePanels(); onToggleOfflineMode(); } },
+        { icon: imessageMenuIcon("photo-wall.jpg"), label: "照片墙", onClick: () => onOpenRichModal("photo") },
+        { icon: imessageMenuIcon("text-image.jpg"), label: "文字图片", onClick: () => onOpenRichModal("text_photo") },
+        { icon: imessageMenuIcon("system-instruction.jpg"), label: "系统指令", onClick: () => onOpenRichModal("system_instruction") },
+        { icon: imessageMenuIcon("theater-mode.jpg"), label: "番外指令模式", active: theaterMode, onClick: onToggleTheaterMode },
+        { icon: plusGlyph(<><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" /></>), label: "视频通话", onClick: onStartVideoCall },
+        { icon: plusGlyph(<path d="M6.6 10.8a15.5 15.5 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.24c1.12.37 2.33.57 3.57.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.6 21 3 13.4 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1.02Z" />), label: "语音通话", onClick: onStartVoiceCall },
+        { icon: imessageMenuIcon("red-packet.jpg"), label: "红包", onClick: () => onOpenRichModal("red_packet") },
+        { icon: imessageMenuIcon("transfer.jpg"), label: "转账", onClick: () => onOpenRichModal(isGroup ? "transfer_target" : "transfer") },
+        { icon: imessageMenuIcon("gift.jpg"), label: "礼物", onClick: () => onOpenRichModal("gift") },
+        { icon: imessageMenuIcon("location.jpg"), label: "位置", onClick: () => onOpenRichModal("location") },
+        { icon: plusGlyph(<><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="22" /></>), label: "语音条", onClick: () => onOpenRichModal("voice_msg") },
         ...customPlusActions.map(action => ({
             icon: action.appIconDataUrl
                 ? <span className="chat-plus-custom-app-icon" style={{ backgroundImage: `url(${action.appIconDataUrl})` }} aria-hidden="true" />
@@ -844,8 +859,27 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
         })),
     ];
 
+    // 有文字时：发送并立即触发模型回复；没文字时只触发 AI 主动回复（与原「✦」按钮一致）
+    const handleAIReply = () => {
+        const trimmed = inputText.trim();
+        if (!inputLocked && trimmed) {
+            if (!onSendText(trimmed, { autoReply: true })) return;
+            setInputText("");
+            resetTextareaHeight();
+        } else {
+            onTriggerAIResponse();
+        }
+        onClosePanels();
+    };
+
     return (
-        <div className="chat-input-bar chat-room-main-pane flex flex-col" data-ui="input">
+        <div
+            className="chat-input-bar chat-room-main-pane flex flex-col"
+            data-ui="input"
+            data-imessage-private=""
+            {...(inputText.trim() ? { "data-has-text": "" } : {})}
+            {...(inputFocused || inputText.trim() || isGenerating ? { "data-show-send": "" } : {})}
+        >
             {theaterMode && (
                 <div className="chat-theater-mode-strip" role="status">
                     <span className="chat-theater-mode-icon" aria-hidden="true">
@@ -864,11 +898,20 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                 </div>
             )}
             {quotingMessage && (
-                <div className="chat-quote-bar">
-                    <div className="flex-1 ts-12 text-[var(--c-icon)] overflow-hidden text-ellipsis whitespace-nowrap">
-                        引用 {quotingMessage.role === "user" ? "你" : characterName}: {quotingMessage.content.slice(0, 40)}
+                <div className="imessage-quote-compose-layer" data-quote-role={quotingMessage.role}>
+                    <div className="imessage-quote-compose-bubble" data-role={quotingMessage.role} style={quoteSourceStyle}>
+                        <span className="imessage-bubble-surface" aria-hidden="true" />
+                        {getQuotePreview(quotingMessage) || `引用 ${quotingMessage.role === "user" ? "你" : characterName}`}
                     </div>
-                    <button onClick={onClearQuote} className="ui-bare-btn text-[var(--c-icon)] ts-16 leading-none p-[2px]">✕</button>
+                    <button
+                        type="button"
+                        onClick={onClearQuote}
+                        className="imessage-quote-compose-close"
+                        aria-label="取消引用"
+                        title="取消引用"
+                    >
+                        <X size={22} strokeWidth={1.8} aria-hidden="true" />
+                    </button>
                 </div>
             )}
 
@@ -884,6 +927,47 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                     onClose={() => setSuggestClosed(true)}
                 />
             )}
+            <div className="imessage-composer-subject">
+                <span className="imessage-composer-subject-label">{theaterMode ? "番外" : "主题"}</span>
+                <div className="imessage-composer-shortcuts">
+                    <button
+                        type="button"
+                        onClick={onToggleEmojiPanel}
+                        disabled={inputLocked}
+                        className="imessage-composer-shortcut imessage-composer-emoji"
+                        aria-label="表情"
+                        title="表情"
+                        aria-pressed={showEmojiPanel}
+                        {...(showEmojiPanel ? { "data-active": "" } : {})}
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M8.5 14s1.25 1.75 3.5 1.75S15.5 14 15.5 14" /><path d="M9 9.25h.01M15 9.25h.01" /></svg>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onToggleStickerPanel}
+                        disabled={inputLocked}
+                        className="imessage-composer-shortcut imessage-composer-sticker"
+                        aria-label="贴纸"
+                        title="贴纸"
+                        aria-pressed={showStickerPanel}
+                        {...(showStickerPanel ? { "data-active": "" } : {})}
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15.5 3H6a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h8.5L21 14.5V8.5Z" /><path d="M14.5 21v-4a2.5 2.5 0 0 1 2.5-2.5h4" /></svg>
+                    </button>
+                </div>
+                {!isGenerating && (
+                    <button
+                        type="button"
+                        onPointerDown={(e) => e.preventDefault()}
+                        onClick={handleAIReply}
+                        className="imessage-composer-shortcut imessage-composer-ai-reply"
+                        aria-label={!inputLocked && inputText.trim() ? "发送并让TA回复" : "让TA回复"}
+                        title={!inputLocked && inputText.trim() ? "发送输入框内容并触发回复" : "触发 AI 主动回复"}
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.55" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14a2 2 0 0 0 1.44 1.44l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0Z" /></svg>
+                    </button>
+                )}
+            </div>
             <textarea
                 ref={textareaRef}
                 rows={1}
@@ -895,6 +979,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                     e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
                 }}
                 onFocus={(e) => {
+                    setInputFocused(true);
                     if (panelOpen) {
                         e.target.blur();
                         onClosePanels();
@@ -903,7 +988,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                     }
                     setSuggestClosed(false);
                 }}
-                onBlur={() => setSuggestClosed(true)}
+                onBlur={() => { setInputFocused(false); setSuggestClosed(true); }}
                 onKeyDown={e => {
                     if (e.key === "Escape") {
                         setSuggestClosed(true);
@@ -919,7 +1004,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                 disabled={inputLocked}
                 placeholder={inputLocked
                     ? (isSpectator ? "围观中，你不在这个群里" : `禁言中，剩余${Math.ceil(muteRemainingMs / 60000)}分钟`)
-                    : (theaterMode ? "写下番外指令..." : undefined)}
+                    : (theaterMode ? "写下番外指令..." : "iMessage 信息")}
             />
 
             <div className="chat-input-actions">
@@ -934,13 +1019,13 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                         <circle cx="12" cy="10" r="3" />
                     </svg>
                 </button>
-                <button onClick={onToggleEmojiPanel} disabled={inputLocked} className="ui-bare-btn text-[var(--c-text)]" style={inputLocked ? { opacity: 0.35 } : undefined}>
+                <button onClick={onToggleEmojiPanel} disabled={inputLocked} className="ui-bare-btn text-[var(--c-text)] chat-emoji-toggle" style={inputLocked ? { opacity: 0.35 } : undefined}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
                 </button>
-                <button onClick={onToggleStickerPanel} disabled={inputLocked} className="ui-bare-btn text-[var(--c-text)]" style={inputLocked ? { opacity: 0.35 } : undefined}>
+                <button onClick={onToggleStickerPanel} disabled={inputLocked} className="ui-bare-btn text-[var(--c-text)] chat-sticker-toggle" style={inputLocked ? { opacity: 0.35 } : undefined}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z" /><polyline points="14 3 14 8 21 8" /><path d="M8 13h0" /><path d="M16 13h0" /><path d="M10 17c.5.3 1.2.5 2 .5s1.5-.2 2-.5" /></svg>
                 </button>
-                <button onClick={onTogglePlusMenu} disabled={inputLocked} className="ui-bare-btn text-[var(--c-text)]" style={inputLocked ? { opacity: 0.35 } : undefined}>
+                <button onClick={onTogglePlusMenu} disabled={inputLocked} className="ui-bare-btn text-[var(--c-text)] chat-plus-toggle" style={inputLocked ? { opacity: 0.35 } : undefined} aria-label="更多功能" aria-expanded={showPlusMenu}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" /></svg>
                 </button>
                 <button
@@ -949,7 +1034,8 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                     tabIndex={-1}
                     disabled={!isGenerating && (inputLocked || !inputText.trim())}
                     style={inputLocked && !isGenerating ? { opacity: 0.35 } : undefined}
-                    className="ui-bare-btn text-[var(--c-text)]"
+                    className="ui-bare-btn text-[var(--c-text)] chat-send-btn"
+                    data-generating={isGenerating || undefined}
                     aria-label={isGenerating ? "停止本轮生成" : "发送"}
                     title={isGenerating ? "停止本轮生成" : "发送"}
                 >
@@ -962,25 +1048,25 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
                     )}
                 </button>
+                <button
+                    type="button"
+                    className="ui-bare-btn text-[var(--c-text)] chat-voice-message-btn"
+                    onClick={() => onOpenRichModal("voice_msg")}
+                    disabled={inputLocked}
+                    aria-label="语音消息"
+                    title="语音消息"
+                >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path fill="currentColor" fillRule="evenodd" clipRule="evenodd" d="M12 3.25a.75.75 0 0 1 .75.75v16a.75.75 0 0 1-1.5 0V4a.75.75 0 0 1 .75-.75m-4 3a.75.75 0 0 1 .75.75v10a.75.75 0 0 1-1.5 0V7A.75.75 0 0 1 8 6.25m8 0a.75.75 0 0 1 .75.75v10a.75.75 0 0 1-1.5 0V7a.75.75 0 0 1 .75-.75m-12 4a.75.75 0 0 1 .75.75v2a.75.75 0 0 1-1.5 0v-2a.75.75 0 0 1 .75-.75m16 0a.75.75 0 0 1 .75.75v2a.75.75 0 0 1-1.5 0v-2a.75.75 0 0 1 .75-.75" />
+                    </svg>
+                </button>
                 {!isGenerating && (
                     <button
-                        className="ui-bare-btn text-[var(--c-text)]"
+                        className="ui-bare-btn text-[var(--c-text)] chat-ai-reply-btn"
                         title={!inputLocked && inputText.trim() ? "发送输入框内容并触发回复" : "触发 AI 主动回复"}
                         onPointerDown={(e) => e.preventDefault()}
                         tabIndex={-1}
-                        onClick={() => {
-                            const trimmed = inputText.trim();
-                            // 输入框已有文字：发送输入框内容并立即触发模型回复（一次按键完成），
-                            // 避免「打完字却忘记发送」；没文字时才只触发 AI 主动回复
-                            if (!inputLocked && trimmed) {
-                                if (!onSendText(trimmed, { autoReply: true })) return;
-                                setInputText("");
-                                resetTextareaHeight();
-                            } else {
-                                onTriggerAIResponse();
-                            }
-                            onClosePanels();
-                        }}
+                        onClick={handleAIReply}
                     >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .963L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
@@ -991,38 +1077,33 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
             </div>
 
             {showPlusMenu && (
-                <div className="chat-plus-menu">
-                    {plusMenuItems.map((item, i) => (
-                        <div key={`${item.label}-${i}`} onClick={item.onClick} className="chat-plus-menu-item flex flex-col items-center gap-1.5 cursor-pointer" {...(item.active ? { "data-active": "" } : {})}>
-                            <div className="chat-plus-icon-box">
-                                {item.icon}
-                            </div>
-                            <span className="ts-11 text-[var(--c-text)]">{item.label}</span>
-                        </div>
-                    ))}
-                </div>
+                <SortablePlusMenu isGroup={isGroup} items={plusMenuItems} />
             )}
             {showPlusMenu && (
                 <ChatPluginSlot name="chat.inputToolbar" slotProps={{ isGroup }} className="chat-plugin-input-toolbar" />
             )}
 
             {showEmojiPanel && (
-                <EmojiPanel
-                    onSelect={(emoji) => appendText(emoji, { focus: false })}
-                    onEffectSend={(text) => {
-                        if (inputLocked || isGenerating) return;
-                        onSendText(text);
-                        onClosePanels();
-                    }}
-                />
+                <div className="chat-emoji-panel-wrap">
+                    <EmojiPanel
+                        onSelect={(emoji) => appendText(emoji, { focus: false })}
+                        onEffectSend={(text) => {
+                            if (inputLocked || isGenerating) return;
+                            onSendText(text);
+                            onClosePanels();
+                        }}
+                    />
+                </div>
             )}
 
             {showStickerPanel && (
-                <StickerPanel
-                    onSend={onSendSticker}
-                    characterId={characterId}
-                    characterIds={stickerCharacterIds}
-                />
+                <div className="chat-emoji-panel-wrap chat-sticker-panel">
+                    <StickerPanel
+                        onSend={onSendSticker}
+                        characterId={characterId}
+                        characterIds={stickerCharacterIds}
+                    />
+                </div>
             )}
         </div>
     );
@@ -1738,6 +1819,16 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
             "--im26-tapback-glyph": tint["--bubble-text-ink"],
         } as React.CSSProperties;
     }, [groupBubbleTint, session.contactId]);
+    // 引用预览沿用被引用消息那条气泡的颜色（来自 Y2K）
+    const quoteStyle = (source?: ChatMessage): React.CSSProperties | undefined => {
+        if (!source) return undefined;
+        const tint = groupBubbleTint(source.senderCharacterId || session.contactId, source.role === "user") as Record<string, string | number>;
+        return {
+            "--quote-source-bg": tint["--bubble-surface-color"],
+            "--quote-source-ink": tint["--bubble-text-ink"],
+            "--quote-source-opacity": tint["--bubble-surface-opacity"],
+        } as React.CSSProperties;
+    };
 
     const activeRegexes = useMemo<RegexConfig[]>(() => {
         const bindings = loadBindingConfig();
@@ -6955,6 +7046,21 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                         ) : null}
                     </div>
                 )}
+                {/* iMessage 正在输入的三点气泡（来自 Y2K）：流式文字出现前占位 */}
+                {!offlineMode && isGenerating && !(streamPreview?.texts?.length) && !(streamPreview?.parts?.length) && (
+                    <div
+                        className="chat-msg-wrapper imessage-typing-row"
+                        data-role="assistant"
+                        role="status"
+                        aria-label="正在输入"
+                    >
+                        <div className="chat-msg-content-wrap flex flex-col min-w-0 max-w-[70%]">
+                            <div className="imessage-typing-bubble">
+                                <span className="chat-typing-dots" aria-hidden="true"><i/><i/><i/></span>
+                            </div>
+                        </div>
+                    </div>
+                )}
                 {/* Scroll anchor: browser keeps this in view when content above changes height */}
                 <div style={{ overflowAnchor: 'auto', height: 1 }} />
             </div>
@@ -7019,6 +7125,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
 	                enterToSendEnabled={enterToSendEnabled}
 	                storyEntryEnabled={storyEntryEnabled}
 	                quotingMessage={quotingMessage}
+                quoteSourceStyle={quoteStyle(quotingMessage || undefined)}
                 showEmojiPanel={showEmojiPanel}
                 showStickerPanel={showStickerPanel}
                 showPlusMenu={showPlusMenu}
