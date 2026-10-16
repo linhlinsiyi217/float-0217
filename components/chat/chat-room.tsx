@@ -90,6 +90,13 @@ import { extractTextToolDirectiveText } from "@/lib/text-tool-protocol";
 import { emitChatPluginEvent, getChatPluginHookBus, runChatPluginTransform } from "@/lib/chat-plugin-hooks";
 import { CHAT_PLUGIN_TOAST_EVENT, getChatPluginRuntime } from "@/lib/chat-plugin-runtime";
 import { ChatPluginSlot } from "@/components/chat/chat-plugin-slot";
+import { useChatAppearance } from "./use-chat-appearance";
+import { IMessageTapbackBadge } from "./imessage-tapback-badge";
+import { GroupSenderName } from "./group-sender-name";
+import { useGlassContrast } from "./use-glass-contrast";
+import { useChatEdgeTint } from "./use-chat-edge-tint";
+import { useGroupBubbleTint } from "./use-group-bubble-tint";
+import { resolveChatBeautyPreset } from "@/lib/chat-beauty-preset";
 import {
     createOrGetStorySession,
     hydrateStoryStorage,
@@ -1328,6 +1335,10 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
     const [bgLoading, setBgLoading] = useState(!!effectiveBackgroundImage);
 
     const wrapperRef = useRef<HTMLDivElement>(null);
+    // iMessage 外观（来自 Y2K）：深浅色跟随系统，壁纸亮度决定文字对比
+    const chatAppearance = useChatAppearance(bgImageResolved);
+    const beautyPreset = resolveChatBeautyPreset(session);
+    useGlassContrast(wrapperRef, bgImageResolved, beautyPreset === "glass", chatAppearance.dark);
 
     // 全屏特效：命中触发词的新消息播放表情雨/礼花（微信同款）
     const [activeScreenEffect, setActiveScreenEffect] = useState<ActiveScreenEffect | null>(null);
@@ -1463,6 +1474,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
     const longPressTriggeredRef = useRef(false);
 
     const scrollRef = useRef<HTMLDivElement>(null);
+    useChatEdgeTint(scrollRef);
     const mountedRef = useRef(true);
     const isGeneratingRef = useRef(false);
     const visibleMessagesRef = useRef<ChatMessage[]>([]);
@@ -1707,6 +1719,21 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
     // Flat array of group characters for components that need it
     const groupCharacters = useMemo(() => [...groupCharMap.values()], [groupCharMap]);
     const groupCharacterNames = useMemo(() => groupCharacters.map(item => item.name).filter(Boolean).join("、"), [groupCharacters]);
+    const tintCharacters = useMemo(() => session.isGroup
+        ? groupCharacters.map(item => ({ id: item.id, avatar: resolveChatCharacterAvatar(item) }))
+        : character ? [{ id: character.id, avatar: (session.characterAvatarOverride || effectiveCharacterAvatar) || null }] : [],
+    [session.isGroup, groupCharacters, character, session.characterAvatarOverride, effectiveCharacterAvatar]);
+    const groupBubbleTint = useGroupBubbleTint(tintCharacters, session.id, chatAppearance.dark, beautyPreset);
+    // Tapback 气泡跟随回应者自己的气泡色，而不是被回应消息的颜色
+    const reactionStyleForActor = useCallback((actorId: string): React.CSSProperties => {
+        const isUser = actorId === "self" || actorId === "user";
+        const characterId = actorId === "legacy-assistant" ? session.contactId : actorId;
+        const tint = groupBubbleTint(isUser ? undefined : characterId, isUser) as Record<string, string | number>;
+        return {
+            "--im26-tapback-fill": tint["--im26-base-blue"] || tint["--im26-base-incoming"] || tint["--bubble-surface-color"],
+            "--im26-tapback-glyph": tint["--bubble-text-ink"],
+        } as React.CSSProperties;
+    }, [groupBubbleTint, session.contactId]);
 
     const activeRegexes = useMemo<RegexConfig[]>(() => {
         const bindings = loadBindingConfig();
@@ -5809,6 +5836,45 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         return { groups, memberSet };
     }, [projectedMessages, session.id]);
 
+    // iMessage 气泡尾巴与分组（来自 Y2K）：同一发言人连续、未隔时间戳的一组里，
+    // 最后一条文字气泡带尾巴；组尾消息加大与下一组的间距。
+    const imessageTailMessageIds = useMemo(() => {
+        const tailIds = new Set<string>();
+        const firstIds = new Set<string>();
+        const lastIds = new Set<string>();
+        let lastMessageId: string | null = null;
+        let runRole: string | null = null;
+        let runSender = "";
+        let previousCreatedAt: string | null = null;
+        let lastTextMessageId: string | null = null;
+        const finishRun = () => {
+            if (lastTextMessageId) tailIds.add(lastTextMessageId);
+            if (lastMessageId) lastIds.add(lastMessageId);
+            lastMessageId = null; runRole = null; runSender = ""; previousCreatedAt = null; lastTextMessageId = null;
+        };
+        projectedMessages.forEach((message, index) => {
+            if (voiceCallGroups.memberSet.has(index)) { finishRun(); return; }
+            const displayContent = getMessageDisplayContent(message);
+            if (isHiddenChatFlowMessage(message, displayContent)) return;
+            const role = uiRole(message);
+            if ((role !== "user" && role !== "assistant") || message.isRetracted) { finishRun(); return; }
+            const sender = role === "assistant"
+                ? (message.senderCharacterId || (session.isGroup ? message.senderName : "") || session.contactId)
+                : "user";
+            const startsNewRun = runRole === null || runRole !== role || runSender !== sender
+                || (previousCreatedAt !== null && shouldShowTimestamp(message.createdAt, previousCreatedAt));
+            if (startsNewRun) { finishRun(); runRole = role; runSender = sender || ""; firstIds.add(message.id); }
+            lastMessageId = message.id;
+            previousCreatedAt = message.createdAt;
+            const hasVisibleText = !!getChatFlowVisibleContent(message, displayContent);
+            const isTextBubble = hasVisibleText && !isStandaloneHtmlPreviewContent(displayContent)
+                && (!message.mediaType || message.mediaType === "quote");
+            if (isTextBubble) lastTextMessageId = message.id;
+        });
+        finishRun();
+        return { tailIds, firstIds, lastIds };
+    }, [getMessageDisplayContent, projectedMessages, session.contactId, session.isGroup, voiceCallGroups.memberSet]);
+
     const getSelectableStoredMessageId = useCallback((msg: RenderChatMessage): string | null => {
         const id = msg.displaySourceId || msg.id;
         if (!id || id.startsWith("vc-") || isTransientMessage(id)) return null;
@@ -5981,7 +6047,19 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
     } : undefined;
 
     return (
-        <div ref={wrapperRef} className={`session-${session.id} chat-room-wrapper page-shell inset-0 flex flex-col z-20`} style={chatRoomBackgroundStyle} {...(bgLoading ? { "data-loading": "" } : {})} {...(bgImageResolved ? { "data-has-bg-image": "" } : {})} {...(showSettings ? { "data-settings-open": "" } : {})}>
+        <div ref={wrapperRef} className={`session-${session.id} chat-room-wrapper page-shell inset-0 flex flex-col z-20`}
+            style={{
+                ...chatRoomBackgroundStyle,
+                "--chat-send-surface": groupBubbleTint(undefined, true)["--chat-send-surface" as keyof React.CSSProperties],
+                "--chat-send-ink": groupBubbleTint(undefined, true)["--chat-send-ink" as keyof React.CSSProperties],
+            } as React.CSSProperties}
+            data-imessage-private=""
+            data-chat-dark={chatAppearance.dark || undefined}
+            data-glass-bubbles={beautyPreset === "glass" || undefined}
+            data-beauty-preset={beautyPreset}
+            data-dark-wallpaper={chatAppearance.darkWallpaper || undefined}
+            {...(session.isGroup ? { "data-imessage-group": "" } : {})}
+            {...(bgLoading ? { "data-loading": "" } : {})} {...(bgImageResolved ? { "data-has-bg-image": "" } : {})} {...(showSettings ? { "data-settings-open": "" } : {})}>
             {/* CSS priority: session > global chat info > homepage appearance CSS. */}
             {globalChatCSS && (
                 <SessionCustomCSS css={globalChatCSS} scope={`.session-${session.id}`} />
@@ -6445,8 +6523,12 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                 id={`message-${msg.id}`}
                                 className="chat-msg-wrapper"
                                 data-role={uiRole(msg)}
+                                style={(!renderMsg.mediaType || renderMsg.mediaType === "audio" || renderMsg.mediaType === "quote" || (renderMsg.mediaType === "music_share" && renderMsg.content.trim())) ? groupBubbleTint(msg.senderCharacterId || session.contactId, uiRole(msg) === "user") : undefined}
                                 {...(isEmptyBubble && renderMsg.reasoningText ? { "data-reasoning-empty": "" } : {})}
                                 {...(isConsecutive ? { "data-consecutive": "" } : {})}
+                                {...(session.isGroup && uiRole(msg) === "assistant" && prevVisibleMsg && uiRole(prevVisibleMsg) === "assistant" && (prevVisibleMsg.senderCharacterId || prevVisibleMsg.senderName) !== (msg.senderCharacterId || msg.senderName) ? { "data-group-speaker-change": "" } : {})}
+                                {...(imessageTailMessageIds.tailIds.has(msg.id) ? { "data-imessage-tail": "" } : {})}
+                                {...(imessageTailMessageIds.lastIds.has(msg.id) ? { "data-group-last": "" } : {})}
                                 {...(activeMessageId === msg.id ? { "data-active": "" } : {})}
                                 {...(highlightMessageId === msg.id ? { "data-highlight": "" } : {})}
                                 {...multiSelectWrapperProps}
@@ -6615,9 +6697,10 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                         {!isSilentThought && !isEmptyBubble && <div
                                             className={`chat-msg-content-wrap flex flex-col min-w-0 max-w-[70%] ${isStandaloneHtmlPreview ? "chat-msg-content-wrap-html" : ""}`}
                                             {...(isStandaloneHtmlPreview ? { "data-html": "true" } : {})}
+                                            data-voice-content={renderMsg.mediaType === "audio" || undefined}
                                         >
-                                            {session.isGroup && msg.role !== "user" && (
-                                                <span className="chat-group-sender-name">{msg.senderName || ""}{renderGroupRoleBadge(msg.senderCharacterId)}</span>
+                                            {session.isGroup && msg.role !== "user" && imessageTailMessageIds.firstIds.has(msg.id) && (
+                                                <GroupSenderName avatar={resolveChatCharacterAvatar(groupCharMap.get(msg.senderCharacterId || ""))}>{msg.senderName || ""}{renderGroupRoleBadge(msg.senderCharacterId)}</GroupSenderName>
                                             )}
                                             <div
                                             {...(editingMessageId !== msg.id ? {
@@ -6638,11 +6721,13 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                             style={isStandaloneHtmlPreview ? STANDALONE_CARD_BUBBLE_STYLE : undefined}
                                             data-ui={msg.role === "user" ? "bubble-user" : "bubble-bot"}
                                             data-msg-id={msg.id}
+                                            data-media-type={renderMsg.mediaType || "text"}
                                             {...(activeMessageId === msg.id ? { "data-active": "" } : {})}
                                             >
                                             {/* Message Actions Popup */}
                                             {activeMessageId === msg.id && renderBubbleContextMenu(msg)}
 
+                                            {(!renderMsg.mediaType || renderMsg.mediaType === "audio") && <span className="imessage-bubble-surface" aria-hidden="true" />}
                                             <MessageBubble
                                                 msg={renderMsg}
                                                 displayContent={msg.displayProjected ? undefined : bubbleDisplayContent}
@@ -6665,6 +6750,14 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                                 onMeetingInviteAction={handleMeetingInviteAction}
                                                 defaultTranslationExpanded={session.collapseBilingualTranslation !== false ? false : true}
                                             />
+                                            {renderMsg.mediaType !== "quote" && (renderMsg.mediaData?.tapback || renderMsg.mediaData?.tapbacks?.length) && (
+                                                <IMessageTapbackBadge
+                                                    tapback={renderMsg.mediaData.tapback}
+                                                    tapbackBy={renderMsg.mediaData.tapbackBy || "user"}
+                                                    reactions={renderMsg.mediaData.tapbacks}
+                                                    reactionStyleForActor={reactionStyleForActor}
+                                                />
+                                            )}
                                         </div>
                                         </div>}
                                         {msg.role !== "user" && !isSilentThought && !isEmptyBubble && hasFoldedPanel && (
