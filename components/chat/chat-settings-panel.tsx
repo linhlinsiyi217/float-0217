@@ -189,6 +189,9 @@ import {
     DEFAULT_OFFLINE_CHAT_BILINGUAL_PROMPT,
 } from "@/lib/bilingual-prompt-defaults";
 import { ChatFallbackAvatar } from "./chat-fallback-avatar";
+import { BeautyPresetPicker } from "./beauty-preset-picker";
+import { BubbleColorSettings } from "./bubble-color-settings";
+import { resolveChatBeautyPreset } from "@/lib/chat-beauty-preset";
 import { MessageBubble, isStandaloneHtmlPreviewContent } from "./message-bubble";
 import { ScreenEffectSettingsModal } from "./screen-effect-settings-modal";
 
@@ -327,6 +330,7 @@ export function ChatSettingsPanel({
     offlineHistoryBusy = false,
 }: ChatSettingsPanelProps) {
     const [backgroundImage, setBackgroundImage] = useState<string>(session.backgroundImage || "");
+    const [beautyPreset, setBeautyPreset] = useState(() => resolveChatBeautyPreset(session));
     const [alias, setAlias] = useState<string>(session.alias || "");
     const [characterRemarkForUser, setCharacterRemarkForUser] = useState<string>(session.characterRemarkForUser || "");
     const [notifyAliasChange, setNotifyAliasChange] = useState(session.notifyCharacterOnAliasChange === true);
@@ -1064,7 +1068,7 @@ export function ChatSettingsPanel({
     const displayedSearchMessages = searchMode ? searchResults : searchHistoryMessages;
 
     return (
-        <PageShell title="聊天信息" onBack={onClose} className="absolute inset-0 z-[100]">
+        <PageShell title="聊天信息" onBack={onClose} className="absolute inset-0 z-[100] imessage-settings-page">
             <div className="page-menu chat-info-menu">
                 {/* Basic Info & Search */}
                 <div className="menu-group">
@@ -1525,6 +1529,21 @@ export function ChatSettingsPanel({
                         </div>
                         <input type="file" accept="image/*" onChange={e => handleImageUpload(e, setBackgroundImage, "backgroundImage")} className="hidden" />
                     </label>
+                    {/* iMessage 美化（来自 Y2K）：气泡颜色 + 玻璃/经典预设，只作用于当前聊天 */}
+                    <BubbleColorSettings session={session} />
+                    <div className="menu-item">
+                        <ChatInfoIcon icon={Sparkles} color={CONTENT_APP_ACCENTS.chat} />
+                        <div className="menu-label-group">
+                            <span className="menu-label">美化预设</span>
+                            <span className="menu-desc">仅应用于当前聊天</span>
+                        </div>
+                        <div className="menu-right">
+                            <BeautyPresetPicker value={beautyPreset} onChange={preset => {
+                                setBeautyPreset(preset);
+                                updateSession({ beautyPreset: preset, glassBubblesEnabled: preset === "glass" });
+                            }} />
+                        </div>
+                    </div>
                     {session.isGroup ? (
                         <>
                             <div className="menu-item" style={{ cursor: "default" }}>
