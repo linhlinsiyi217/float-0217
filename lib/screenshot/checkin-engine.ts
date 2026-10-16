@@ -17,6 +17,7 @@
 
 import { pushChatMessage, loadChatSessions } from "../chat-storage";
 import { loadCharacters } from "../character-storage";
+import { sessionMatchesChatScope } from "../chat-scope-storage";
 import { recordUserShot } from "./engine";
 import type { CheckInOutcome } from "./types";
 import { requestBackgroundChatReply } from "../follow-up-service";
@@ -63,8 +64,9 @@ export function checkInReadiness(): {
 
 /** 找一个角色的最新私聊会话（查岗只发生在私聊里）。 */
 export function findLatestPrivateSession(characterId: string): string | null {
+  // 只在当前聊天账号里找：刚用别的账号聊过，也不能把截图发进那个账号的聊天
   const sessions = loadChatSessions()
-    .filter(session => !session.isGroup && session.contactId === characterId)
+    .filter(session => !session.isGroup && session.contactId === characterId && sessionMatchesChatScope(session))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   return sessions[0]?.id ?? null;
 }
@@ -183,7 +185,7 @@ export async function deliverUserShot(outcome: CheckInOutcome): Promise<{ ok: bo
   const sessionId = outcome.characterId
     ? findLatestPrivateSession(outcome.characterId)
     : loadChatSessions()
-        .filter(session => !session.isGroup)
+        .filter(session => !session.isGroup && sessionMatchesChatScope(session))
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.id ?? null;
   if (!sessionId) {
     return {

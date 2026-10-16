@@ -18,6 +18,7 @@ import {
     getLatestCharacterStateValues,
 } from "./chat-storage";
 import type { ChatMessage, StateValue } from "./chat-storage";
+import { sessionMatchesChatScope } from "./chat-scope-storage";
 import { generateChatCompletion, flattenCompletionResult } from "./chat-engine";
 import { armFollowUpBailout, armIdleReconnectBailout, cancelBailoutKey, cancelBailoutPrefix, cancelFollowUpBailout, startBailoutHeartbeat } from "./push-bailout-client";
 import { hasAccountPushSubscription, isWithinPushQuietHours } from "./push-client";
@@ -474,7 +475,8 @@ function pollMenstrualPeriodCare(now: number) {
 
     const selectedIds = new Set(config.periodCareCharacterIds);
     const sessions = loadChatSessions()
-        .filter(session => !session.isGroup && selectedIds.has(session.contactId))
+        // 经期关心发到当前聊天账号的会话，不落进别的账号
+        .filter(session => !session.isGroup && selectedIds.has(session.contactId) && sessionMatchesChatScope(session))
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     const latestSessionByCharacter = new Map<string, (typeof sessions)[number]>();
     for (const session of sessions) {
