@@ -257,6 +257,7 @@ function scheduleGroupMemorySummarization(
     chars: ReturnType<typeof loadCharacters>,
     history: ChatMessage[],
     replyCount: number,
+    chatAccountId: string | null,
 ): void {
     const lastMessage = history[history.length - 1];
     const userEventCount = lastMessage?.role === "user" ? 1 : 0;
@@ -269,10 +270,10 @@ function scheduleGroupMemorySummarization(
         if (!character) continue;
 
         for (let i = 0; i < totalNewEvents; i++) {
-            incrementEventCounter(characterId);
+            incrementEventCounter(characterId, chatAccountId);
         }
 
-        maybeRunSummarization(characterId, character.name)
+        maybeRunSummarization(characterId, character.name, chatAccountId)
             .catch(err => console.warn("[GroupChat] Memory counter/summarization failed:", err));
     }
 }
@@ -350,12 +351,13 @@ async function buildGroupChatPromptMessages(
             excludeGroupSessionId: isOfflineMode ? undefined : session.id,
             excludeOfflineSessionId: options?.excludeOfflineSessionId,
             promptTimestampOptions: getPromptTimestampOptionsForTimeContext(memberTimeContext),
+            chatAccountId: session.chatAccountId || null,
         });
         let coreMemories = "", longTermMemories = "";
         try {
             const [coreResults, results] = await Promise.all([
-                retrieveCoreMemoriesForPrompt(charId, memConfig),
-                retrieveMemoriesForPrompt(charId, wbActivationContext, memConfig),
+                retrieveCoreMemoriesForPrompt(charId, memConfig, session.chatAccountId || null),
+                retrieveMemoriesForPrompt(charId, wbActivationContext, memConfig, session.chatAccountId || null),
             ]);
             coreMemories = formatCoreMemories(coreResults);
             longTermMemories = formatLongTermMemories(results);
@@ -397,6 +399,7 @@ async function buildGroupChatPromptMessages(
         excludeOfflineSessionId: options?.excludeOfflineSessionId,
         includeNativeToolHistory: usesNativeActions,
         promptTimestampOptions: groupPromptTimestampOptions,
+        chatAccountId: session.chatAccountId || null,
     });
     const promptHistory = applyVisionImagePromptLimit(
         truncatedAnnotatedHistory.map(msg => ({ ...msg })),
@@ -1081,7 +1084,7 @@ export async function generateGroupChatCompletion(
     }
 
     if (!options?.skipMemorySummarization) {
-        scheduleGroupMemorySummarization(participantIds, chars, history, finalResults.length);
+        scheduleGroupMemorySummarization(participantIds, chars, history, finalResults.length, session.chatAccountId || null);
     }
 
     return finalResults;

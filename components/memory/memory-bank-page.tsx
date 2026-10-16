@@ -13,9 +13,11 @@ import {
     loadMemoryConfig,
     saveMemoryConfig,
     loadMemoryEntriesByType,
+    deleteMemoryEntries,
+    memoryEntryInAccount,
+    resolveMemoryAccountScope,
     saveMemoryEntry,
     deleteMemoryEntry,
-    deleteCharacterMemoriesByType,
     getAllCharacterIdsWithMemories,
     getMemoryCountByType,
     getLastSummarizedTimestamp,
@@ -326,10 +328,12 @@ export function MemoryBankPage({
         setLoading(true);
         try {
             await hydrateChatStorage();
+            // 只显示当前聊天账号的记忆（旧记忆无账号字段=主号）
+            const scope = resolveMemoryAccountScope();
             const [core, lt] = await Promise.all([
                 loadMemoryEntriesByType(charId, "core"),
                 loadMemoryEntriesByType(charId, "long_term"),
-            ]);
+            ]).then(lists => lists.map(list => list.filter(entry => memoryEntryInAccount(entry, scope))));
             setCoreEntries(core);
             setLongTermEntries(lt);
         } catch {
@@ -382,7 +386,10 @@ export function MemoryBankPage({
 
     const handleClearEntries = async (type: "core" | "long_term") => {
         if (!selectedCharId) return;
-        await deleteCharacterMemoriesByType(selectedCharId, type);
+        // 只清当前账号的这类记忆，不动其他账号
+        const scope = resolveMemoryAccountScope();
+        const owned = (await loadMemoryEntriesByType(selectedCharId, type)).filter(entry => memoryEntryInAccount(entry, scope));
+        await deleteMemoryEntries(owned.map(entry => entry.id));
         if (type === "core") setCoreEntries([]);
         else setLongTermEntries([]);
         loadCharacterList();
@@ -464,7 +471,9 @@ export function MemoryBankPage({
         setRebuildingCore(true);
         try {
             const lastCoreSummarizedAt = getLastCoreSummarizedTimestamp(selectedCharId);
-            const longTermEntries = await loadMemoryEntriesByType(selectedCharId, "long_term");
+            const scope = resolveMemoryAccountScope();
+            const longTermEntries = (await loadMemoryEntriesByType(selectedCharId, "long_term"))
+                .filter(entry => memoryEntryInAccount(entry, scope));
             const pendingLongTermCount = longTermEntries.filter(entry =>
                 !lastCoreSummarizedAt || entry.createdAt > lastCoreSummarizedAt
             ).length;
@@ -620,6 +629,7 @@ export function MemoryBankPage({
                     importance: type === "core" ? 0.95 : 0.8,
                     createdAt: now,
                     updatedAt: now,
+                    ...(resolveMemoryAccountScope() ? { chatAccountId: resolveMemoryAccountScope()! } : {}),
                     metadata: {
                         origin: "user_manual",
                     },

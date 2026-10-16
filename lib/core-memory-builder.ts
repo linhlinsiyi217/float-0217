@@ -8,6 +8,8 @@ import {
     resetCoreMemoryCounter,
     getLastCoreSummarizedTimestamp,
     setLastCoreSummarizedTimestamp,
+    memoryEntryInAccount,
+    resolveMemoryAccountScope,
 } from "./memory-storage";
 import { resolveAuxiliaryApiConfig } from "./settings-storage";
 import { simpleLLMCall } from "./api-helpers";
@@ -37,10 +39,13 @@ function formatCoreTimelineForSummarization(
 export async function runCoreMemoryPipeline(
     characterId: string,
     characterName: string,
-    options?: { force?: boolean },
+    options?: { force?: boolean; chatAccountId?: string | null },
 ): Promise<{ success: boolean; error?: string; rebuiltCount?: number }> {
     const config = loadMemoryConfig();
-    const allLongTermEntries = await loadMemoryEntriesByType(characterId, "long_term");
+    const scope = resolveMemoryAccountScope(options?.chatAccountId);
+    // 核心记忆只由同一账号的长期记忆生成
+    const allLongTermEntries = (await loadMemoryEntriesByType(characterId, "long_term"))
+        .filter(entry => memoryEntryInAccount(entry, scope));
 
     if (allLongTermEntries.length === 0) {
         return { success: false, error: "没有可用于总结核心记忆的长期记忆" };
@@ -51,7 +56,7 @@ export async function runCoreMemoryPipeline(
         return { success: false, error: "未配置记忆总结 API（请在绑定配置 → 辅助API绑定中设置）" };
     }
 
-    const afterTimestamp = options?.force ? undefined : (getLastCoreSummarizedTimestamp(characterId) ?? undefined);
+    const afterTimestamp = options?.force ? undefined : (getLastCoreSummarizedTimestamp(characterId, scope) ?? undefined);
     const entries = allLongTermEntries
         .filter(entry => !afterTimestamp || entry.createdAt > afterTimestamp)
         .map(entry => ({
@@ -66,7 +71,7 @@ export async function runCoreMemoryPipeline(
         .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
     if (entries.length === 0) {
-        if (!options?.force) resetCoreMemoryCounter(characterId);
+        if (!options?.force) resetCoreMemoryCounter(characterId, scope);
         return { success: false, error: "没有新的长期记忆需要总结" };
     }
 
@@ -124,6 +129,7 @@ export async function runCoreMemoryPipeline(
         importance: 0.95,
         createdAt: now,
         updatedAt: now,
+        ...(scope ? { chatAccountId: scope } : {}),
         metadata: {
             summarizedLongTermEntries: entries.length,
             timeSpan: `${earliest} ~ ${latest}`,
@@ -132,9 +138,9 @@ export async function runCoreMemoryPipeline(
     };
     await saveMemoryEntry(coreEntry);
 
-    setLastCoreSummarizedTimestamp(characterId, latest);
+    setLastCoreSummarizedTimestamp(characterId, latest, scope);
     if (!options?.force) {
-        resetCoreMemoryCounter(characterId);
+        resetCoreMemoryCounter(characterId, scope);
     }
 
     return { success: true, rebuiltCount: 1 };
@@ -143,21 +149,24 @@ export async function runCoreMemoryPipeline(
 export async function maybeRunCoreMemoryPipeline(
     characterId: string,
     characterName: string,
+    chatAccountId?: string | null,
 ): Promise<void> {
     const config = loadMemoryConfig();
     if (!config.autoBuildCoreEnabled) return;
 
-    const counter = getCoreMemoryCounter(characterId);
+    const scope = resolveMemoryAccountScope(chatAccountId);
+    const counter = getCoreMemoryCounter(characterId, scope);
     if (counter < config.coreSummarizationInterval) return;
 
-    if (coreBuildingSet.has(characterId)) return;
-    coreBuildingSet.add(characterId);
+    const lockKey = `${characterId}::${scope || "main"}`;
+    if (coreBuildingSet.has(lockKey)) return;
+    coreBuildingSet.add(lockKey);
     try {
-        const result = await runCoreMemoryPipeline(characterId, characterName);
+        const result = await runCoreMemoryPipeline(characterId, characterName, { chatAccountId: scope });
         if (!result.success) {
             console.warn("[CoreMemory] Auto summary failed:", result.error);
         }
     } finally {
-        coreBuildingSet.delete(characterId);
+        coreBuildingSet.delete(lockKey);
     }
 }

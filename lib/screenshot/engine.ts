@@ -170,6 +170,15 @@ async function trimRecords(records: ScreenshotRecord[], keep: number): Promise<S
   return kept;
 }
 
+/** 删除一张截屏记录，连同媒体库里的图片；找不到就什么也不做。 */
+export async function deleteScreenshotRecord(id: string): Promise<void> {
+  const records = loadScreenshotRecords();
+  const target = records.find(item => item.id === id);
+  if (!target) return;
+  await deleteMediaRef(target.ref);
+  saveScreenshotRecords(records.filter(item => item.id !== id));
+}
+
 /** 清空全部截屏记录与对应图片。 */
 export async function clearAllScreenshots(): Promise<void> {
   const records = loadScreenshotRecords();

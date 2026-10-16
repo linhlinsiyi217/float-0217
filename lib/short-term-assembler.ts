@@ -8,6 +8,7 @@ import { buildGroupAdminBracketText } from "./group-admin";
 import { loadMomentPosts, loadMomentComments } from "./moments-storage";
 import { loadCharacters } from "./character-storage";
 import { resolveUserIdentity } from "./settings-storage";
+import { loadChatScope } from "./chat-scope-storage";
 import { loadMemoryConfig } from "./memory-storage";
 import type { MemoryConfig } from "./memory-types";
 import { estimateTokens } from "./token-counter";
@@ -212,9 +213,15 @@ export function loadNativeTimeline(
         excludeOfflineSessionId?: string;
         timeAware?: boolean;
         promptTimestampOptions?: PromptTimestampOptions;
+        /** 聊天账号作用域：null=主号；省略时取当前聊天身份范围。旧数据无字段视为主号。 */
+        chatAccountId?: string | null;
     }
 ): NativeTimelineEntry[] {
     const entries: NativeTimelineEntry[] = [];
+    const accountScope = options?.chatAccountId !== undefined
+        ? (options.chatAccountId || null)
+        : loadChatScope().chatAccountId;
+    const inAccount = (item: { chatAccountId?: string }) => (item.chatAccountId || null) === accountScope;
     const chars = loadCharacters();
     const userName = options?.userName ?? resolveUserIdentity(characterId, options?.appId)?.name ?? "用户";
     const charName = chars.find(c => c.id === characterId)?.name ?? "角色";
@@ -224,8 +231,9 @@ export function loadNativeTimeline(
     // ── Chat messages ──
     const sessions = loadChatSessions();
     // Include direct chat session AND group sessions where this character participates
-    const session = sessions.find(s => !s.isGroup && s.contactId === characterId);
-    const groupSessions = sessions.filter(s => s.isGroup && s.participantIds?.includes(characterId));
+    // 只取当前账号的会话，别的账号的私聊/群聊不进入这个角色的记忆
+    const session = sessions.find(s => !s.isGroup && s.contactId === characterId && inAccount(s));
+    const groupSessions = sessions.filter(s => s.isGroup && s.participantIds?.includes(characterId) && inAccount(s));
 
     // Process group sessions
     for (const gs of groupSessions) {
@@ -445,10 +453,14 @@ export function loadNativeTimeline(
     const posts = loadMomentPosts();
     for (const post of posts) {
         if (!canCharacterSeeMomentPost(post, characterId)) continue;
+        // 用户动态只取当前账号发的；用户的点赞/评论也只保留当前账号的
+        if (post.authorType === "user" && !inAccount(post)) continue;
         const isCharPost = post.authorId === characterId;
         const isUserPost = post.authorType === "user";
-        const comments = getVisibleMomentCommentsForCharacter(post, characterId, loadMomentComments(post.id));
-        const likes = getVisibleMomentLikesForCharacter(post, characterId, post.likes);
+        const comments = getVisibleMomentCommentsForCharacter(post, characterId, loadMomentComments(post.id))
+            .filter(c => c.authorType !== "user" || inAccount(c));
+        const likes = getVisibleMomentLikesForCharacter(post, characterId, post.likes)
+            .filter(like => like.authorType !== "user" || inAccount(like));
         const filteredComments = options?.afterTimestamp
             ? comments.filter(c => c.createdAt > options.afterTimestamp!)
             : comments;
@@ -989,6 +1001,8 @@ export function prepareShortTermContext(
         afterTimestamp?: string;
         timeAware?: boolean;
         promptTimestampOptions?: PromptTimestampOptions;
+        /** 当前会话所属聊天账号；省略时取当前聊天身份范围。 */
+        chatAccountId?: string | null;
     },
 ): {
     recentBlocks: RecentBlock[];
@@ -1004,6 +1018,7 @@ export function prepareShortTermContext(
         afterTimestamp: options?.afterTimestamp,
         timeAware,
         promptTimestampOptions: options?.promptTimestampOptions,
+        chatAccountId: options?.chatAccountId,
     });
 
     const memConfig = loadMemoryConfig();
@@ -1247,6 +1262,8 @@ export function prepareGroupShortTermContext(
         includeNativeToolHistory?: boolean;
         timeAware?: boolean;
         promptTimestampOptions?: PromptTimestampOptions;
+        /** 群聊所属聊天账号；省略时取当前聊天身份范围。 */
+        chatAccountId?: string | null;
     },
 ): {
     truncatedHistory: ChatMessage[];
@@ -1266,6 +1283,7 @@ export function prepareGroupShortTermContext(
             excludeOfflineSessionId: options?.excludeOfflineSessionId,
             timeAware,
             promptTimestampOptions: options?.promptTimestampOptions,
+            chatAccountId: options?.chatAccountId,
         });
         timeline = filterTimelineByAllowedSources(timeline, allowed);
         for (const entry of timeline) {

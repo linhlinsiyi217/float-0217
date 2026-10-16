@@ -14,6 +14,8 @@ import type {
   SleepSnapshot,
 } from "./types";
 
+export type { AppUsageEntry };
+
 type PerceptionBridgeLike = {
   getPerceptionSnapshot?: () => string;
   getAppLabel?: (packageName: string) => string;
@@ -308,7 +310,7 @@ export function readSleep(): SleepSnapshot | null {
   try {
     const raw = bridge()?.readSleep?.();
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<SleepSnapshot>;
+    const parsed = JSON.parse(raw) as { sleepMinutes?: unknown; sleepEndAt?: unknown; sleepStartAt?: unknown };
     const minutes = Number(parsed?.sleepMinutes);
     const endAt = Number(parsed?.sleepEndAt);
     const startAt = Number(parsed?.sleepStartAt);

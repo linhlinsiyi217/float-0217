@@ -18,6 +18,7 @@
 import { pushChatMessage, loadChatSessions } from "../chat-storage";
 import { loadCharacters } from "../character-storage";
 import { recordUserShot } from "./engine";
+import type { CheckInOutcome } from "./types";
 import { requestBackgroundChatReply } from "../follow-up-service";
 import { storeMediaBase64 } from "../media-cache-storage";
 import {

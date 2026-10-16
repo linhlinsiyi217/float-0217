@@ -5,6 +5,7 @@ import type { MemoryEntry, MemoryConfig } from "./memory-types";
 import { DEFAULT_MEMORY_CONFIG } from "./memory-types";
 import { kvGet, kvSet, registerKvMigration, registerDynamicPrefix } from "./kv-db";
 import { openIndexedDbAtLeast } from "./idb-open";
+import { loadChatScope } from "./chat-scope-storage";
 
 // ── Long-term memory DB (unchanged from v1) ──
 
@@ -97,6 +98,22 @@ export async function loadMemoryEntriesByType(
 ): Promise<MemoryEntry[]> {
     const entries = await loadMemoryEntries(characterId);
     return entries.filter(entry => entry.type === type);
+}
+
+/** 记忆是否属于该聊天账号（null=主号；旧记忆没有字段，算主号）。 */
+export function memoryEntryInAccount(entry: Pick<MemoryEntry, "chatAccountId">, chatAccountId: string | null): boolean {
+    return (entry.chatAccountId || null) === (chatAccountId || null);
+}
+
+/** undefined=取当前聊天身份范围；null=主号。 */
+export function resolveMemoryAccountScope(chatAccountId?: string | null): string | null {
+    return chatAccountId === undefined ? loadChatScope().chatAccountId : (chatAccountId || null);
+}
+
+/** 主号沿用旧键（不迁移、不清数据）；小号在键尾加账号后缀，各自记录总结进度。 */
+function accountKeySuffix(chatAccountId?: string | null): string {
+    const scope = resolveMemoryAccountScope(chatAccountId);
+    return scope ? `::${scope}` : "";
 }
 
 export async function deleteMemoryEntry(id: string): Promise<void> {
@@ -203,60 +220,60 @@ registerDynamicPrefix(LAST_SUMMARY_TS_PREFIX);
 registerDynamicPrefix(CORE_COUNTER_PREFIX);
 registerDynamicPrefix(LAST_CORE_SUMMARY_TS_PREFIX);
 
-export function getEventCounter(characterId: string): number {
+export function getEventCounter(characterId: string, chatAccountId?: string | null): number {
     if (typeof window === "undefined") return 0;
-    const val = kvGet(EVENT_COUNTER_PREFIX + characterId);
+    const val = kvGet(EVENT_COUNTER_PREFIX + characterId + accountKeySuffix(chatAccountId));
     return val ? parseInt(val, 10) || 0 : 0;
 }
 
-export function incrementEventCounter(characterId: string): number {
-    const next = getEventCounter(characterId) + 1;
+export function incrementEventCounter(characterId: string, chatAccountId?: string | null): number {
+    const next = getEventCounter(characterId, chatAccountId) + 1;
     if (typeof window !== "undefined") {
-        kvSet(EVENT_COUNTER_PREFIX + characterId, String(next));
+        kvSet(EVENT_COUNTER_PREFIX + characterId + accountKeySuffix(chatAccountId), String(next));
     }
     return next;
 }
 
-export function resetEventCounter(characterId: string): void {
+export function resetEventCounter(characterId: string, chatAccountId?: string | null): void {
     if (typeof window === "undefined") return;
-    kvSet(EVENT_COUNTER_PREFIX + characterId, "0");
+    kvSet(EVENT_COUNTER_PREFIX + characterId + accountKeySuffix(chatAccountId), "0");
 }
 
-export function getLastSummarizedTimestamp(characterId: string): string | null {
+export function getLastSummarizedTimestamp(characterId: string, chatAccountId?: string | null): string | null {
     if (typeof window === "undefined") return null;
-    return kvGet(LAST_SUMMARY_TS_PREFIX + characterId) || null;
+    return kvGet(LAST_SUMMARY_TS_PREFIX + characterId + accountKeySuffix(chatAccountId)) || null;
 }
 
-export function setLastSummarizedTimestamp(characterId: string, ts: string): void {
+export function setLastSummarizedTimestamp(characterId: string, ts: string, chatAccountId?: string | null): void {
     if (typeof window === "undefined") return;
-    kvSet(LAST_SUMMARY_TS_PREFIX + characterId, ts);
+    kvSet(LAST_SUMMARY_TS_PREFIX + characterId + accountKeySuffix(chatAccountId), ts);
 }
 
-export function getCoreMemoryCounter(characterId: string): number {
+export function getCoreMemoryCounter(characterId: string, chatAccountId?: string | null): number {
     if (typeof window === "undefined") return 0;
-    const val = kvGet(CORE_COUNTER_PREFIX + characterId);
+    const val = kvGet(CORE_COUNTER_PREFIX + characterId + accountKeySuffix(chatAccountId));
     return val ? parseInt(val, 10) || 0 : 0;
 }
 
-export function incrementCoreMemoryCounter(characterId: string): number {
-    const next = getCoreMemoryCounter(characterId) + 1;
+export function incrementCoreMemoryCounter(characterId: string, chatAccountId?: string | null): number {
+    const next = getCoreMemoryCounter(characterId, chatAccountId) + 1;
     if (typeof window !== "undefined") {
-        kvSet(CORE_COUNTER_PREFIX + characterId, String(next));
+        kvSet(CORE_COUNTER_PREFIX + characterId + accountKeySuffix(chatAccountId), String(next));
     }
     return next;
 }
 
-export function resetCoreMemoryCounter(characterId: string): void {
+export function resetCoreMemoryCounter(characterId: string, chatAccountId?: string | null): void {
     if (typeof window === "undefined") return;
-    kvSet(CORE_COUNTER_PREFIX + characterId, "0");
+    kvSet(CORE_COUNTER_PREFIX + characterId + accountKeySuffix(chatAccountId), "0");
 }
 
-export function getLastCoreSummarizedTimestamp(characterId: string): string | null {
+export function getLastCoreSummarizedTimestamp(characterId: string, chatAccountId?: string | null): string | null {
     if (typeof window === "undefined") return null;
-    return kvGet(LAST_CORE_SUMMARY_TS_PREFIX + characterId) || null;
+    return kvGet(LAST_CORE_SUMMARY_TS_PREFIX + characterId + accountKeySuffix(chatAccountId)) || null;
 }
 
-export function setLastCoreSummarizedTimestamp(characterId: string, ts: string): void {
+export function setLastCoreSummarizedTimestamp(characterId: string, ts: string, chatAccountId?: string | null): void {
     if (typeof window === "undefined") return;
-    kvSet(LAST_CORE_SUMMARY_TS_PREFIX + characterId, ts);
+    kvSet(LAST_CORE_SUMMARY_TS_PREFIX + characterId + accountKeySuffix(chatAccountId), ts);
 }

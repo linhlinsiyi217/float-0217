@@ -1881,6 +1881,7 @@ export async function buildChatPromptMessages(
         includeNativeToolHistory: usesNativeActions,
         excludeOfflineSessionId: options?.excludeOfflineSessionId,
         promptTimestampOptions,
+        chatAccountId: session.chatAccountId || null,
     });
     const promptHistory = applyVisionImagePromptLimit(
         truncatedHistory.map(msg => ({ ...msg })),
@@ -1894,8 +1895,8 @@ export async function buildChatPromptMessages(
     }
 
     const [memResults, coreResults, musicLocal, musicCloud] = await Promise.all([
-        retrieveMemoriesForPrompt(character.id, wbActivationContext, memConfig).catch(() => null),
-        retrieveCoreMemoriesForPrompt(character.id, memConfig).catch(() => null),
+        retrieveMemoriesForPrompt(character.id, wbActivationContext, memConfig, session.chatAccountId || null).catch(() => null),
+        retrieveCoreMemoriesForPrompt(character.id, memConfig, session.chatAccountId || null).catch(() => null),
         buildMusicLocalMacro(),
         buildMusicCloudMacro(),
     ]);
@@ -2975,9 +2976,11 @@ async function generateChatCompletionCore(
     // Memory: increment event counter + check if summarization needed (non-blocking)
     (async () => {
         try {
-            incrementEventCounter(character.id); // user message
-            incrementEventCounter(character.id); // AI reply
-            await maybeRunSummarization(character.id, character.name);
+            // 计数与总结都记在这次会话所属账号名下，切号后也不会串
+            const memoryAccount = session.chatAccountId || null;
+            incrementEventCounter(character.id, memoryAccount); // user message
+            incrementEventCounter(character.id, memoryAccount); // AI reply
+            await maybeRunSummarization(character.id, character.name, memoryAccount);
         } catch (err) {
             console.warn("[ChatEngine] Memory counter/summarization failed:", err);
         }
