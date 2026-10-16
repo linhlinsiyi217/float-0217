@@ -54,7 +54,8 @@ import { useKeyboardDismissAutoSend } from "@/components/chat/use-keyboard-dismi
 import { cancelBailoutKey } from "@/lib/push-bailout-client";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import type { UserIdentity } from "@/components/settings/user-identity";
-import { AlertCircle, Blocks, Check, Trash2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, X } from "lucide-react";
+import { AlertCircle, Blocks, Check, Copy, FileText, ListChecks, ListX, Pencil, PhoneIncoming, PhoneOff, Quote, RotateCcw, Trash2, Undo2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, Wand2, X } from "lucide-react";
+import { getGroupTapbacks, getTapbackGlyph, IMESSAGE_TAPBACKS_UPDATED_EVENT, loadIMessageTapbacks, setGroupTapback, type MessageTapback } from "@/lib/chat-tapback";
 import { setDebugChatState } from "@/lib/debug-store";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import { setChatActive } from "@/lib/music-action-queue";
@@ -1188,7 +1189,7 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
     };
 
     return (
-        <div className="chat-input-bar chat-room-main-pane flex flex-col" data-ui="input">
+        <div className="chat-input-bar chat-room-main-pane flex flex-col" data-ui="input" data-offline-input="">
             <textarea
                 ref={textareaRef}
                 rows={1}
@@ -1505,6 +1506,13 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
     // Message Actions state
     const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
     const [contextMenuAnchor, setContextMenuAnchor] = useState<ContextMenuAnchor | null>(null);
+    // Tapback 候选：默认六个，存在本机；其他页面更新后同步
+    const [tapbackCandidates, setTapbackCandidates] = useState(() => loadIMessageTapbacks());
+    useEffect(() => {
+        const refresh = () => setTapbackCandidates(loadIMessageTapbacks());
+        window.addEventListener(IMESSAGE_TAPBACKS_UPDATED_EVENT, refresh);
+        return () => window.removeEventListener(IMESSAGE_TAPBACKS_UPDATED_EVENT, refresh);
+    }, []);
     const [instructionRetryTargetId, setInstructionRetryTargetId] = useState<string | null>(null);
     const [instructionRetryDraft, setInstructionRetryDraft] = useState("");
     const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
@@ -5412,84 +5420,132 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
     }, [session.id, syncMessagesFromStorage]);
 
     /** Reusable context menu for user/assistant bubbles */
+    // Tapback 回应（来自 Y2K）：单聊写 mediaData.tapback；群聊按回应人记录，可多人各自回应
+    const isUserTapbackSelected = (message: ChatMessage, glyph: string) => session.isGroup
+        ? getGroupTapbacks(message).some(reaction => reaction.actorId === "self" && reaction.emoji === glyph)
+        : getTapbackGlyph(message.mediaData?.tapback) === glyph && message.mediaData?.tapbackBy === "user";
+    const handleTapback = (message: ChatMessage, tapback: MessageTapback) => {
+        const storedMessageId = getStoredActionMessageId(message);
+        const stored = loadChatMessages(session.id).find(item => item.id === storedMessageId);
+        if (!stored) return;
+        if (session.isGroup) {
+            setGroupTapback(session.id, storedMessageId, { actorId: "self", actorName: userIdentity?.name || "你" }, tapback, true);
+        } else {
+            const nextMediaData = { ...stored.mediaData };
+            if (nextMediaData.tapback === tapback && nextMediaData.tapbackBy === "user") {
+                delete nextMediaData.tapback;
+                delete nextMediaData.tapbackBy;
+            } else {
+                nextMediaData.tapback = tapback;
+                nextMediaData.tapbackBy = "user";
+            }
+            updateMessageMediaData(storedMessageId, nextMediaData);
+        }
+        syncMessagesFromStorage();
+        closeContextMenu();
+    };
+
     const renderBubbleContextMenu = (m: ChatMessage, options?: { allowMultiSelect?: boolean }) => {
         const storedMessageId = getStoredActionMessageId(m);
+        const pluginActions = getChatPluginRuntime().getMessageActions(m);
+        const copyMessage = () => {
+            const text = m.content;
+            const fallbackCopy = () => {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                ta.style.cssText = "position:fixed;left:-9999px;top:-9999px;opacity:0";
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                try { document.execCommand("copy"); } catch {}
+                document.body.removeChild(ta);
+            };
+            if (navigator.clipboard?.writeText) {
+                navigator.clipboard.writeText(text).catch(fallbackCopy);
+            } else {
+                fallbackCopy();
+            }
+            setActiveMessageId(null);
+        };
+        // iMessage 长按菜单（来自 Y2K）：上方一排 Tapback 回应，下方竖排操作列表；
+        // 操作项保留本项目全部功能
         const menu = (
             <div
                 onPointerDown={e => e.stopPropagation()}
                 ref={positionFloatingContextMenu}
                 style={getContextMenuInitialStyle()}
                 className="ctx-menu chat-floating-ctx-menu flex flex-col items-center gap-[6px] py-[4px] px-0"
+                data-imessage-tapback-menu=""
                 data-role={m.role}>
-                <div className="flex">
-                    <button onClick={() => {
-                        const text = m.content;
-                        const fallbackCopy = () => {
-                            const ta = document.createElement("textarea");
-                            ta.value = text;
-                            ta.style.cssText = "position:fixed;left:-9999px;top:-9999px;opacity:0";
-                            document.body.appendChild(ta);
-                            ta.focus();
-                            ta.select();
-                            try { document.execCommand("copy"); } catch {}
-                            document.body.removeChild(ta);
-                        };
-                        if (navigator.clipboard?.writeText) {
-                            navigator.clipboard.writeText(text).catch(fallbackCopy);
-                        } else {
-                            fallbackCopy();
-                        }
-                        setActiveMessageId(null);
-                    }} className="ctx-menu-btn">复制</button>
+                <div className="imessage-tapback-picker" role="group" aria-label="回应消息">
+                    {tapbackCandidates.map(item => (
+                        <button
+                            type="button"
+                            key={item.id}
+                            className="imessage-tapback-option"
+                            data-tapback={item.id}
+                            {...(isUserTapbackSelected(m, item.glyph) ? { "data-selected": "" } : {})}
+                            onClick={() => handleTapback(m, item.id)}
+                            aria-label={item.label}
+                            title={item.label}
+                        >
+                            <span aria-hidden="true">{item.glyph}</span>
+                        </button>
+                    ))}
+                </div>
+                <div className="flex imessage-context-actions">
+                    <button onClick={copyMessage} className="ctx-menu-btn"><Copy className="imessage-context-icon" aria-hidden="true" /><span>复制</span></button>
+                    <button onClick={() => { setQuotingMessage(m); setActiveMessageId(null); }} className="ctx-menu-btn"><Quote className="imessage-context-icon" aria-hidden="true" /><span>引用</span></button>
                     <button onClick={() => (m.role === "assistant" ? handleEditResponseStart(m) : handleEditMessageStart(m))} className="ctx-menu-btn">
-                        {m.role === "assistant" && (m.rawResponseText || m.editableResponseText) ? "编辑回复" : "编辑"}
+                        <Pencil className="imessage-context-icon" aria-hidden="true" />
+                        <span>{m.role === "assistant" && (m.rawResponseText || m.editableResponseText) ? "编辑回复" : "编辑"}</span>
                     </button>
                     {m.mediaType === "audio" && m.mediaData?.label && (
-                        <button onClick={() => { setVoiceTextIds(prev => { const next = new Set(prev); if (next.has(m.id)) next.delete(m.id); else next.add(m.id); return next; }); setActiveMessageId(null); }} className="ctx-menu-btn">转文字</button>
+                        <button onClick={() => { setVoiceTextIds(prev => { const next = new Set(prev); if (next.has(m.id)) next.delete(m.id); else next.add(m.id); return next; }); setActiveMessageId(null); }} className="ctx-menu-btn"><FileText className="imessage-context-icon" aria-hidden="true" /><span>转文字</span></button>
                     )}
                     {m.role === "user" && (
-                        <button onClick={() => handleRetractMessage(storedMessageId)} className="ctx-menu-btn">撤回消息</button>
+                        <button onClick={() => handleRetractMessage(storedMessageId)} className="ctx-menu-btn"><Undo2 className="imessage-context-icon" aria-hidden="true" /><span>撤回消息</span></button>
                     )}
                     {m.role === "assistant" && (
-                        <>
-                            <button onClick={() => handleRetry(storedMessageId)} className="ctx-menu-btn ctx-menu-btn-danger">重试以下</button>
-                            <button onClick={() => { setInstructionRetryTargetId(storedMessageId); setInstructionRetryDraft(""); setActiveMessageId(null); }} className="ctx-menu-btn">指令重试</button>
-                        </>
+                        <button onClick={() => { setInstructionRetryTargetId(storedMessageId); setInstructionRetryDraft(""); setActiveMessageId(null); }} className="ctx-menu-btn"><Wand2 className="imessage-context-icon" aria-hidden="true" /><span>指令重试</span></button>
                     )}
+                </div>
+                <div className="flex imessage-context-actions">
                     <button onClick={() => { toggleCallStartMarker(m); setActiveMessageId(null); }} className="ctx-menu-btn">
-                        {m.mediaData?.callStartMarker ? "取消通话开头" : "设为通话开头"}
+                        <PhoneIncoming className="imessage-context-icon" aria-hidden="true" />
+                        <span>{m.mediaData?.callStartMarker ? "取消通话开头" : "设为通话开头"}</span>
                     </button>
                     <button onClick={() => { toggleCallEndMarker(m); setActiveMessageId(null); }} className="ctx-menu-btn">
-                        {m.mediaData?.callEndMarker ? "取消通话结尾" : "设为通话结尾"}
+                        <PhoneOff className="imessage-context-icon" aria-hidden="true" />
+                        <span>{m.mediaData?.callEndMarker ? "取消通话结尾" : "设为通话结尾"}</span>
                     </button>
                 </div>
-                <div className="flex">
-                    <button onClick={() => { setQuotingMessage(m); setActiveMessageId(null); }} className="ctx-menu-btn">引用</button>
-                    {options?.allowMultiSelect !== false && (
-                        <button onClick={() => startMultiSelectFromMessage(m)} className="ctx-menu-btn">多选</button>
+                {pluginActions.length > 0 && (
+                    <div className="flex imessage-context-actions">
+                        {pluginActions.map(action => (
+                            <button
+                                key={`${action.pluginId}:${action.id}`}
+                                className="ctx-menu-btn"
+                                onClick={() => {
+                                    getChatPluginRuntime().runMessageAction(action, m);
+                                    setActiveMessageId(null);
+                                }}
+                            ><Blocks className="imessage-context-icon" aria-hidden="true" /><span>{action.label}</span></button>
+                        ))}
+                    </div>
+                )}
+                {options?.allowMultiSelect !== false && (
+                    <div className="flex imessage-context-actions">
+                        <button onClick={() => startMultiSelectFromMessage(m)} className="ctx-menu-btn"><ListChecks className="imessage-context-icon" aria-hidden="true" /><span>多选</span></button>
+                    </div>
+                )}
+                <div className="flex imessage-context-actions" data-menu-danger-group="">
+                    {m.role === "assistant" && (
+                        <button onClick={() => handleRetry(storedMessageId)} className="ctx-menu-btn ctx-menu-btn-danger"><RotateCcw className="imessage-context-icon" aria-hidden="true" /><span>重试以下</span></button>
                     )}
-                    <button onClick={() => handleDeleteMessage(storedMessageId)} className="ctx-menu-btn ctx-menu-btn-danger">删除</button>
-                    <button onClick={() => handleDeleteMessagesFrom(storedMessageId)} className="ctx-menu-btn ctx-menu-btn-danger">删除以下</button>
+                    <button onClick={() => handleDeleteMessage(storedMessageId)} className="ctx-menu-btn ctx-menu-btn-danger"><Trash2 className="imessage-context-icon" aria-hidden="true" /><span>删除</span></button>
+                    <button onClick={() => handleDeleteMessagesFrom(storedMessageId)} className="ctx-menu-btn ctx-menu-btn-danger"><ListX className="imessage-context-icon" aria-hidden="true" /><span>删除以下</span></button>
                 </div>
-                {(() => {
-                    // 聊天插件注册的消息操作菜单项
-                    const pluginActions = getChatPluginRuntime().getMessageActions(m);
-                    if (pluginActions.length === 0) return null;
-                    return (
-                        <div className="flex">
-                            {pluginActions.map(action => (
-                                <button
-                                    key={`${action.pluginId}:${action.id}`}
-                                    className="ctx-menu-btn"
-                                    onClick={() => {
-                                        getChatPluginRuntime().runMessageAction(action, m);
-                                        setActiveMessageId(null);
-                                    }}
-                                >{action.label}</button>
-                            ))}
-                        </div>
-                    );
-                })()}
                 <div data-menu-triangle className="ctx-menu-triangle absolute -top-[6px] w-0 h-0" />
             </div>
         );
