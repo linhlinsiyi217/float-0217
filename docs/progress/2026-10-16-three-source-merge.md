@@ -77,3 +77,41 @@ Y2K 的界面美化与聊天风格必须保留并整合：
 3. 合并 doremy（处理 5 个冲突文件，globals.css 保持导入顺序）
 4. y2k 按功能手工移植（相册、多图、tapback、画板、一起听等），逐项决定
 5. 更新日志 system-data.ts、check:updates、tsc、build
+
+## 10-17 · 续接完成情况
+
+分支 `merge/three-sources-1015`，基于 origin/main 84fc1dd，未合入 main、未部署。
+
+### 已完成
+- 合入 momo（909a40e）与 doremy（f50b75d）主分支；doremy 的 5 个冲突文件已解。
+- 大小号隔离（6cdcf0c、27e3f7c）：短期时间线、长期/核心记忆、记忆总结、群聊摘要、
+  截图打卡、经期关心、未读胶囊按 `chatAccountId` 过滤；其他应用引擎不传参 → 跟随当前聊天范围。
+  小号身份只发小号自身资料，不告诉模型「这是小号」。
+- Y2K iMessage 完整移植（7b01ee9 → 62c1040、fa61153、ed20685、c98cadb）：
+  素材与三张样式表、聊天室外层、气泡与尾巴、顶栏、输入区、加号菜单、长按菜单、
+  Apple Pay 转账卡、语音条图形、设置页（气泡颜色/美化预设/Tapback 候选）、
+  模型侧 `[Tapback:emoji]`（单聊/群聊/流式/主动消息）、自定义 Tapback 输入、
+  动态/主页苹果社交页外观与底部胶囊标签栏。
+- 发布 0.6.8 更新日志（447d8cc）：8 条记录 26 条内容，4 条未实测写进 pending。
+- NOTICE 补三来源署名；DESIGN.md §8.9.1 写已移植 / 未移植清单。
+
+### 检查结果
+- `npx tsc --noEmit`：通过（0 错误）。
+- `npm run build`：通过（3 次，含最后一次）。
+- `npm run check:updates`：通过。
+- `npm run lint`：仍有 136 个错误，其中 132 处主分支就已存在（多为 `no-explicit-any`），
+  本次合入带入的 5 处 `prefer-const` 已修（0db29cc）。**没有做全仓库 lint 清理**，
+  避免在整合分支里大规模改动无关文件。
+
+### 未验证 / 待确认
+- 没有浏览器或手机实机验收：iMessage 键盘、长消息、深浅色、Tapback 实际贴纸效果都需真机确认。
+- 模型侧 Tapback 未真实调用付费模型验证（只验证代码路径与类型）。
+- 安卓壳原生小组件、通话浮层、推送需打包 APK 后真机确认。
+- 多账号切换没有做实机回归。
+
+### 构建产物注意
+`npm run build` 会重新生成 `public/ai-phone-push/{gateway,push-generate}.mjs` 与
+`public/weixin-local-assistant/cloud-function.mjs`、`supabase/functions/weixin-assistant/index.ts`。
+其中推送两个产物在仓库里比源码多约 180 行，重新生成会覆盖；本次没有提交这些改动，
+改动已备份到 `.merge-tmp/build-artifacts/`（该目录不提交）。下次发布前需要决定：
+是把源码补回去，还是把产物恢复成已提交版本。
