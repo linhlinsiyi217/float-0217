@@ -6,6 +6,7 @@ import { extractTextToolDirectiveText } from "./text-tool-protocol";
 import type { ApiConfig, PresetConfig, RegexConfig } from "./settings-types";
 import { loadCharacters } from "./character-storage";
 import { buildScreenEffectPromptHint } from "./chat-screen-effects";
+import { buildGroupTapbackPrompt } from "./chat-tapback";
 import { runChatPluginTransform } from "./chat-plugin-hooks";
 import { buildChatPluginPromptFragments } from "./chat-plugin-storage";
 import {
@@ -496,6 +497,10 @@ async function buildGroupChatPromptMessages(
         offlineSummaryTag: preset?.story_summary_tag?.trim() || "summary",
         nativeToolHistory: usesNativeActions,
     });
+    // 群聊 Tapback：每个角色可对自己想回应的消息贴表情（来自 Y2K）
+    if (!isOfflineMode && !promptProfile) {
+        llmMessages.push({ role: "system", content: buildGroupTapbackPrompt(promptHistory) });
+    }
     if (promptProfile?.output === "plain_text") {
         llmMessages.push({
             role: "system",

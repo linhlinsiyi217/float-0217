@@ -40,6 +40,7 @@ import {
 } from "./settings-storage";
 import { resolveChatAccountUserIdentity } from "./chat-scope-storage";
 import { assemblePromptPayload, applyOutputRegex, type LLMMessage, type LLMContentPart } from "./llm-prompt-assembler";
+import { buildIMessageTapbackPromptInstruction } from "./chat-tapback";
 import { MacroEngine, postProcessTrim } from "./macro-engine";
 import { getStatusRegionConfig, resolveStatusRegionSection, resolveStatusRegionExampleLine, resolveStatusRegionComposition, resolveStatusRegionFullExample } from "./chat-status-region";
 import {
@@ -2020,6 +2021,10 @@ export async function buildChatPromptMessages(
                 "控制标记不会展示给用户；不要解释标记，也不要把它写进代码块。",
             ].join("\n"),
         });
+    }
+    // iMessage Tapback：允许模型对用户最新消息贴一个真实表情回应（来自 Y2K）
+    if (!session.isGroup && !isOfflineMode && !promptProfile && resolvedAppId === "chat") {
+        llmMessages.push({ role: "system", content: buildIMessageTapbackPromptInstruction() });
     }
     if (promptProfile?.output === "plain_text") {
         llmMessages.push({

@@ -55,7 +55,7 @@ import { cancelBailoutKey } from "@/lib/push-bailout-client";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import type { UserIdentity } from "@/components/settings/user-identity";
 import { AlertCircle, Blocks, Check, Copy, FileText, ListChecks, ListX, Pencil, PhoneIncoming, PhoneOff, Quote, RotateCcw, Trash2, Undo2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, Wand2, X } from "lucide-react";
-import { getGroupTapbacks, getTapbackGlyph, IMESSAGE_TAPBACKS_UPDATED_EVENT, loadIMessageTapbacks, setGroupTapback, type MessageTapback } from "@/lib/chat-tapback";
+import { applyAssistantTapback, applyGroupAssistantTapback, getGroupTapbacks, getTapbackGlyph, IMESSAGE_TAPBACK_APPLIED_EVENT, IMESSAGE_TAPBACKS_UPDATED_EVENT, loadIMessageTapbacks, setGroupTapback, type MessageTapback } from "@/lib/chat-tapback";
 import { setDebugChatState } from "@/lib/debug-store";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import { setChatActive } from "@/lib/music-action-queue";
@@ -1620,6 +1620,16 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         applyStoredMessageWindow(loadChatMessages(session.id));
     }, [applyStoredMessageWindow, session.id]);
 
+    // 模型侧的 Tapback 由后台（主动消息/追问）贴上去后，聊天室同步可见
+    useEffect(() => {
+        const syncAppliedTapback = (event: Event) => {
+            const detail = (event as CustomEvent<{ sessionId?: string }>).detail;
+            if (detail?.sessionId === session.id) syncMessagesFromStorage();
+        };
+        window.addEventListener(IMESSAGE_TAPBACK_APPLIED_EVENT, syncAppliedTapback);
+        return () => window.removeEventListener(IMESSAGE_TAPBACK_APPLIED_EVENT, syncAppliedTapback);
+    }, [session.id, syncMessagesFromStorage]);
+
     const closeContextMenu = () => {
         setActiveMessageId(null);
         setActiveOfflineTarget(null);
@@ -2689,6 +2699,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
             currentStateByCharacter.set(characterId, latest);
             return latest;
         };
+        const reactedCharacters = new Set<string>();
         let isFirst = true;
         for (const r of results) {
             throwIfGenerationStopped(guard);
@@ -2702,6 +2713,15 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
             let savedAnyPart = false;
             for (const part of parts) {
                 throwIfGenerationStopped(guard);
+                // Tapback 动作（来自 Y2K）：每个角色一条回复最多回应一次
+                if (part.mediaType === "tapback_action") {
+                    if (!reactedCharacters.has(r.characterId)
+                        && applyGroupAssistantTapback(session.id, part.mediaData?.tapback, { actorId: r.characterId, actorName: r.characterName })) {
+                        reactedCharacters.add(r.characterId);
+                        savedAnyPart = true;
+                    }
+                    continue;
+                }
                 // Filter action types
                 if (part.mediaType === "voice_call" || part.mediaType === "video_call") {
                     if (session.isSpectator) continue; // 围观群不能把用户卷进群通话
@@ -3133,6 +3153,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         // Detect call triggers and AI media actions, filter them out
         let triggerCall: "voice" | "video" | undefined;
         let hasDecline = false;
+        let hasTapbackAction = false;
         const charN = character?.name || "对方";
         const userN = userIdentity?.name || "你";
         const filteredParts: typeof parts = [];
@@ -3145,6 +3166,14 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
             throwIfGenerationStopped(options);
             if (p.mediaType === "voice_call") { triggerCall = "voice"; continue; }
             if (p.mediaType === "video_call") { triggerCall = "video"; continue; }
+            // Tapback 动作（来自 Y2K）：贴着用户某条消息显示，不产生气泡；一条回复只执行一次
+            if (p.mediaType === "tapback_action") {
+                if (!hasTapbackAction && !session.isGroup
+                    && applyAssistantTapback(session.id, p.mediaData?.tapback)) {
+                    hasTapbackAction = true;
+                }
+                continue;
+            }
             if (p.mediaType === "meeting_invite") {
                 // 仅允许私聊角色发起；把角色快照写进卡片，避免角色改名后旧邀请失去归属。
                 if (session.isGroup) continue;
@@ -3961,8 +3990,19 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                         const parts = stripInvalidStickerParts(rawParts, senderInfo.characterId);
                         let attachedState = false;
                         let savedAnyPart = false;
+                        let streamedTapback = false;
                         for (const part of parts) {
                             throwIfGenerationStopped(generationGuard);
+                            // Tapback（来自 Y2K）：流式落库路径同样只执行一次，不产生气泡
+                            if (part.mediaType === "tapback_action") {
+                                if (!streamedTapback
+                                    && applyGroupAssistantTapback(session.id, part.mediaData?.tapback, { actorId: senderInfo.characterId, actorName: senderInfo.characterName })) {
+                                    streamedTapback = true;
+                                    savedAnyPart = true;
+                                    syncMessagesFromStorage();
+                                }
+                                continue;
+                            }
                             if (!part.content.trim() && !part.mediaType) continue;
                             const draft = buildAssistantMessageDraft(part, {
                                 sessionId: session.id,

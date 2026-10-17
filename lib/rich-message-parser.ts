@@ -216,6 +216,15 @@ const RICH_PATTERNS: {
         }),
     },
     {
+        // 真实 Tapback 动作（来自 Y2K）：贴在用户某条消息上，目标由应用侧解析
+        regex: new RegExp(`\[Tapback${C}([^\]]+)\]`, "i"),
+        build: (m) => ({
+            content: "",
+            mediaType: "tapback_action" as const,
+            mediaData: { tapback: m[1]?.trim() || "" },
+        }),
+    },
+    {
         regex: new RegExp(`\\[表情包${C}([^\\]]+)\\]`),
         build: (m) => {
             const name = m[1].trim();

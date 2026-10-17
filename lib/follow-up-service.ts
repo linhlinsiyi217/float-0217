@@ -19,6 +19,7 @@ import {
 } from "./chat-storage";
 import type { ChatMessage, StateValue } from "./chat-storage";
 import { sessionMatchesChatScope } from "./chat-scope-storage";
+import { applyAssistantTapback, applyGroupAssistantTapback } from "./chat-tapback";
 import { generateChatCompletion, flattenCompletionResult } from "./chat-engine";
 import { armFollowUpBailout, armIdleReconnectBailout, cancelBailoutKey, cancelBailoutPrefix, cancelFollowUpBailout, startBailoutHeartbeat } from "./push-bailout-client";
 import { hasAccountPushSubscription, isWithinPushQuietHours } from "./push-client";
@@ -1096,6 +1097,7 @@ export async function parseAndSaveResponse(
 
     // Detect call triggers and AI media actions, filter them out (not stored as messages)
     let triggerCall: "voice" | "video" | undefined;
+    let hasTapbackAction = false;
     const charName = resolveFollowUpSenderName(sessionId);
 
     // 快捷动作配对消息：tool_call 存标记原文（组装器不跳过，历史上下文与模型当初
@@ -1120,6 +1122,13 @@ export async function parseAndSaveResponse(
     for (const p of parts) {
         if (p.mediaType === "voice_call") { triggerCall = "voice"; continue; }
         if (p.mediaType === "video_call") { triggerCall = "video"; continue; }
+        // Tapback（来自 Y2K）：主动消息只对单聊生效一次；群聊需要发送者身份，这里不动
+        if (p.mediaType === "tapback_action") {
+            if (!hasTapbackAction && !sess?.isGroup && applyAssistantTapback(sessionId, p.mediaData?.tapback)) {
+                hasTapbackAction = true;
+            }
+            continue;
+        }
         // 「丢弃角色输出的无效表情包」开关（主动消息路径）
         if (p.mediaType === "sticker" && sess?.discardInvalidStickers === true) {
             const senderIds = sess.isGroup ? (sess.participantIds ?? []) : [sess.contactId];
