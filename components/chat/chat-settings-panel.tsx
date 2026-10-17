@@ -61,6 +61,7 @@ import { ConfirmDialog } from "@/components/ui/modal";
 import { CHAT_SESSION_CSS_EXAMPLE } from "@/lib/css-examples";
 import { Toggle, Input } from "@/components/ui/form";
 import { PageShell } from "@/components/ui/page-shell";
+import { IMESSAGE_TAPBACKS, loadIMessageTapbacks, saveIMessageTapbacks } from "@/lib/chat-tapback";
 
 // 自定义状态栏预填模板：微博主页（契约=「状态栏」章节整段正文，含【逻辑】【格式】与包裹要求）
 // 预览用的默认示例数据：契约没有自带示例时兜底，字段与下面的微博模板对应
@@ -463,6 +464,10 @@ export function ChatSettingsPanel({
     const [editingAlias, setEditingAlias] = useState(false);
     const [editingBilingualPrompt, setEditingBilingualPrompt] = useState(false);
     const [editingCSS, setEditingCSS] = useState(false);
+    // Tapback 候选（来自 Y2K）：快捷回应栏，存在本机，可换成手机自带 emoji
+    const [editingTapbacks, setEditingTapbacks] = useState(false);
+    const [tapbackDraft, setTapbackDraft] = useState<string[]>(() => loadIMessageTapbacks().map(item => item.glyph));;
+    const [tapbackError, setTapbackError] = useState("");
     const [showScreenEffects, setShowScreenEffects] = useState(false);
     const [showSearch, setShowSearch] = useState(false);
     // TA 的电脑：翻看角色云端电脑（连接了角色电脑才显示入口）
@@ -1604,6 +1609,11 @@ export function ChatSettingsPanel({
                 {/* Advanced */}
                 <div className="menu-group">
                     <KeyboardAutoSendDebounceItem sessionId={session.id} />
+                    <button className="menu-item" onClick={() => { setTapbackDraft(loadIMessageTapbacks().map(item => item.glyph)); setTapbackError(""); setEditingTapbacks(true); }}>
+                        <ChatInfoIcon icon={Smile} color={CONTENT_APP_ACCENTS.chat} />
+                        <div className="menu-label-group"><span className="menu-label">Tapback 候选</span><span className="menu-desc">长按消息后的快捷回应</span></div>
+                        <div className="menu-right"><ChevronRight size={16} /></div>
+                    </button>
                     <button className="menu-item" onClick={() => setEditingCSS(true)}>
                         <ChatInfoIcon icon={Code} color={BINDING_ACCENTS.embedding} />
                         <div className="menu-label-group"><span className="menu-label">自定义 CSS 样式</span><span className="menu-desc">{customCSS ? "本会话覆盖全局" : "跟随全局聊天室 CSS"}</span></div>
@@ -1949,6 +1959,71 @@ export function ChatSettingsPanel({
                     }}
                     onCancel={() => setShowConfirmDelete(false)}
                 />
+            )}
+
+            {/* Sub-page: Tapback 候选（来自 Y2K）：长按消息时弹出的快捷回应 */}
+            {editingTapbacks && (
+                <div style={{ position: "absolute", inset: 0, zIndex: 9999, background: "var(--settings-bg, #f2f2f7)" }}>
+                    <PageShell title="Tapback 候选" onBack={() => setEditingTapbacks(false)}>
+                        <div className="theme-section-page">
+                            <p className="ts-13 text-[var(--c-text)] mb-4 leading-relaxed">
+                                这里的 6 个候选用于长按消息后的快捷回应。角色可以按语境使用候选以外的 emoji。直接输入手机自带 emoji 即可，显示时会使用当前设备的原生表情字体。
+                            </p>
+                            <div className="rounded-[28px] bg-[var(--c-input)] px-4 py-3 flex items-center justify-between gap-2 mb-4">
+                                {tapbackDraft.map((glyph, index) => (
+                                    <span key={index} className="text-[26px] leading-none" aria-hidden="true">{glyph || "·"}</span>
+                                ))}
+                            </div>
+                            <div className="grid grid-cols-3 gap-3">
+                                {tapbackDraft.map((glyph, index) => (
+                                    <label key={index} className="flex flex-col gap-1.5">
+                                        <span className="ts-11 text-[var(--c-text-secondary)]">候选 {index + 1}</span>
+                                        <input
+                                            type="text"
+                                            value={glyph}
+                                            onChange={event => {
+                                                const next = [...tapbackDraft];
+                                                next[index] = event.target.value.slice(0, 32);
+                                                setTapbackDraft(next);
+                                                setTapbackError("");
+                                            }}
+                                            className="ui-input text-center text-[25px]"
+                                            aria-label={`Tapback 候选 ${index + 1}`}
+                                        />
+                                    </label>
+                                ))}
+                            </div>
+                            {tapbackError && <p className="ts-12 text-[var(--c-danger)] mt-3">{tapbackError}</p>}
+                            <div className="flex gap-3 mt-5">
+                                <button
+                                    type="button"
+                                    className="ui-btn ui-btn-outline flex-1"
+                                    onClick={() => {
+                                        setTapbackDraft(IMESSAGE_TAPBACKS.map(item => item.glyph));
+                                        setTapbackError("");
+                                    }}
+                                >
+                                    恢复默认
+                                </button>
+                                <button
+                                    type="button"
+                                    className="ui-btn ui-btn-soft-action flex-1"
+                                    onClick={() => {
+                                        try {
+                                            saveIMessageTapbacks(tapbackDraft);
+                                            setEditingTapbacks(false);
+                                            setTapbackError("");
+                                        } catch (error) {
+                                            setTapbackError(error instanceof Error ? error.message : "保存失败");
+                                        }
+                                    }}
+                                >
+                                    保存
+                                </button>
+                            </div>
+                        </div>
+                    </PageShell>
+                </div>
             )}
 
             {/* Sub-page: Custom CSS */}
