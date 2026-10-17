@@ -463,7 +463,7 @@ export function MomentsFeed({ onCloseApp, compact = false, onUserPublished }: Mo
                     </svg>
                 </button>
             }
-            className={`moments-feed-page ${compact ? "moments-feed-compact" : ""} ${headerScrolled ? "is-scrolled" : ""} ${activeComposer ? "has-comment-modal" : ""}`}
+            className={`moments-feed-page apple-social-page ${compact ? "moments-feed-compact" : ""} ${headerScrolled ? "is-scrolled" : ""} ${activeComposer ? "has-comment-modal" : ""}`}
             bodyRef={scrollRef}
             footer={showCompose ? (
                 <MomentsCompose

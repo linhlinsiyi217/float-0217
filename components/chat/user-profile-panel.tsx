@@ -385,12 +385,12 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
                 title=""
                 onBack={onClose}
                 rightAction={<ChatScopeSwitcher />}
-                className={`user-profile-page-root ${className || ""}`}
+                className={`user-profile-page-root apple-social-page ${className || ""}`}
             >
-                <div className="relative z-[1] w-full max-w-2xl mx-auto flex flex-col pb-8">
+                <div className="apple-profile-content relative z-[1] w-full max-w-2xl mx-auto flex flex-col pb-8">
                     
                     {/* User Info & Stats Block */}
-                    <div className="flex items-center gap-5 px-6 pt-2 pb-4">
+                    <div className="apple-profile-identity flex items-center gap-5 px-6 pt-2 pb-4">
                         {/* Avatar */}
                         <div className="relative shrink-0">
                             <button
@@ -449,7 +449,7 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
 
                     <button
                         type="button"
-                        className="mx-4 mb-4 rounded-2xl overflow-hidden text-left relative min-h-[132px] p-5 flex flex-col justify-between"
+                        className="apple-profile-wallet mx-4 mb-4 rounded-2xl overflow-hidden text-left relative min-h-[132px] p-5 flex flex-col justify-between"
                         onClick={() => { window.dispatchEvent(new CustomEvent("chat-hide-tabbar", { detail: true })); setShowWalletPanel(true); }}
                         style={{ background: "#eaf5ff", boxShadow: "0 8px 24px rgba(0,0,0,0.025)", border: "1px solid rgba(255,255,255,0.72)", color: "#172033" }}
                     >

@@ -26,26 +26,8 @@
 }
 /* The chat module follows the same system appearance as the conversation view. */
 @media (prefers-color-scheme: dark) {
-  .chat-app {
-    color-scheme: dark;
-    --c-header-bg: #101012;
-    --c-panel-border: #38383a;
-    --c-input-border: #48484a;
-    --c-icon-active: #f5f5f7;
-    --c-bubble-other: #2c2c2e;
-    --c-polaroid: #242426;
-    --c-polaroid-back: #2c2c2e;
-    --c-page-body-bg: #101012;
-    --c-card: #1c1c1e;
-    --c-input: #2c2c2e;
-    --c-text-title: #f5f5f7;
-    --c-text: #a4a4ac;
-    --c-icon: #a4a4ac;
-    --c-card-border: #38383a;
-    --c-panel: #1c1c1e;
-    --c-border: #38383a;
-    background: #101012;
-  }
+  /* 本项目的聊天室深浅色由「聊天外观」设置决定，不跟随系统深浅色；
+     所以不在这里改 .chat-app 的全局颜色变量，避免系统深色时把整个聊天模块刷黑。 */
   :is(.imessage-list-page, .imessage-contacts-page) {
     --list-glass: rgba(38,38,42,.82);
     --list-edge: rgba(255,255,255,.22);
