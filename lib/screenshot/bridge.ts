@@ -94,20 +94,19 @@ export function captureScreenshot(timeoutMs = 8000): Promise<ScreenshotCaptureRe
     }
 
     let settled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let unsubscribe: (() => void) | undefined;
-
+    // 用对象持有，避免订阅回调在 const 初始化前同步触发时读到未初始化的绑定
+    const pending: { timer?: ReturnType<typeof setTimeout>; unsubscribe?: () => void } = {};
     const finish = (result: ScreenshotCaptureResult) => {
       if (settled) return;
       settled = true;
-      if (timer) clearTimeout(timer);
-      unsubscribe?.();
+      if (pending.timer) clearTimeout(pending.timer);
+      pending.unsubscribe?.();
       resolve(result);
     };
 
     // 先订阅、再发起：原生回调可能很快，若反过来会漏掉事件。
     ensureShellOverlayListener();
-    unsubscribe = subscribeShellOverlayEvents((event) => {
+    pending.unsubscribe = subscribeShellOverlayEvents((event) => {
       if (event.action !== "screenshot") return;
       if (event.ok === false) {
         finish({ ok: false, reason: event.reason || "截屏失败" });
@@ -124,7 +123,7 @@ export function captureScreenshot(timeoutMs = 8000): Promise<ScreenshotCaptureRe
       }
     });
 
-    timer = setTimeout(() => {
+    pending.timer = setTimeout(() => {
       finish({ ok: false, reason: "截屏超时了，请确认无障碍服务还开着，然后重试" });
     }, Math.max(1000, timeoutMs));
 
