@@ -55,7 +55,7 @@ import { cancelBailoutKey } from "@/lib/push-bailout-client";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import type { UserIdentity } from "@/components/settings/user-identity";
 import { AlertCircle, Blocks, Check, Copy, FileText, ListChecks, ListX, Pencil, PhoneIncoming, PhoneOff, Quote, RotateCcw, Trash2, Undo2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, Wand2, X } from "lucide-react";
-import { applyAssistantTapback, applyGroupAssistantTapback, getGroupTapbacks, getTapbackGlyph, IMESSAGE_TAPBACK_APPLIED_EVENT, IMESSAGE_TAPBACKS_UPDATED_EVENT, loadIMessageTapbacks, setGroupTapback, type MessageTapback } from "@/lib/chat-tapback";
+import { applyAssistantTapback, applyGroupAssistantTapback, getGroupTapbacks, getTapbackGlyph, IMESSAGE_TAPBACK_APPLIED_EVENT, IMESSAGE_TAPBACKS_UPDATED_EVENT, isNativeTapbackEmoji, loadIMessageTapbacks, saveIMessageTapbacks, setGroupTapback, type MessageTapback } from "@/lib/chat-tapback";
 import { setDebugChatState } from "@/lib/debug-store";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import { setChatActive } from "@/lib/music-action-queue";
@@ -1508,6 +1508,15 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
     const [contextMenuAnchor, setContextMenuAnchor] = useState<ContextMenuAnchor | null>(null);
     // Tapback 候选：默认六个，存在本机；其他页面更新后同步
     const [tapbackCandidates, setTapbackCandidates] = useState(() => loadIMessageTapbacks());
+    // 自定义 Tapback（来自 Y2K）：点「＋」输入任意 emoji 回应；长按候选可换掉它
+    const [tapbackInputTarget, setTapbackInputTarget] = useState<
+        { mode: "react"; message: ChatMessage } | { mode: "replace"; message: ChatMessage; index: number } | null
+    >(null);
+    const [tapbackInputDraft, setTapbackInputDraft] = useState("");
+    const [tapbackInputError, setTapbackInputError] = useState("");
+    const tapbackInputRef = useRef<HTMLInputElement>(null);
+    const tapbackPressRef = useRef<{ id: string; pointerId: number; startedAt: number } | null>(null);
+    const suppressTapbackClickRef = useRef<string | null>(null);
     useEffect(() => {
         const refresh = () => setTapbackCandidates(loadIMessageTapbacks());
         window.addEventListener(IMESSAGE_TAPBACKS_UPDATED_EVENT, refresh);
@@ -1634,6 +1643,8 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         setActiveMessageId(null);
         setActiveOfflineTarget(null);
         setContextMenuAnchor(null);
+        setTapbackInputTarget(null);
+        setTapbackInputError("");
     };
 
     const openMessageContextMenu = (msgId: string, anchor: ContextMenuAnchor) => {
@@ -5485,6 +5496,35 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         closeContextMenu();
     };
 
+    // 自定义 Tapback（来自 Y2K）：聚焦放在用户点击事件里，手机浏览器才会弹出键盘
+    const openTapbackInput = (target: NonNullable<typeof tapbackInputTarget>) => {
+        setTapbackInputTarget(target);
+        setTapbackInputDraft("");
+        setTapbackInputError("");
+        requestAnimationFrame(() => tapbackInputRef.current?.focus());
+    };
+
+    const submitTapbackInput = () => {
+        if (!tapbackInputTarget) return;
+        const emoji = tapbackInputDraft.trim();
+        if (!isNativeTapbackEmoji(emoji)) {
+            setTapbackInputError("请输入一个完整的 emoji 表情");
+            return;
+        }
+        if (tapbackInputTarget.mode === "replace") {
+            const glyphs = tapbackCandidates.map((item, index) => index === tapbackInputTarget.index ? emoji : item.glyph);
+            try {
+                setTapbackCandidates(saveIMessageTapbacks(glyphs));
+            } catch (error) {
+                setTapbackInputError(error instanceof Error ? error.message : "保存失败");
+                return;
+            }
+            setTapbackInputTarget(null);
+            return;
+        }
+        handleTapback(tapbackInputTarget.message, emoji);
+    };
+
     const renderBubbleContextMenu = (m: ChatMessage, options?: { allowMultiSelect?: boolean }) => {
         const storedMessageId = getStoredActionMessageId(m);
         const pluginActions = getChatPluginRuntime().getMessageActions(m);
@@ -5518,20 +5558,114 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                 data-imessage-tapback-menu=""
                 data-role={m.role}>
                 <div className="imessage-tapback-picker" role="group" aria-label="回应消息">
-                    {tapbackCandidates.map(item => (
+                    {tapbackInputTarget?.message.id === storedMessageId ? (
+                    <form
+                        className="imessage-tapback-inline-input"
+                        data-mode={tapbackInputTarget.mode}
+                        role="dialog"
+                        aria-label={tapbackInputTarget.mode === "replace" ? "替换 Tapback 候选" : "输入 Tapback 表情"}
+                        onSubmit={event => { event.preventDefault(); submitTapbackInput(); }}
+                        onKeyDown={event => { if (event.key === "Escape") { setTapbackInputTarget(null); setTapbackInputError(""); } }}
+                        onPointerDown={event => event.stopPropagation()}
+                    >
+                        {tapbackInputTarget.mode === "replace" && (
+                            <span className="imessage-tapback-replace-glyph" aria-hidden="true">
+                                {tapbackCandidates[tapbackInputTarget.index]?.glyph}
+                            </span>
+                        )}
+                        <label className="imessage-tapback-inline-field">
+                            <span className="sr-only">
+                                {tapbackInputTarget.mode === "replace" ? "输入新的候选 Emoji" : "输入一个 Emoji 回应当前消息"}
+                            </span>
+                            <input
+                                ref={tapbackInputRef}
+                                type="text"
+                                value={tapbackInputDraft}
+                                onChange={event => { setTapbackInputDraft(event.target.value); setTapbackInputError(""); }}
+                                maxLength={32}
+                                autoComplete="off"
+                                autoCapitalize="off"
+                                spellCheck={false}
+                                enterKeyHint="done"
+                                aria-label="一个 emoji 表情"
+                                aria-invalid={!!tapbackInputError}
+                                placeholder={tapbackInputTarget.mode === "replace" ? "输入新 Emoji" : "输入 Emoji"}
+                            />
+                            {tapbackInputError && (
+                                <span className="imessage-tapback-inline-error" role="alert" title={tapbackInputError}>
+                                    <AlertCircle size={14} strokeWidth={2} aria-hidden="true" />
+                                </span>
+                            )}
+                        </label>
+                        <button
+                            type="button"
+                            className="imessage-tapback-inline-button"
+                            onClick={() => { setTapbackInputTarget(null); setTapbackInputError(""); }}
+                            aria-label="取消"
+                        >
+                            <X size={17} strokeWidth={1.9} aria-hidden="true" />
+                        </button>
+                        <button
+                            type="submit"
+                            className="imessage-tapback-inline-button imessage-tapback-inline-submit"
+                            aria-label={tapbackInputTarget.mode === "replace" ? "替换候选" : "发送回应"}
+                        >
+                            <Check size={18} strokeWidth={2.2} aria-hidden="true" />
+                        </button>
+                    </form>
+                    ) : (
+                    <>
+                    {tapbackCandidates.map((item, index) => (
                         <button
                             type="button"
                             key={item.id}
                             className="imessage-tapback-option"
                             data-tapback={item.id}
                             {...(isUserTapbackSelected(m, item.glyph) ? { "data-selected": "" } : {})}
-                            onClick={() => handleTapback(m, item.id)}
-                            aria-label={item.label}
-                            title={item.label}
+                            onPointerDown={event => {
+                                if (!event.isPrimary) return;
+                                suppressTapbackClickRef.current = null;
+                                tapbackPressRef.current = { id: item.id, pointerId: event.pointerId, startedAt: Date.now() };
+                            }}
+                            onPointerUp={event => {
+                                const press = tapbackPressRef.current;
+                                tapbackPressRef.current = null;
+                                if (press?.id !== item.id || press.pointerId !== event.pointerId || Date.now() - press.startedAt < 500) return;
+                                event.preventDefault();
+                                event.stopPropagation();
+                                suppressTapbackClickRef.current = item.id;
+                                openTapbackInput({ mode: "replace", message: m, index });
+                            }}
+                            onPointerCancel={() => { tapbackPressRef.current = null; }}
+                            onPointerLeave={() => { tapbackPressRef.current = null; }}
+                            onContextMenu={event => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                suppressTapbackClickRef.current = item.id;
+                                openTapbackInput({ mode: "replace", message: m, index });
+                            }}
+                            onClick={() => {
+                                if (suppressTapbackClickRef.current === item.id) {
+                                    suppressTapbackClickRef.current = null;
+                                    return;
+                                }
+                                handleTapback(m, item.id);
+                            }}
+                            aria-label={`${item.label}，长按可替换候选`}
+                            title={`${item.label} · 长按替换`}
                         >
                             <span aria-hidden="true">{item.glyph}</span>
                         </button>
                     ))}
+                    <button
+                        type="button"
+                        className="imessage-tapback-option imessage-tapback-more"
+                        onClick={event => { event.stopPropagation(); openTapbackInput({ mode: "react", message: m }); }}
+                        aria-label="输入其他 emoji 回应当前消息"
+                        title="其他 emoji"
+                    ><span aria-hidden="true">＋</span></button>
+                    </>
+                    )}
                 </div>
                 <div className="flex imessage-context-actions">
                     <button onClick={copyMessage} className="ctx-menu-btn"><Copy className="imessage-context-icon" aria-hidden="true" /><span>复制</span></button>
