@@ -1,10 +1,11 @@
 // lib/update-log/types.ts — 两套更新日志共用的类型与分类定义。
 //
-// 分类用彩色语义标签：新增=蓝，修复=绿，优化=橙，调整=紫。
+// 分类用彩色语义标签：新功能=绿，体验优化=蓝，问题修复=橙，隐私与安全=紫。
 // 颜色只用于小标签与圆点，并且始终和文字分类一起出现（不靠颜色单独表意）；
 // 正文保持深黑与灰色。
+// 兼容历史数据：perf / tweak 两个旧键在界面上一并显示为「体验优化」。
 
-export type UpdateCategory = "feat" | "fix" | "perf" | "tweak";
+export type UpdateCategory = "feat" | "fix" | "perf" | "tweak" | "privacy";
 
 export type UpdateEntry = {
   /** 稳定 id：同一条记录不要改 id */
@@ -41,28 +42,36 @@ export type Release = {
 };
 
 export const CATEGORY_LABEL: Record<UpdateCategory, string> = {
-  feat: "新增",
-  fix: "修复",
-  perf: "优化",
-  tweak: "调整",
+  feat: "新功能",
+  fix: "问题修复",
+  perf: "体验优化",
+  tweak: "体验优化",
+  privacy: "隐私与安全",
 };
 
-export const CATEGORY_ORDER: UpdateCategory[] = ["feat", "fix", "perf", "tweak"];
+export const CATEGORY_ORDER: UpdateCategory[] = ["feat", "perf", "fix", "privacy"];
+
+/** 旧数据的 tweak 与 perf 都归到「体验优化」，避免同一条日志出现两组同名分类 */
+export function normalizeUpdateCategory(category: UpdateCategory): UpdateCategory {
+  return category === "tweak" ? "perf" : category;
+}
 
 /** 分类色只用于小标签文字与圆点；始终与文字分类同时出现 */
 export const CATEGORY_COLOR: Record<UpdateCategory, string> = {
-  feat: "#3F6DA8",
-  fix: "#3F7A5C",
-  perf: "#8C6A3A",
-  tweak: "#66598F",
+  feat: "#2E8B57",
+  fix: "#CE7A1F",
+  perf: "#2F6FD0",
+  tweak: "#2F6FD0",
+  privacy: "#7A5CB8",
 };
 
 /** 分类标签的浅色底（纯白卡上的小色块，保持低饱和） */
 export const CATEGORY_TINT: Record<UpdateCategory, string> = {
-  feat: "#F0F4FA",
-  fix: "#EFF5F1",
-  perf: "#F6F2EC",
-  tweak: "#F3F1F8",
+  feat: "#EFF7F1",
+  fix: "#FBF1E7",
+  perf: "#EDF3FB",
+  tweak: "#EDF3FB",
+  privacy: "#F4F0FA",
 };
 
 /** 一个版本涉及的应用名（收起时显示） */
@@ -79,7 +88,7 @@ export function releaseApps(release: Release): string[] {
 export function releaseCounts(release: Release): Array<{ category: UpdateCategory; count: number }> {
   return CATEGORY_ORDER.map((category) => ({
     category,
-    count: release.entries.filter((entry) => entry.category === category).length,
+    count: release.entries.filter((entry) => normalizeUpdateCategory(entry.category) === category).length,
   })).filter((item) => item.count > 0);
 }
 
@@ -89,7 +98,7 @@ export function releaseCounts(release: Release): Array<{ category: UpdateCategor
  */
 export function popupEntries(release: Release, max = 5): UpdateEntry[] {
   const buckets = CATEGORY_ORDER.map((category) =>
-    release.entries.filter((entry) => entry.category === category),
+    release.entries.filter((entry) => normalizeUpdateCategory(entry.category) === category),
   );
   const out: UpdateEntry[] = [];
   let round = 0;

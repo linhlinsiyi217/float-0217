@@ -14,7 +14,7 @@ export const SYSTEM_RELEASES: Release[] = [
     releaseId: "system-2026-10-17-v068",
     date: "2026-10-17",
     name: "三来源整合：iMessage 聊天、大小号隔离、通话与截图打卡",
-    summary: "聊天：完整移植 Y2K 的仿苹果 iMessage 聊天室（气泡、输入区、长按菜单、Tapback、设置页、回声/爱心/烟花特效、@提及）；大小号私聊/群聊/长期记忆互不串号；合入 momo 与 doremy 的通话浮层、感知、截图打卡、桌面小组件等功能；更新应用：聊天、桌面、设置",
+    summary: "聊天：完整移植 Y2K 的仿苹果 iMessage 聊天室（气泡、输入区、长按菜单、Tapback、设置页、回声/爱心/烟花特效、@提及）；大小号私聊/群聊/长期记忆互不串号；合入 momo 与 doremy 的通话浮层、感知、截图打卡、桌面小组件等功能；更新日志分类标签换成更清晰的四色体系；更新应用：聊天、桌面、设置",
     entries: [
       {
         id: "sys-068-imessage",
@@ -55,7 +55,7 @@ export const SYSTEM_RELEASES: Release[] = [
       },
       {
         id: "sys-068-alt-account",
-        category: "fix",
+        category: "privacy",
         app: "聊天 · 大小号隔离",
         title: "大小号私聊、群聊和记忆不再串号",
         items: [
@@ -109,13 +109,13 @@ export const SYSTEM_RELEASES: Release[] = [
         ],
       },
       {
-        id: "sys-068-check",
-        category: "tweak",
-        app: "项目 · 开发检查",
-        title: "类型检查与生产构建通过",
+        id: "sys-068-log-style",
+        category: "perf",
+        app: "设置 · 更新日志",
+        title: "更新日志分类标签更清晰",
         items: [
-          "npx tsc --noEmit 通过；npm run build 生产构建通过",
-          "没有浏览器或手机实机验收，iMessage 在真机上的键盘、长消息与深浅色表现仍需你实际试用确认",
+          "分类从「新增/修复/优化/调整」改为「新功能 / 体验优化 / 问题修复 / 隐私与安全」，并各配一种颜色",
+          "大小号隔离这类涉及身份与隐私的改动，现在归到「隐私与安全」下，更容易看懂",
         ],
       },
     ],

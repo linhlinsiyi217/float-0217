@@ -7,6 +7,7 @@ import {
   CATEGORY_COLOR,
   CATEGORY_LABEL,
   CATEGORY_ORDER,
+  normalizeUpdateCategory,
   releaseApps,
   releaseCounts,
   type Release,
@@ -69,7 +70,7 @@ export function UpdateLogView({ releases, currentReleaseId, seen }: UpdateLogVie
             {expanded && (
               <div className="upd-body">
                 {CATEGORY_ORDER.map((category) => {
-                  const entries = release.entries.filter((entry) => entry.category === category);
+                  const entries = release.entries.filter((entry) => normalizeUpdateCategory(entry.category) === category);
                   if (entries.length === 0) return null;
                   return (
                     <div key={category} className="upd-group">
