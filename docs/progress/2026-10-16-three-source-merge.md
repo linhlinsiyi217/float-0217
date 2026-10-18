@@ -116,6 +116,14 @@ Y2K 的界面美化与聊天风格必须保留并整合：
 改动已备份到 `.merge-tmp/build-artifacts/`（该目录不提交）。下次发布前需要决定：
 是把源码补回去，还是把产物恢复成已提交版本。
 
+### 构建产物决定（10-18，已解决，见 4878a75）
+核对结论：doremy 合入时把「推送预览应用用户输出正则」和「自检读表类型注解」只写进了
+`public/ai-phone-push/*.mjs` 产物、漏写 `supabase/functions/*/index.ts` 源文件。
+选择**把缺失逻辑补回源文件**（`supabase/functions/push-generate/index.ts` +187 行、
+`supabase/functions/ai-phone-push/index.ts` 早已正确），再 `npm run push:build-dist` 重新生成，
+`npm run check:push` 通过。这样 `npm run build` 不再漂移，功能（推送预览正则）也保住。
+`build-artifacts-backup-2026-10-17.patch` 保留为备份参考，不提交。
+
 ## 10-18 · 来源纠正与 Y2K 特效/@提及补移植
 
 ### 来源核实（有代码证据）
@@ -155,3 +163,23 @@ Y2K 的界面美化与聊天风格必须保留并整合：
 - 一起听邀请卡、照片标注、快捷回复窗、分享目标面板。
 - identity-runtime 命名空间代理、长按气泡整层位移、系统深色刷黑（沿用现有做法，不移植）。
 - `echo-preview.tsx` / `echo-playback.tsx`：源仓库自身也没有引用（死代码），不移植。
+
+## 10-18 · 收尾：构建产物对齐与更新日志四色体系
+
+### 构建产物（见上方「构建产物决定」，提交 4878a75）
+把 doremy 只写进产物的推送预览正则与自检类型补回源文件，重新生成，check:push 通过。
+
+### 更新日志分类改版（提交 4d77cc3，有用户可见变化）
+按《AI 项目更新记录强制规范》，分类从「新增/修复/优化/调整」改为
+「新功能(绿)/体验优化(蓝)/问题修复(橙)/隐私与安全(紫)」：
+- `lib/update-log/types.ts`：新增 `privacy` 分类，perf/tweak 归并到「体验优化」，
+  `normalizeUpdateCategory` 统一旧数据；颜色改为四色。
+- `components/update-log/update-log-view.tsx`、`update-note-popup.tsx`：按新分类分组渲染。
+- `lib/update-log/system-data.ts`：大小号隔离条目改归「隐私与安全」，新增「更新日志分类更清晰」条目，
+  移除「开发检查」这条工程状态条目（未实测信息已在 pending 里）。
+- `DESIGN.md` §2 更新分类色。
+
+### 检查
+- `tsc --noEmit` 通过；`npm run build` 通过；`npm run check:updates` 通过；`npm run check:push` 通过。
+- 未跑全量 lint、未在浏览器/手机实测（特效播放、@提及键盘交互、深色模式仍待真机确认）。
+- PR #1：OPEN、MERGEABLE；推送后 Vercel Preview 为 PENDING（未轮询，不宣称部署成功）。
