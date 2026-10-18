@@ -115,3 +115,43 @@ Y2K 的界面美化与聊天风格必须保留并整合：
 其中推送两个产物在仓库里比源码多约 180 行，重新生成会覆盖；本次没有提交这些改动，
 改动已备份到 `.merge-tmp/build-artifacts/`（该目录不提交）。下次发布前需要决定：
 是把源码补回去，还是把产物恢复成已提交版本。
+
+## 10-18 · 来源纠正与 Y2K 特效/@提及补移植
+
+### 来源核实（有代码证据）
+- momo：https://github.com/jianchu-in/momo.float.phone.git · main · `e455340`
+- doremy：https://github.com/doremy1203/doremy.float.phone.git · main · `05b8bc5`
+- Y2K：https://github.com/Yyk-Y2k/ai-virtual-phone-Y2Kversion.git · main · `3e69786`
+- 三者均为 AGPL-3.0-only；本地只读引用 `refs/sources/{momo,doremy,y2k}` 与上述 SHA 一致。
+- **安卓快捷指令纠正**：`lib/server/shortcut-commands.ts` 在 Float、momo、doremy、Y2K 四处
+  MD5 完全相同（`e1214ebf934088597faaa11a2f93eef6`）；momo/doremy 的最早提交是
+  `d00b0b0 2026-08-24 xiaolongbao0709 feat: 开源个人云离线推送与微信现实桥`。
+  因此快捷指令属于上游原始项目，**不是 Y2K、也不是 momo/doremy 的功能**。
+  详见 `docs/progress/android-shortcut-commands.md`。
+- 来源跟踪入口：`docs/upstream/source-manifest.md`、`migration-map.md`、`upstream-sync.md`。
+
+### 本轮实际改动
+- 补移植 Y2K 屏幕特效：`lib/chat-echo.ts`、`chat-love.ts`、`chat-fireworks.ts`、
+  `lib/message-effects/**`（渲染器保留 `.js` + `.d.ts`，与 Y2K 相同，项目不需要打开 allowJs）、
+  `components/chat/message-effect-playback.tsx`、`use-chat-echo.tsx`、`use-echo-send-gesture.tsx`。
+- 解析 `[Echo]`/`[Love]`/`[Fireworks]`：`lib/rich-message-parser.ts` 绑定到该段第一个文字气泡，
+  每轮最多一次；`lib/stream-preview.ts` 隐藏未打完的标记。
+- 提示词：单聊 `lib/chat-engine.ts`、群聊 `lib/group-chat-engine.ts` 注入三套特效说明。
+- 群聊 @提及：`lib/group-mentions.ts` + `use-group-mentions.tsx` 接入输入区；
+  发送时写入 `mediaData.mentions`；群聊历史标注被提及成员。
+- 聊天室接线：输入区特效选择器、发送键长按手势、长按菜单「重播特效」、
+  消息列表特效播放层 `{echo.overlay}`；特效消息记录 `screenEffectScene` 快照。
+- 数据结构：`ChatMessage.mediaData` 增加 `screenEffect`、`screenEffectScene`、`mentions`。
+- 更新日志：0.6.8 增加「屏幕特效与 @提及」条目，并把未实机验证写进 pending。
+- 文档：NOTICE 补 Y2K 特效/提及署名；DESIGN.md §8.9.1 已移植/未移植清单同步。
+
+### 本轮检查
+- `node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json`：通过（0 错误）。
+- 未跑 build、未跑全量 lint（按额度控制要求，等到阶段性检查点再跑）。
+- 未在浏览器/手机播放特效，未调用付费模型验证 [Echo] 使用率。
+
+### 仍未移植（Y2K）
+- 画板 `drawing-board.tsx`（依赖 `lib/chat-drawing*` 三套模型调用，工作量较大）。
+- 一起听邀请卡、照片标注、快捷回复窗、分享目标面板。
+- identity-runtime 命名空间代理、长按气泡整层位移、系统深色刷黑（沿用现有做法，不移植）。
+- `echo-preview.tsx` / `echo-playback.tsx`：源仓库自身也没有引用（死代码），不移植。

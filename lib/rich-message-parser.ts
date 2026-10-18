@@ -14,6 +14,7 @@ import type { StateValue } from "./chat-storage";
 import { parseStateValues, mergeStateValues } from "./state-value-parser";
 import { stripActionShells } from "./action-parser";
 import { stripTextToolDirectives } from "./text-tool-protocol";
+import { canUseEcho } from "./chat-echo";
 import {
     formatCustomAppDirectiveSummary,
     getCustomAppDirectiveSyntaxHead,
@@ -756,8 +757,19 @@ export function parseAIResponse(rawText: string, previousState: StateValue[]): P
 
     // 4. Parse each segment
     const parts: ParsedMessagePart[] = [];
+    let screenEffectUsed = false;
     for (const seg of segments) {
-        parseSegment(seg, parts);
+        const marker = seg.match(/^\[(Echo|Love|Fireworks)\]\s*/i)?.[1]?.toLowerCase() as "echo" | "love" | "fireworks" | undefined;
+        const segmentParts: ParsedMessagePart[] = [];
+        parseSegment(marker ? seg.replace(/^\[(?:Echo|Love|Fireworks)\]\s*/i, "") : seg, segmentParts);
+        // Bind only to the first visible part; never skip an attachment to mark a later text.
+        const first = segmentParts[0];
+        const eligible = !!marker && !!first && canUseEcho(first);
+        if (marker && !screenEffectUsed && first && eligible && !first.content.includes("\x00HTML_BLOCK_")) {
+            first.mediaData = { ...first.mediaData, screenEffect: marker };
+            screenEffectUsed = true;
+        }
+        parts.push(...segmentParts);
     }
     if (meetingInvite.raw) {
         parts.push({

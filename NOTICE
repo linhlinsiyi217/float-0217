@@ -84,5 +84,7 @@ Feature ports from sibling open-source projects
   styles/chat-settings.css、styles/chat-social-apple.css、public/imessage26/**）、
   气泡与尾巴分组、输入区、长按 Tapback 菜单、Tapback 候选与自定义、
   消息侧的 [Tapback:emoji] 协议、Apple Pay 转账卡与语音条图形、
-  动态/主页的苹果社交页外观。
+  动态/主页的苹果社交页外观、回声/爱心/烟花屏幕特效（lib/message-effects/**、
+  components/chat/message-effect-playback.tsx、use-chat-echo.tsx、
+  use-echo-send-gesture.tsx）、群聊 @提及候选（use-group-mentions.tsx）。
   来源项目与本项目同为 AGPL-3.0-only；这些文件与修改继续按 AGPL-3.0-only 提供。

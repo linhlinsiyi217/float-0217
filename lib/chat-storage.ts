@@ -180,6 +180,9 @@ export type ChatMessage = {
         tapback?: string;         // iMessage Tapback（私聊）
         tapbackBy?: "user" | "assistant";
         tapbacks?: Array<{ actorId: string; actorName: string; emoji: string }>; // 群聊 Tapback
+        screenEffect?: "echo" | "love" | "fireworks";
+        screenEffectScene?: { imageRef: string; effect: "echo" | "love" | "fireworks"; phase: number; capturedAt: string; partial: boolean };
+        mentions?: Array<{ characterId: string; name: string }>; // 群聊 @ 提及
         stickerUrl?: string;      // 表情包图片路径
         diceFace?: number;        // 骰子点数（1-6），气泡翻滚后定格并与全屏动效一致
         pokeSender?: string;      // 拍一拍发起人名字

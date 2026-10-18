@@ -41,6 +41,9 @@ import {
 import { resolveChatAccountUserIdentity } from "./chat-scope-storage";
 import { assemblePromptPayload, applyOutputRegex, type LLMMessage, type LLMContentPart } from "./llm-prompt-assembler";
 import { buildIMessageTapbackPromptInstruction } from "./chat-tapback";
+import { buildEchoPrompt } from "./chat-echo";
+import { buildLovePrompt } from "./chat-love";
+import { buildFireworksPrompt } from "./chat-fireworks";
 import { MacroEngine, postProcessTrim } from "./macro-engine";
 import { getStatusRegionConfig, resolveStatusRegionSection, resolveStatusRegionExampleLine, resolveStatusRegionComposition, resolveStatusRegionFullExample } from "./chat-status-region";
 import {
@@ -2024,7 +2027,10 @@ export async function buildChatPromptMessages(
     }
     // iMessage Tapback：允许模型对用户最新消息贴一个真实表情回应（来自 Y2K）
     if (!session.isGroup && !isOfflineMode && !promptProfile && resolvedAppId === "chat") {
-        llmMessages.push({ role: "system", content: buildIMessageTapbackPromptInstruction() });
+        llmMessages.push({
+            role: "system",
+            content: buildIMessageTapbackPromptInstruction() + "\n" + buildEchoPrompt() + "\n" + buildLovePrompt() + "\n" + buildFireworksPrompt(),
+        });
     }
     if (promptProfile?.output === "plain_text") {
         llmMessages.push({

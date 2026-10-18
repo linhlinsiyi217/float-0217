@@ -56,6 +56,13 @@ import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import type { UserIdentity } from "@/components/settings/user-identity";
 import { AlertCircle, Blocks, Check, Copy, FileText, ListChecks, ListX, Pencil, PhoneIncoming, PhoneOff, Quote, RotateCcw, Trash2, Undo2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, Wand2, X } from "lucide-react";
 import { applyAssistantTapback, applyGroupAssistantTapback, getGroupTapbacks, getTapbackGlyph, IMESSAGE_TAPBACK_APPLIED_EVENT, IMESSAGE_TAPBACKS_UPDATED_EVENT, isNativeTapbackEmoji, loadIMessageTapbacks, saveIMessageTapbacks, setGroupTapback, type MessageTapback } from "@/lib/chat-tapback";
+import { useGroupMentions } from "./use-group-mentions";
+import { useEchoSendGesture } from "./use-echo-send-gesture";
+import { useChatEcho } from "./use-chat-echo";
+import { canUseEcho, hasEcho } from "@/lib/chat-echo";
+import { canUseLove, hasLove } from "@/lib/chat-love";
+import { hasFireworks } from "@/lib/chat-fireworks";
+import type { MentionMember } from "@/lib/group-mentions";
 import { setDebugChatState } from "@/lib/debug-store";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import { setChatActive } from "@/lib/music-action-queue";
@@ -692,6 +699,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     isGroup: boolean;
     isSpectator: boolean;
     muteUntilMs: number;
+    mentionMembers: MentionMember[];
     isGenerating: boolean;
     theaterMode: boolean;
     enterToSendEnabled: boolean;
@@ -714,7 +722,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     onOpenCustomPlusAction: (action: RegisteredCustomAppChatPlusAction) => void;
     onStartVideoCall: () => void;
     onStartVoiceCall: () => void;
-    onSendText: (text: string, options?: { autoReply?: boolean }) => boolean;
+    onSendText: (text: string, options?: { autoReply?: boolean; mentions?: Array<{ characterId: string; name: string }>; screenEffect?: "echo" | "love" | "fireworks" }) => boolean;
     onStopGeneration: () => void;
     onTriggerAIResponse: () => void;
 	onSendSticker: (name: string, url?: string) => void;
@@ -726,6 +734,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     isGroup,
     isSpectator,
     muteUntilMs,
+    mentionMembers,
     isGenerating,
     theaterMode,
     enterToSendEnabled,
@@ -786,6 +795,11 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     }, [muteUntilMs]);
     const muteRemainingMs = muteUntilMs > muteNowTick ? muteUntilMs - muteNowTick : 0;
     const inputLocked = isSpectator || muteRemainingMs > 0;
+    // @提及（来自 Y2K）：群聊输入 @ 时弹出成员候选，选中后写入 @名字
+    const mentions = useGroupMentions(inputText, setInputText, textareaRef, mentionMembers,
+        isGroup && !inputLocked && inputFocused && !showEmojiPanel && !showStickerPanel && !showPlusMenu);
+    // 发送特效（来自 Y2K）：长按发送键选择回声/爱心/烟花
+    const [showSendEffectPicker, setShowSendEffectPicker] = useState(false);
 
     const resetTextareaHeight = () => {
         if (textareaRef.current) textareaRef.current.style.height = "auto";
@@ -818,11 +832,31 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
         }
         const trimmed = inputText.trim();
         if (!trimmed) return;
-        if (!onSendText(trimmed)) return;
+        if (!onSendText(trimmed, { mentions: mentions.identities(trimmed) })) return;
         setInputText("");
         resetTextareaHeight();
         onClosePanels();
     };
+
+    const sendEffectDraft = (screenEffect: "echo" | "love" | "fireworks") => {
+        const eligible = screenEffect === "love" ? canUseLove({ content: inputText }) : canUseEcho({ content: inputText });
+        if (inputLocked || isGenerating || !eligible) return;
+        if (!onSendText(inputText.trim(), { screenEffect, mentions: mentions.identities(inputText) })) return;
+        setShowSendEffectPicker(false);
+        setInputText("");
+        resetTextareaHeight();
+        onClosePanels();
+        textareaRef.current?.blur();
+    };
+    // 长按发送键打开特效选择（Y2K 的发送手势）
+    const echoGesture = useEchoSendGesture(!inputLocked && !isGenerating && canUseEcho({ content: inputText }), () => {
+        onClosePanels();
+        setShowSendEffectPicker(true);
+        textareaRef.current?.blur();
+    }, handleSubmit);
+    useEffect(() => {
+        if (inputLocked || isGenerating || !canUseEcho({ content: inputText })) setShowSendEffectPicker(false);
+    }, [inputLocked, isGenerating, inputText]);
 
     const panelOpen = showEmojiPanel || showStickerPanel || showPlusMenu;
     const suggestCharacterIds = useMemo(
@@ -864,7 +898,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     const handleAIReply = () => {
         const trimmed = inputText.trim();
         if (!inputLocked && trimmed) {
-            if (!onSendText(trimmed, { autoReply: true })) return;
+            if (!onSendText(trimmed, { autoReply: true, mentions: mentions.identities(trimmed) })) return;
             setInputText("");
             resetTextareaHeight();
         } else {
@@ -881,6 +915,16 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
             {...(inputText.trim() ? { "data-has-text": "" } : {})}
             {...(inputFocused || inputText.trim() || isGenerating ? { "data-show-send": "" } : {})}
         >
+            {showSendEffectPicker && (
+                <>
+                    <button type="button" className="imessage-send-effect-dismiss" onClick={() => setShowSendEffectPicker(false)} aria-label="关闭发送特效" />
+                    <div className="imessage-send-effect-picker" role="menu" aria-label="选择发送特效">
+                        {([["echo", "回声"], ["love", "爱心"], ["fireworks", "烟花"]] as const).map(([effect, label]) => (
+                            <button key={effect} type="button" role="menuitem" onClick={() => sendEffectDraft(effect)} className="imessage-send-effect-option">{label}</button>
+                        ))}
+                    </div>
+                </>
+            )}
             {theaterMode && (
                 <div className="chat-theater-mode-strip" role="status">
                     <span className="chat-theater-mode-icon" aria-hidden="true">
@@ -916,7 +960,8 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                 </div>
             )}
 
-            {suggestEnabled && (
+            {mentions.panel}
+            {suggestEnabled && !mentions.open && (
                 <StickerSearchSuggest
                     query={inputText}
                     characterIds={suggestCharacterIds}
@@ -975,10 +1020,17 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                 value={inputText}
                 onChange={e => {
                     setInputText(e.target.value);
+                    mentions.change(e.target.value, e.target.selectionStart);
                     setSuggestClosed(false);
                     e.target.style.height = "auto";
                     e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
                 }}
+                onSelect={e => mentions.select(e.currentTarget.selectionStart)}
+                onCompositionStart={() => mentions.composition(true)}
+                onCompositionEnd={() => mentions.composition(false)}
+                aria-expanded={mentions.open}
+                aria-controls={mentions.open ? mentions.listId : undefined}
+                aria-activedescendant={mentions.activeOptionId}
                 onFocus={(e) => {
                     setInputFocused(true);
                     if (panelOpen) {
@@ -989,8 +1041,9 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                     }
                     setSuggestClosed(false);
                 }}
-                onBlur={() => { setInputFocused(false); setSuggestClosed(true); }}
+                onBlur={() => { setInputFocused(false); setSuggestClosed(true); mentions.close(); }}
                 onKeyDown={e => {
+                    if (mentions.keyDown(e)) return;
                     if (e.key === "Escape") {
                         setSuggestClosed(true);
                         return;
@@ -1030,8 +1083,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" /></svg>
                 </button>
                 <button
-                    onClick={handleSubmit}
-                    onPointerDown={(e) => e.preventDefault()}
+                    {...echoGesture.handlers}
                     tabIndex={-1}
                     disabled={!isGenerating && (inputLocked || !inputText.trim())}
                     style={inputLocked && !isGenerating ? { opacity: 0.35 } : undefined}
@@ -2257,6 +2309,9 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
             })
             .map(item => item.msg);
     }, [messages, transientMessages]);
+
+    // 屏幕特效播放（来自 Y2K）：回声/爱心/烟花在新消息气泡处播放一次
+    const echo = useChatEcho(displayMessages, session.id, wrapperRef, !offlineMode && !showSettings);
 
     useLayoutEffect(() => {
         const el = scrollRef.current;
@@ -4342,7 +4397,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         return true;
     };
 
-    const handleSendText = (text: string, options?: { autoReply?: boolean }): boolean => {
+    const handleSendText = (text: string, options?: { autoReply?: boolean; mentions?: Array<{ characterId: string; name: string }>; screenEffect?: "echo" | "love" | "fireworks" }): boolean => {
         if (!ensureGroupSpeakPermission()) return false;
         if (isGenerating) {
             showChatToast("请先等待对方回复");
@@ -4368,13 +4423,22 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
             // 点数由系统旁白公布——避免结果挂在 user 消息上被角色模仿格式
             const diceOnly = !isQuoting && isDiceOnlyMessage(currentText);
             const diceFace = diceOnly ? rollChatDiceFace() : 0;
+            // 群聊 @提及只保留真正还在群里、且正文仍保留 @名字 的成员
+            const mentionData = session.isGroup && options?.mentions?.length
+                ? options.mentions.filter(m => session.participantIds?.includes(m.characterId) && currentText.includes(`@${m.name}`))
+                : [];
+            const extraMediaData: NonNullable<ChatMessage["mediaData"]> = {
+                ...(mentionData.length ? { mentions: mentionData } : {}),
+                ...(options?.screenEffect ? { screenEffect: options.screenEffect } : {}),
+            };
+            const baseMediaData = diceOnly ? { diceFace } : isQuoting ? quoteData : undefined;
 
             const newMsg = pushChatMessage({
                 sessionId: session.id,
                 role: "user",
                 content: currentText,
                 mediaType: diceOnly ? "dice" : isQuoting ? "quote" : undefined,
-                mediaData: diceOnly ? { diceFace } : isQuoting ? quoteData : undefined,
+                mediaData: Object.keys(extraMediaData).length ? { ...baseMediaData, ...extraMediaData } : baseMediaData,
             });
 
             setMessages(prev => [...prev, newMsg]);
@@ -5682,6 +5746,9 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                     )}
                     {m.role === "assistant" && (
                         <button onClick={() => { setInstructionRetryTargetId(storedMessageId); setInstructionRetryDraft(""); setActiveMessageId(null); }} className="ctx-menu-btn"><Wand2 className="imessage-context-icon" aria-hidden="true" /><span>指令重试</span></button>
+                    )}
+                    {(hasEcho(m) || hasLove(m) || hasFireworks(m)) && (
+                        <button onClick={() => { closeContextMenu(); echo.replay(m.id); }} className="ctx-menu-btn"><Clapperboard className="imessage-context-icon" aria-hidden="true" /><span>重播特效</span></button>
                     )}
                 </div>
                 <div className="flex imessage-context-actions">
@@ -7326,6 +7393,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                     </button>
                 </div>
             )}
+            {echo.overlay}
             {!isMultiSelectMode && (offlineMode ? (
                 <OfflineTextInputBar
                     key={session.id}
@@ -7350,6 +7418,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
 	                isGroup={!!session.isGroup}
 	                isSpectator={!!session.isGroup && !!session.isSpectator}
 	                muteUntilMs={session.isGroup && session.groupMutes?.[GROUP_SELF_KEY] ? new Date(session.groupMutes[GROUP_SELF_KEY]).getTime() : 0}
+	                mentionMembers={session.isGroup ? groupCharacters.map(c => ({ id: c.id, name: c.name, avatar: resolveChatCharacterAvatar(c) })) : []}
 	                isGenerating={isGenerating}
 	                theaterMode={theaterMode}
 	                enterToSendEnabled={enterToSendEnabled}

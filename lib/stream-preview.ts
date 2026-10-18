@@ -73,6 +73,9 @@ export function cleanStreamText(raw: string, options?: { stripXmlTags?: readonly
     // Tapback 是贴在旧消息上的回应，不进正文预览（含尚未闭合的半个标签）
     text = text.replace(/\[Tapback\s*[:：][^\]\r\n]*\]/gi, "");
     text = text.replace(/\[Tapback[^\]\r\n]*$/gi, "");
+    // 屏幕特效标记只控制播放，不进正文预览（含还没打完的半个标签）
+    text = text.replace(/\[(?:Echo|Love|Fireworks)\]/gi, "");
+    text = text.replace(/\[(?:E|Ec|Ech|Echo|L|Lo|Lov|Love|F|Fi|Fir|Fire|Firew|Firewo|Firewor|Firework|Fireworks)$/gi, "");
     // 行内状态值支持中文字段名，同时保留群聊的 [角色名]: 前缀。
     text = text.replace(/\[[^\]\r\n：:]{1,24}\s*[:：]\s*-?\d+(?:\.\d+)?\s*\]/g, "");
     // 压缩多余空行

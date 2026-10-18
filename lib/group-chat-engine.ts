@@ -7,6 +7,9 @@ import type { ApiConfig, PresetConfig, RegexConfig } from "./settings-types";
 import { loadCharacters } from "./character-storage";
 import { buildScreenEffectPromptHint } from "./chat-screen-effects";
 import { buildGroupTapbackPrompt } from "./chat-tapback";
+import { buildEchoPrompt, echoHistoryText } from "./chat-echo";
+import { buildLovePrompt, loveHistoryText } from "./chat-love";
+import { buildFireworksPrompt, fireworksHistoryText } from "./chat-fireworks";
 import { runChatPluginTransform } from "./chat-plugin-hooks";
 import { buildChatPluginPromptFragments } from "./chat-plugin-storage";
 import {
@@ -128,9 +131,16 @@ export function annotateGroupHistory(
             content = formatRichMediaForHistory(msg, userName, charName, true);
         }
 
+        const mentioned = msg.role === "user" && Array.isArray(msg.mediaData?.mentions)
+            ? msg.mediaData.mentions.filter(m => m && charMap.has(m.characterId))
+            : [];
+        const mentionNote = mentioned.length
+            ? `\n[本条消息明确提及：${mentioned.map(m => `${charMap.get(m.characterId)}（角色ID:${m.characterId}）`).join("、")}；提及是互动信息，不强制被提及者回复或其他成员沉默。]`
+            : "";
+
         return {
             ...msg,
-            content: `[${senderName}]: ${content}`,
+            content: `[${senderName}]: ${fireworksHistoryText(msg, loveHistoryText(msg, echoHistoryText(msg, content)))}${mentionNote}`,
         };
     });
 }
@@ -499,7 +509,10 @@ async function buildGroupChatPromptMessages(
     });
     // 群聊 Tapback：每个角色可对自己想回应的消息贴表情（来自 Y2K）
     if (!isOfflineMode && !promptProfile) {
-        llmMessages.push({ role: "system", content: buildGroupTapbackPrompt(promptHistory) });
+        llmMessages.push({
+            role: "system",
+            content: buildGroupTapbackPrompt(promptHistory) + "\n" + buildEchoPrompt() + "\n" + buildLovePrompt() + "\n" + buildFireworksPrompt(),
+        });
     }
     if (promptProfile?.output === "plain_text") {
         llmMessages.push({
