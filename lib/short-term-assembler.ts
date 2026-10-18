@@ -3,11 +3,12 @@
 // a unified timeline. Replaces the old ShortTermEvent IndexedDB approach.
 // Used by: memory-bank-page (UI display), memory-summarizer (summarization input).
 
-import { isReadingDiscussMessage, isSystemInstructionMessage, loadChatSessions, loadChatMessages, type ChatMessage } from "./chat-storage";
+import { getSystemInstructionPromptContent, isReadingDiscussMessage, isSystemInstructionMessage, loadChatSessions, loadChatMessages, type ChatMessage } from "./chat-storage";
 import { buildGroupAdminBracketText } from "./group-admin";
 import { loadMomentPosts, loadMomentComments } from "./moments-storage";
 import { loadCharacters } from "./character-storage";
 import { resolveUserIdentity } from "./settings-storage";
+import { loadChatScope } from "./chat-scope-storage";
 import { loadMemoryConfig } from "./memory-storage";
 import type { MemoryConfig } from "./memory-types";
 import { estimateTokens } from "./token-counter";
@@ -43,6 +44,11 @@ import {
     resolvePromptTimeAware,
     type PromptTimestampOptions,
 } from "./prompt-time";
+import { kvGet, kvSet, registerDynamicPrefix } from "./kv-db";
+
+const HIDDEN_SHORT_TERM_MEMORY_PREFIX = "ai_phone_hidden_short_term_memory:";
+const MAX_HIDDEN_SHORT_TERM_KEYS = 12000;
+registerDynamicPrefix(HIDDEN_SHORT_TERM_MEMORY_PREFIX);
 
 function formatPhotoDirectiveForPrompt(msg: ChatMessage): string {
     const description = msg.mediaData?.label?.trim() || "图片";
@@ -85,6 +91,45 @@ export type NativeMomentMeta = {
     photoDescription?: string;
     comments: NativeMomentComment[];
 };
+
+/**
+ * 短期记忆来自各 APP 的真实记录。这里保存“从角色短期记忆中排除”的稳定键，
+ * 只影响记忆页和后续提示词，不会误删原聊天、朋友圈或剧情内容。
+ */
+export function getNativeTimelineEntryKey(entry: NativeTimelineEntry): string {
+    return [
+        entry.sourceApp,
+        entry.sourceDetail ?? "",
+        entry.sessionId ?? "",
+        entry.groupSessionId ?? "",
+        entry.customAppId ?? "",
+        entry.id,
+    ].join(":");
+}
+
+function hiddenShortTermMemoryStorageKey(characterId: string): string {
+    return `${HIDDEN_SHORT_TERM_MEMORY_PREFIX}${characterId}`;
+}
+
+function loadHiddenShortTermMemoryKeys(characterId: string): Set<string> {
+    if (!characterId || typeof window === "undefined") return new Set();
+    try {
+        const parsed = JSON.parse(kvGet(hiddenShortTermMemoryStorageKey(characterId)) || "[]") as unknown;
+        return new Set(Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : []);
+    } catch {
+        return new Set();
+    }
+}
+
+export function hideNativeTimelineEntries(characterId: string, entries: NativeTimelineEntry[]): number {
+    if (!characterId || entries.length === 0 || typeof window === "undefined") return 0;
+    const hidden = loadHiddenShortTermMemoryKeys(characterId);
+    const before = hidden.size;
+    for (const entry of entries) hidden.add(getNativeTimelineEntryKey(entry));
+    const compacted = Array.from(hidden).slice(-MAX_HIDDEN_SHORT_TERM_KEYS);
+    kvSet(hiddenShortTermMemoryStorageKey(characterId), JSON.stringify(compacted));
+    return Math.max(0, hidden.size - before);
+}
 
 /** A single feature's recent data block for prompt injection. */
 export type RecentBlock = {
@@ -168,9 +213,15 @@ export function loadNativeTimeline(
         excludeOfflineSessionId?: string;
         timeAware?: boolean;
         promptTimestampOptions?: PromptTimestampOptions;
+        /** 聊天账号作用域：null=主号；省略时取当前聊天身份范围。旧数据无字段视为主号。 */
+        chatAccountId?: string | null;
     }
 ): NativeTimelineEntry[] {
     const entries: NativeTimelineEntry[] = [];
+    const accountScope = options?.chatAccountId !== undefined
+        ? (options.chatAccountId || null)
+        : loadChatScope().chatAccountId;
+    const inAccount = (item: { chatAccountId?: string }) => (item.chatAccountId || null) === accountScope;
     const chars = loadCharacters();
     const userName = options?.userName ?? resolveUserIdentity(characterId, options?.appId)?.name ?? "用户";
     const charName = chars.find(c => c.id === characterId)?.name ?? "角色";
@@ -180,8 +231,9 @@ export function loadNativeTimeline(
     // ── Chat messages ──
     const sessions = loadChatSessions();
     // Include direct chat session AND group sessions where this character participates
-    const session = sessions.find(s => !s.isGroup && s.contactId === characterId);
-    const groupSessions = sessions.filter(s => s.isGroup && s.participantIds?.includes(characterId));
+    // 只取当前账号的会话，别的账号的私聊/群聊不进入这个角色的记忆
+    const session = sessions.find(s => !s.isGroup && s.contactId === characterId && inAccount(s));
+    const groupSessions = sessions.filter(s => s.isGroup && s.participantIds?.includes(characterId) && inAccount(s));
 
     // Process group sessions
     for (const gs of groupSessions) {
@@ -289,12 +341,15 @@ export function loadNativeTimeline(
                 if (msg.mediaType === "tool_notice") continue;
                 if (msg.mediaType === "memory_write_request") continue;
                 if (isSystemInstructionMessage(msg)) {
+                    const instructionContent = getSystemInstructionPromptContent(msg.content || "");
                     entries.push({
                         id: msg.id,
                         sourceApp: "chat",
-                        sourceDetail: "system",
+                        // 内部备注/头像等事件明确进入私聊短期记忆；普通手动系统指令
+                        // 仍保留 system 分类，避免改变已有记忆行为。
+                        sourceDetail: msg.mediaData?.shortTermMemoryEvent ? "direct" : "system",
                         timestamp: msg.createdAt,
-                        content: `${msgLabel} [系统指令] ${msg.content || ""}`,
+                        content: `${msgLabel} ${msg.mediaData?.shortTermMemoryEvent ? "[私聊事件]" : "[系统指令]"} ${instructionContent}`,
                     });
                     continue;
                 }
@@ -398,10 +453,14 @@ export function loadNativeTimeline(
     const posts = loadMomentPosts();
     for (const post of posts) {
         if (!canCharacterSeeMomentPost(post, characterId)) continue;
+        // 用户动态只取当前账号发的；用户的点赞/评论也只保留当前账号的
+        if (post.authorType === "user" && !inAccount(post)) continue;
         const isCharPost = post.authorId === characterId;
         const isUserPost = post.authorType === "user";
-        const comments = getVisibleMomentCommentsForCharacter(post, characterId, loadMomentComments(post.id));
-        const likes = getVisibleMomentLikesForCharacter(post, characterId, post.likes);
+        const comments = getVisibleMomentCommentsForCharacter(post, characterId, loadMomentComments(post.id))
+            .filter(c => c.authorType !== "user" || inAccount(c));
+        const likes = getVisibleMomentLikesForCharacter(post, characterId, post.likes)
+            .filter(like => like.authorType !== "user" || inAccount(like));
         const filteredComments = options?.afterTimestamp
             ? comments.filter(c => c.createdAt > options.afterTimestamp!)
             : comments;
@@ -790,9 +849,15 @@ export function loadNativeTimeline(
         });
     }
 
+    // 删除短期记忆只建立排除标记，不破坏原 APP 内容；提示词组装也统一经过这里。
+    const hiddenKeys = loadHiddenShortTermMemoryKeys(characterId);
+    const visibleEntries = hiddenKeys.size > 0
+        ? entries.filter(entry => !hiddenKeys.has(getNativeTimelineEntryKey(entry)))
+        : entries;
+
     // Sort by timestamp ascending
-    entries.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-    return entries;
+    visibleEntries.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    return visibleEntries;
 }
 
 // Fixed order — lower = further from LLM output (appears higher in prompt)
@@ -932,8 +997,12 @@ export function prepareShortTermContext(
         excludeOfflineSessionId?: string;
         includeNativeToolHistory?: boolean;
         includeDirectChatEntries?: boolean;
+        /** 只读取该时间之后的跨应用最近事件；剧情分线用它隔离创建前的短期记忆。 */
+        afterTimestamp?: string;
         timeAware?: boolean;
         promptTimestampOptions?: PromptTimestampOptions;
+        /** 当前会话所属聊天账号；省略时取当前聊天身份范围。 */
+        chatAccountId?: string | null;
     },
 ): {
     recentBlocks: RecentBlock[];
@@ -946,8 +1015,10 @@ export function prepareShortTermContext(
         userName: options?.userName,
         appId: appId as import("./settings-types").ContentAppId,
         excludeOfflineSessionId: options?.excludeOfflineSessionId,
+        afterTimestamp: options?.afterTimestamp,
         timeAware,
         promptTimestampOptions: options?.promptTimestampOptions,
+        chatAccountId: options?.chatAccountId,
     });
 
     const memConfig = loadMemoryConfig();
@@ -1178,7 +1249,7 @@ export function prepareShortTermContext(
 }
 
 function buildNativeTimelineKey(entry: NativeTimelineEntry): string {
-    return [entry.sourceApp, entry.sourceDetail ?? "", entry.groupSessionId ?? "", entry.id].join(":");
+    return getNativeTimelineEntryKey(entry);
 }
 
 export function prepareGroupShortTermContext(
@@ -1191,6 +1262,8 @@ export function prepareGroupShortTermContext(
         includeNativeToolHistory?: boolean;
         timeAware?: boolean;
         promptTimestampOptions?: PromptTimestampOptions;
+        /** 群聊所属聊天账号；省略时取当前聊天身份范围。 */
+        chatAccountId?: string | null;
     },
 ): {
     truncatedHistory: ChatMessage[];
@@ -1210,6 +1283,7 @@ export function prepareGroupShortTermContext(
             excludeOfflineSessionId: options?.excludeOfflineSessionId,
             timeAware,
             promptTimestampOptions: options?.promptTimestampOptions,
+            chatAccountId: options?.chatAccountId,
         });
         timeline = filterTimelineByAllowedSources(timeline, allowed);
         for (const entry of timeline) {

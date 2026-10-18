@@ -8,7 +8,8 @@ import { ChatRoom } from "./chat-room";
 import { MascotChatRoom } from "./mascot-chat-room";
 import { UserProfilePanel } from "./user-profile-panel";
 import { MessageCircle, Users, Aperture, UserRound } from "lucide-react";
-import { ChatSession, loadChatSessions, pushChatMessage, hydrateChatStorage } from "@/lib/chat-storage";
+import { ChatSession, type ChatMessage, loadChatSessions, pushChatMessage, hydrateChatStorage, markChatSessionRead, setActiveChatSessionId } from "@/lib/chat-storage";
+import type { MomentPost } from "@/lib/moments-types";
 import { notifyMascotPageContext } from "@/lib/mascot-events";
 import { loadCharacters } from "@/lib/character-storage";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
@@ -26,9 +27,13 @@ export type PhoneChatAppProps = {
     onSessionChange?: (session: ChatSession | null) => void;
     sharePayload?: ChatSharePayload | null;
     onShareDone?: () => void;
+    /** Story floating-window bridge. Only messages actually sent by the user are reported. */
+    onUserMessageSent?: (message: ChatMessage, session: ChatSession) => void;
+    /** Story floating-window bridge for user-published Moments. */
+    onMomentPublished?: (post: MomentPost) => void;
 };
 
-export const PhoneChatApp = memo(function PhoneChatApp({ onClose, initialSessionId, onSessionChange, sharePayload, onShareDone }: PhoneChatAppProps) {
+export const PhoneChatApp = memo(function PhoneChatApp({ onClose, initialSessionId, onSessionChange, sharePayload, onShareDone, onUserMessageSent, onMomentPublished }: PhoneChatAppProps) {
     const [activeTab, setActiveTab] = useState<TabKey>("messages");
     const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
     const [activeMascot, setActiveMascot] = useState(false);
@@ -153,6 +158,24 @@ export const PhoneChatApp = memo(function PhoneChatApp({ onClose, initialSession
     }, [activeSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
+        const sessionId = activeSession?.id ?? null;
+        setActiveChatSessionId(sessionId);
+        if (sessionId) markChatSessionRead(sessionId);
+    }, [activeSession?.id]);
+
+    useEffect(() => () => setActiveChatSessionId(null), []);
+
+    useEffect(() => {
+        const markVisibleRoomRead = () => {
+            if (document.visibilityState !== "visible") return;
+            const sessionId = activeSessionIdRef.current;
+            if (sessionId) markChatSessionRead(sessionId);
+        };
+        document.addEventListener("visibilitychange", markVisibleRoomRead);
+        return () => document.removeEventListener("visibilitychange", markVisibleRoomRead);
+    }, []);
+
+    useEffect(() => {
         if (!activeMascot) return;
         onSessionChange?.(null);
         notifyMascotPageContext({
@@ -239,10 +262,10 @@ export const PhoneChatApp = memo(function PhoneChatApp({ onClose, initialSession
             {...(activeSession || activeMascot ? { "data-room-active": "" } : {})}
             {...(hideTabBar ? { "data-tabbar-hidden": "" } : {})}
         >
-            {/* Chat app-level custom CSS (lower priority than per-session CSS) */}
+            {/* Homepage appearance CSS is the lowest chat styling layer. */}
             {chatAppCSS && <SessionCustomCSS css={chatAppCSS} scope=".chat-app" />}
             {/* The Main Content Area */}
-            <div className="chat-main-content relative flex-1 flex flex-col overflow-hidden" {...(activeSession || activeMascot ? { "data-covered-by-room": "" } : {})}>
+            <div className="chat-main-content relative flex-1 flex flex-col overflow-hidden" data-social-pages={activeTab === "feeds" || activeTab === "me" ? "" : undefined} {...(activeSession || activeMascot ? { "data-covered-by-room": "" } : {})}>
                 {activeTab === "messages" && <ChatMessageList onCloseApp={onClose} activeSession={activeSession} onSelectSession={(session) => { setActiveMascot(false); setActiveSession(session); }} onSelectMascot={handleSelectMascot} />}
                 {activeTab === "contacts" && (
                     <ChatContactsList
@@ -262,12 +285,12 @@ export const PhoneChatApp = memo(function PhoneChatApp({ onClose, initialSession
                         }}
                     />
                 )}
-                {activeTab === "feeds" && <MomentsFeed onCloseApp={onClose} />}
+                {activeTab === "feeds" && <MomentsFeed onCloseApp={onClose} onUserPublished={onMomentPublished} />}
                 {activeTab === "me" && <UserProfilePanel onClose={() => setActiveTab("messages")} />}
             </div>
 
             {/* Bottom Navigation Bar — hide when inside a chat room */}
-            <nav className="chat-tab-bar chat-bottom-glass-bar" data-ui="nav" style={{ display: activeSession || activeMascot || hideTabBar ? "none" : undefined }}>
+            <nav className="chat-tab-bar chat-bottom-glass-bar" data-ui="nav" data-active-tab={activeTab} style={{ display: activeSession || activeMascot || hideTabBar ? "none" : undefined }}>
                 <button
                     className={`chat-tab ${activeTab === "messages" ? "chat-tab-active" : ""}`}
                     onClick={() => setActiveTab("messages")}
@@ -304,6 +327,7 @@ export const PhoneChatApp = memo(function PhoneChatApp({ onClose, initialSession
                     <ChatRoom
                         session={sess}
                         onBack={() => setActiveSession(null)}
+                        onUserMessageSent={message => onUserMessageSent?.(message, sess)}
                         onDeleted={() => {
                             // 会话已删除：把缓存的聊天室一并卸载，避免僵尸挂载
                             setVisitedSessions(prev => {

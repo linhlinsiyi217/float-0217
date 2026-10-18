@@ -1,11 +1,15 @@
 // lib/group-chat-engine.ts
 // Group chat engine: single API call for all characters.
 
-import { ChatSession, ChatMessage, loadChatAppSettings, createResponseBatchId, createResponseRoundId, createToolExecutionId, loadChatSessions, getLatestCharacterStateValues, isSessionStreamingEnabled } from "./chat-storage";
+import { ChatSession, ChatMessage, loadChatAppSettings, createResponseBatchId, createResponseRoundId, createToolExecutionId, loadChatSessions, getLatestCharacterStateValues, isSessionStreamingEnabled, resolveVisionImagePromptLimit } from "./chat-storage";
 import { extractTextToolDirectiveText } from "./text-tool-protocol";
 import type { ApiConfig, PresetConfig, RegexConfig } from "./settings-types";
 import { loadCharacters } from "./character-storage";
 import { buildScreenEffectPromptHint } from "./chat-screen-effects";
+import { buildGroupTapbackPrompt } from "./chat-tapback";
+import { buildEchoPrompt, echoHistoryText } from "./chat-echo";
+import { buildLovePrompt, loveHistoryText } from "./chat-love";
+import { buildFireworksPrompt, fireworksHistoryText } from "./chat-fireworks";
 import { runChatPluginTransform } from "./chat-plugin-hooks";
 import { buildChatPluginPromptFragments } from "./chat-plugin-storage";
 import {
@@ -49,8 +53,8 @@ import {
     loadPresets,
     loadWorldBooks,
     loadRegexes,
-    resolveUserIdentity,
 } from "./settings-storage";
+import { resolveChatScopeUserIdentity } from "./chat-scope-storage";
 import {
     assembleGroupPromptPayload,
     formatRichMediaForHistory,
@@ -127,9 +131,16 @@ export function annotateGroupHistory(
             content = formatRichMediaForHistory(msg, userName, charName, true);
         }
 
+        const mentioned = msg.role === "user" && Array.isArray(msg.mediaData?.mentions)
+            ? msg.mediaData.mentions.filter(m => m && charMap.has(m.characterId))
+            : [];
+        const mentionNote = mentioned.length
+            ? `\n[本条消息明确提及：${mentioned.map(m => `${charMap.get(m.characterId)}（角色ID:${m.characterId}）`).join("、")}；提及是互动信息，不强制被提及者回复或其他成员沉默。]`
+            : "";
+
         return {
             ...msg,
-            content: `[${senderName}]: ${content}`,
+            content: `[${senderName}]: ${fireworksHistoryText(msg, loveHistoryText(msg, echoHistoryText(msg, content)))}${mentionNote}`,
         };
     });
 }
@@ -257,6 +268,7 @@ function scheduleGroupMemorySummarization(
     chars: ReturnType<typeof loadCharacters>,
     history: ChatMessage[],
     replyCount: number,
+    chatAccountId: string | null,
 ): void {
     const lastMessage = history[history.length - 1];
     const userEventCount = lastMessage?.role === "user" ? 1 : 0;
@@ -269,10 +281,10 @@ function scheduleGroupMemorySummarization(
         if (!character) continue;
 
         for (let i = 0; i < totalNewEvents; i++) {
-            incrementEventCounter(characterId);
+            incrementEventCounter(characterId, chatAccountId);
         }
 
-        maybeRunSummarization(characterId, character.name)
+        maybeRunSummarization(characterId, character.name, chatAccountId)
             .catch(err => console.warn("[GroupChat] Memory counter/summarization failed:", err));
     }
 }
@@ -319,7 +331,7 @@ async function buildGroupChatPromptMessages(
         ? []
         : (activeSlot.regexIds || []).map(id => allRegexes.find(r => r.id === id)).filter(Boolean) as typeof allRegexes;
 
-    const userIdentity = resolveUserIdentity(undefined, "group_chat");
+    const userIdentity = resolveChatScopeUserIdentity(undefined, "group_chat");
     const userName = userIdentity?.name ?? "用户";
     const baseAppTags = options?.appTags ?? ["group_chat", "text"];
     // 围观群：追加 spectator tag 激活围观语境条目（tags 子集过滤，老条目不受影响）。
@@ -350,12 +362,13 @@ async function buildGroupChatPromptMessages(
             excludeGroupSessionId: isOfflineMode ? undefined : session.id,
             excludeOfflineSessionId: options?.excludeOfflineSessionId,
             promptTimestampOptions: getPromptTimestampOptionsForTimeContext(memberTimeContext),
+            chatAccountId: session.chatAccountId || null,
         });
         let coreMemories = "", longTermMemories = "";
         try {
             const [coreResults, results] = await Promise.all([
-                retrieveCoreMemoriesForPrompt(charId, memConfig),
-                retrieveMemoriesForPrompt(charId, wbActivationContext, memConfig),
+                retrieveCoreMemoriesForPrompt(charId, memConfig, session.chatAccountId || null),
+                retrieveMemoriesForPrompt(charId, wbActivationContext, memConfig, session.chatAccountId || null),
             ]);
             coreMemories = formatCoreMemories(coreResults);
             longTermMemories = formatLongTermMemories(results);
@@ -397,10 +410,11 @@ async function buildGroupChatPromptMessages(
         excludeOfflineSessionId: options?.excludeOfflineSessionId,
         includeNativeToolHistory: usesNativeActions,
         promptTimestampOptions: groupPromptTimestampOptions,
+        chatAccountId: session.chatAccountId || null,
     });
     const promptHistory = applyVisionImagePromptLimit(
         truncatedAnnotatedHistory.map(msg => ({ ...msg })),
-        session.visionImagePromptLimit,
+        resolveVisionImagePromptLimit(session),
     );
     if (config.enableImageRecognition) {
         for (const msg of promptHistory) {
@@ -440,7 +454,7 @@ async function buildGroupChatPromptMessages(
         : formatGroupToolsForPrompt(enabledTools);
     // 状态区（自定义状态栏）：群聊与单聊同一套配置，按会话存；群聊变体的 native 原文
     // 与单聊不同，custom 挡还会补一条"每个发言角色各出一份"的群规则。
-    const statusRegionCfg = getStatusRegionConfig(session.id);
+    const statusRegionCfg = getStatusRegionConfig(session.id, false);
     const chatBilingualInstruction = buildChatBilingualInstruction(
         session.bilingualTranslationEnabled !== false,
         "group",
@@ -493,6 +507,13 @@ async function buildGroupChatPromptMessages(
         offlineSummaryTag: preset?.story_summary_tag?.trim() || "summary",
         nativeToolHistory: usesNativeActions,
     });
+    // 群聊 Tapback：每个角色可对自己想回应的消息贴表情（来自 Y2K）
+    if (!isOfflineMode && !promptProfile) {
+        llmMessages.push({
+            role: "system",
+            content: buildGroupTapbackPrompt(promptHistory) + "\n" + buildEchoPrompt() + "\n" + buildLovePrompt() + "\n" + buildFireworksPrompt(),
+        });
+    }
     if (promptProfile?.output === "plain_text") {
         llmMessages.push({
             role: "system",
@@ -1081,7 +1102,7 @@ export async function generateGroupChatCompletion(
     }
 
     if (!options?.skipMemorySummarization) {
-        scheduleGroupMemorySummarization(participantIds, chars, history, finalResults.length);
+        scheduleGroupMemorySummarization(participantIds, chars, history, finalResults.length, session.chatAccountId || null);
     }
 
     return finalResults;

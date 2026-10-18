@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Brain, MoreHorizontal, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Brain, Filter, MoreHorizontal, Sparkles, Trash2 } from "lucide-react";
 import { MemoryBankPage } from "./memory/memory-bank-page";
 import { VnAssetPage } from "./vn/vn-asset-page";
 import { loadCharacters } from "@/lib/character-storage";
@@ -37,12 +37,24 @@ export function PhoneResourcesApp({ onClose, onNotice, initialPage }: { onClose:
     const [prevMemoryView, setPrevMemoryView] = useState<MemoryView>("list");
     const [memoryCharId, setMemoryCharId] = useState<string>("");
     const [memoryCharName, setMemoryCharName] = useState<string>("");
+    const [memoryFilterOpen, setMemoryFilterOpen] = useState(false);
+    const [memoryFilterState, setMemoryFilterState] = useState({ visible: false, activeCount: 0, bulkDeleteVisible: false, bulkSelecting: false });
+    const [memoryBulkDeleteRequest, setMemoryBulkDeleteRequest] = useState(0);
+
+    const handleMemoryFilterOpenChange = useCallback((open: boolean) => {
+        setMemoryFilterOpen(open);
+    }, []);
+
+    const handleMemoryFilterStateChange = useCallback((state: { visible: boolean; activeCount: number; bulkDeleteVisible: boolean; bulkSelecting: boolean }) => {
+        setMemoryFilterState(state);
+    }, []);
 
     useEffect(() => {
         if (initialPage) setCurrentPage(initialPage);
     }, [initialPage]);
 
     const handleBack = () => {
+        setMemoryFilterOpen(false);
         if (currentPage === "memory") {
             if (memoryView === "settings") {
                 setMemoryView(prevMemoryView);
@@ -80,6 +92,7 @@ export function PhoneResourcesApp({ onClose, onNotice, initialPage }: { onClose:
                 : "资源库";
 
     const showSettingsIcon = currentPage === "memory" && memoryView !== "settings";
+    const showMemoryFilterIcon = currentPage === "memory" && memoryView === "detail" && memoryFilterState.visible && !memoryFilterState.bulkSelecting;
 
     return (
         <PageShell
@@ -87,14 +100,44 @@ export function PhoneResourcesApp({ onClose, onNotice, initialPage }: { onClose:
             onBack={handleBack}
             className={currentPage === "memory" && memoryView === "detail" ? "mem-detail" : undefined}
             rightAction={showSettingsIcon ? (
-                <button
-                    onClick={() => { setPrevMemoryView(memoryView); setMemoryView("settings"); }}
-                    className="page-back-btn"
-                    type="button"
-                    aria-label="更多"
-                >
-                    <MoreHorizontal size={22} strokeWidth={1.5} />
-                </button>
+                <div className="memory-header-actions">
+                    {showMemoryFilterIcon ? (
+                        <button
+                            onClick={() => setMemoryFilterOpen(true)}
+                            className="page-back-btn memory-header-filter-btn"
+                            type="button"
+                            aria-label="筛选记忆来源"
+                            title="筛选记忆来源"
+                        >
+                            <Filter size={20} strokeWidth={1.6} />
+                            {memoryFilterState.activeCount > 0 ? (
+                                <span className="memory-header-filter-badge">{memoryFilterState.activeCount}</span>
+                            ) : null}
+                        </button>
+                    ) : null}
+                    {memoryFilterState.bulkDeleteVisible && !memoryFilterState.bulkSelecting ? (
+                        <button
+                            onClick={() => {
+                                setMemoryFilterOpen(false);
+                                setMemoryBulkDeleteRequest(value => value + 1);
+                            }}
+                            className="page-back-btn memory-header-delete-btn"
+                            type="button"
+                            aria-label="批量删除短期记忆"
+                            title="批量删除短期记忆"
+                        >
+                            <Trash2 size={19} strokeWidth={1.6} />
+                        </button>
+                    ) : null}
+                    <button
+                        onClick={() => { setMemoryFilterOpen(false); setPrevMemoryView(memoryView); setMemoryView("settings"); }}
+                        className="page-back-btn"
+                        type="button"
+                        aria-label="更多"
+                    >
+                        <MoreHorizontal size={22} strokeWidth={1.5} />
+                    </button>
+                </div>
             ) : undefined}
         >
             <div
@@ -132,6 +175,10 @@ export function PhoneResourcesApp({ onClose, onNotice, initialPage }: { onClose:
                         selectedCharId={memoryCharId}
                         onSelectChar={handleSelectChar}
                         onNotice={onNotice}
+                        filterOpen={memoryFilterOpen}
+                        onFilterOpenChange={handleMemoryFilterOpenChange}
+                        onFilterStateChange={handleMemoryFilterStateChange}
+                        bulkDeleteRequest={memoryBulkDeleteRequest}
                     />
                 )}
             </div>

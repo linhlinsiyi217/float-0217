@@ -1,14 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { AlertCircle, Camera, ChevronDown, Image, Info, Plus, RefreshCw, Sparkles, Trash2, Upload } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { AlertCircle, Camera, ChevronDown, Image, Info, Plus, Power, RefreshCw, ScanFace, Sparkles, Trash2, Upload, UserRound } from "lucide-react";
 import type { ImageGenerationSettings as ImageGenerationSettingsType, NovelAiPreset, OpenAiImagePreset } from "@/lib/settings-types";
 import {
     DEFAULT_IMAGE_GENERATION_SETTINGS,
     DEFAULT_NOVELAI_PRESET,
     loadImageGenerationSettings,
+    loadUserIdentities,
     saveImageGenerationSettings,
 } from "@/lib/settings-storage";
+import type { UserIdentity } from "@/components/settings/user-identity";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 import { getChatImageFromIndexedDB, saveChatImageToIndexedDB } from "@/lib/chat-asset-storage";
@@ -20,7 +22,7 @@ import {
 } from "@/lib/image-generation-service";
 import { Alert } from "@/components/ui/feedback";
 import { Input, Select, Textarea, Toggle } from "@/components/ui/form";
-import { ConfirmDialog } from "@/components/ui/modal";
+import { ConfirmDialog, ContentDialog } from "@/components/ui/modal";
 import {
     NOVELAI_COMMON_MODELS,
     NOVELAI_NOISE_SCHEDULE_OPTIONS,
@@ -66,7 +68,26 @@ type Status = { success: boolean; message: string };
 export function ImageGenerationSettings() {
     const [settings, setSettings] = useState<ImageGenerationSettingsType>(DEFAULT_IMAGE_GENERATION_SETTINGS);
     const [characters, setCharacters] = useState<Character[]>([]);
+    const [userIdentities, setUserIdentities] = useState<UserIdentity[]>([]);
     const [referencePreviews, setReferencePreviews] = useState<Record<string, string>>({});
+    const [userReferencePreviews, setUserReferencePreviews] = useState<Record<string, string>>({});
+    const [anchorPreviews, setAnchorPreviews] = useState<Record<string, string>>({});
+    const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
+    const [cropCharacterId, setCropCharacterId] = useState<string | null>(null);
+    const [cropUserIdentityId, setCropUserIdentityId] = useState<string | null>(null);
+    const [cropDraft, setCropDraft] = useState({ x: 0.27, y: 0.12, size: 0.46 });
+    const [cropViewport, setCropViewport] = useState({ width: 0, height: 0 });
+    const cropContainerRef = useRef<HTMLDivElement | null>(null);
+    const cropDragRef = useRef<{ pointerId: number; startX: number; startY: number; cropX: number; cropY: number } | null>(null);
+    const characterListRef = useRef<HTMLDivElement | null>(null);
+    const characterScrollDragRef = useRef<{
+        pointerId: number;
+        startY: number;
+        startScrollTop: number;
+        maxScroll: number;
+        maxThumbTravel: number;
+    } | null>(null);
+    const [characterScrollMetrics, setCharacterScrollMetrics] = useState({ scrollTop: 0, clientHeight: 0, scrollHeight: 0 });
     const [models, setModels] = useState<string[]>([]);
     const [isFetchingModels, setIsFetchingModels] = useState(false);
     const [naiModels, setNaiModels] = useState<string[]>(NOVELAI_COMMON_MODELS);
@@ -99,15 +120,42 @@ export function ImageGenerationSettings() {
         // Sync the ratio hint to the saved size on load, so the hint is present
         // by default (not only after the user manually switches the size).
         const loaded = loadImageGenerationSettings();
-        const syncedExtra = withRatioHint(loaded.extraPrompt, loaded.size);
-        if (syncedExtra !== loaded.extraPrompt) {
-            const next = { ...loaded, extraPrompt: syncedExtra };
+        const loadedPresets = loaded.openaiPresets?.length ? loaded.openaiPresets : [{
+            id: "preset_openai_default",
+            name: "默认方案",
+            requestMode: loaded.requestMode,
+            apiKey: loaded.apiKey,
+            baseUrl: loaded.baseUrl,
+            model: loaded.model,
+            size: loaded.size,
+            quality: loaded.quality,
+            extraPrompt: loaded.extraPrompt,
+        } satisfies OpenAiImagePreset];
+        const loadedActiveId = loaded.activeOpenAiPresetId && loadedPresets.some(preset => preset.id === loaded.activeOpenAiPresetId)
+            ? loaded.activeOpenAiPresetId
+            : loadedPresets[0].id;
+        const loadedActivePreset = loadedPresets.find(preset => preset.id === loadedActiveId) || loadedPresets[0];
+        const syncedExtra = withRatioHint(loadedActivePreset.extraPrompt, loadedActivePreset.size);
+        if (syncedExtra !== loadedActivePreset.extraPrompt) {
+            const nextPresets = loadedPresets.map(preset => preset.id === loadedActiveId
+                ? { ...preset, extraPrompt: syncedExtra }
+                : preset);
+            const next = { ...loaded, openaiPresets: nextPresets, activeOpenAiPresetId: loadedActiveId, extraPrompt: syncedExtra };
             saveImageGenerationSettings(next);
             setSettings(next);
         } else {
             setSettings(loaded);
         }
-        setCharacters(loadCharacters());
+        const loadedCharacters = loadCharacters();
+        setUserIdentities(loadUserIdentities());
+        setCharacters(loadedCharacters);
+        setSelectedCharacterId(loadedCharacters[0]?.id || null);
+    }, []);
+
+    useEffect(() => {
+        const syncIdentities = () => setUserIdentities(loadUserIdentities());
+        window.addEventListener("user-identities-updated", syncIdentities);
+        return () => window.removeEventListener("user-identities-updated", syncIdentities);
     }, []);
 
     useEffect(() => {
@@ -128,10 +176,65 @@ export function ImageGenerationSettings() {
     }, [settings.characterReferences]);
 
     useEffect(() => {
+        let cancelled = false;
+        const refs = settings.userReferences || {};
+        Promise.all(Object.entries(refs).map(async ([identityId, ref]) => {
+            const dataUrl = ref.assetId ? await getChatImageFromIndexedDB(ref.assetId) : null;
+            return [identityId, dataUrl] as const;
+        })).then(entries => {
+            if (cancelled) return;
+            const next: Record<string, string> = {};
+            for (const [identityId, dataUrl] of entries) {
+                if (dataUrl) next[identityId] = dataUrl;
+            }
+            setUserReferencePreviews(next);
+        });
+        return () => { cancelled = true; };
+    }, [settings.userReferences]);
+
+    useEffect(() => {
+        let cancelled = false;
+        const anchors = Object.values(settings.characterReferences || {})
+            .flatMap(reference => reference.anchors || [])
+            .filter(anchor => Boolean(anchor.assetId));
+        Promise.all(anchors.map(async anchor => {
+            const dataUrl = anchor.assetId ? await getChatImageFromIndexedDB(anchor.assetId) : null;
+            return [anchor.id, dataUrl] as const;
+        })).then(entries => {
+            if (cancelled) return;
+            const next: Record<string, string> = {};
+            for (const [anchorId, dataUrl] of entries) {
+                if (dataUrl) next[anchorId] = dataUrl;
+            }
+            setAnchorPreviews(next);
+        });
+        return () => { cancelled = true; };
+    }, [settings.characterReferences]);
+
+    useEffect(() => {
         return () => {
             if (testPreviewUrl) URL.revokeObjectURL(testPreviewUrl);
         };
     }, [testPreviewUrl]);
+
+    const syncCharacterScrollMetrics = useCallback(() => {
+        const list = characterListRef.current;
+        if (!list) return;
+        setCharacterScrollMetrics({
+            scrollTop: list.scrollTop,
+            clientHeight: list.clientHeight,
+            scrollHeight: list.scrollHeight,
+        });
+    }, []);
+
+    useEffect(() => {
+        const frame = window.requestAnimationFrame(syncCharacterScrollMetrics);
+        window.addEventListener("resize", syncCharacterScrollMetrics);
+        return () => {
+            window.cancelAnimationFrame(frame);
+            window.removeEventListener("resize", syncCharacterScrollMetrics);
+        };
+    }, [characters, syncCharacterScrollMetrics]);
 
     const persist = useCallback((next: ImageGenerationSettingsType) => {
         setSettings(next);
@@ -174,17 +277,19 @@ export function ImageGenerationSettings() {
         const activePreset = presets.find(p => p.id === nai?.activePresetId) || presets[0];
         return {
             apiKey: nai?.apiKey || "",
+            requestMode: nai?.requestMode || settings.requestMode,
             activePresetId: activePreset.id,
             presets,
             activePreset,
         };
-    }, [settings.novelai]);
+    }, [settings.novelai, settings.requestMode]);
 
     const updateNovelAi = useCallback((patch: Partial<import("@/lib/settings-types").NovelAiSettings>) => {
         persist({
             ...settings,
             novelai: {
                 apiKey: naiSettings.apiKey,
+                requestMode: naiSettings.requestMode,
                 activePresetId: naiSettings.activePresetId,
                 presets: naiSettings.presets,
                 ...patch,
@@ -305,25 +410,206 @@ export function ImageGenerationSettings() {
 
     const uploadReference = async (characterId: string, file: File) => {
         const assetId = await saveChatImageToIndexedDB(file);
+        const current = settings.characterReferences?.[characterId];
+        const faceCrop = current?.faceCrop || { x: 0.27, y: 0.12, size: 0.46 };
         persist({
             ...settings,
             characterReferences: {
                 ...(settings.characterReferences || {}),
-                [characterId]: { assetId, updatedAt: Date.now() },
+                [characterId]: {
+                    ...current,
+                    assetId,
+                    updatedAt: Date.now(),
+                    enabled: true,
+                    faceCrop,
+                },
+            },
+        });
+        setCropDraft(faceCrop);
+        setCropCharacterId(characterId);
+    };
+
+    const uploadUserReference = async (identityId: string, file: File) => {
+        const assetId = await saveChatImageToIndexedDB(file);
+        const current = settings.userReferences?.[identityId];
+        const faceCrop = current?.faceCrop || { x: 0.27, y: 0.12, size: 0.46 };
+        persist({
+            ...settings,
+            userReferences: {
+                ...(settings.userReferences || {}),
+                [identityId]: {
+                    ...current,
+                    assetId,
+                    updatedAt: Date.now(),
+                    enabled: true,
+                    faceCrop,
+                },
+            },
+        });
+        setCropDraft(faceCrop);
+        setCropViewport({ width: 0, height: 0 });
+        setCropUserIdentityId(identityId);
+    };
+
+    const updateUserReference = (
+        identityId: string,
+        patch: Partial<NonNullable<ImageGenerationSettingsType["userReferences"]>[string]>,
+    ) => {
+        const current = settings.userReferences?.[identityId];
+        persist({
+            ...settings,
+            userReferences: {
+                ...(settings.userReferences || {}),
+                [identityId]: {
+                    ...current,
+                    ...patch,
+                    updatedAt: Date.now(),
+                },
             },
         });
     };
 
-    const removeReference = (characterId: string) => {
-        const nextRefs = { ...(settings.characterReferences || {}) };
-        delete nextRefs[characterId];
-        persist({ ...settings, characterReferences: nextRefs });
-        setReferencePreviews(prev => {
-            const next = { ...prev };
-            delete next[characterId];
-            return next;
+    const updateCharacterReference = (
+        characterId: string,
+        patch: Partial<ImageGenerationSettingsType["characterReferences"][string]>,
+    ) => {
+        const current = settings.characterReferences?.[characterId];
+        persist({
+            ...settings,
+            characterReferences: {
+                ...(settings.characterReferences || {}),
+                [characterId]: {
+                    ...current,
+                    ...patch,
+                    updatedAt: Date.now(),
+                },
+            },
         });
     };
+
+    type CharacterAnchor = NonNullable<ImageGenerationSettingsType["characterReferences"][string]["anchors"]>[number];
+
+    const updateCharacterAnchors = (characterId: string, anchors: CharacterAnchor[]) => {
+        updateCharacterReference(characterId, { anchors });
+    };
+
+    const addCharacterAnchor = (characterId: string) => {
+        const current = settings.characterReferences?.[characterId];
+        const anchors = current?.anchors || [];
+        updateCharacterAnchors(characterId, [...anchors, {
+            id: `anchor_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            name: "新锚点",
+            category: "accessory",
+            description: "",
+            enabled: true,
+            updatedAt: Date.now(),
+        }]);
+    };
+
+    const updateCharacterAnchor = (characterId: string, anchorId: string, patch: Partial<CharacterAnchor>) => {
+        const anchors = settings.characterReferences?.[characterId]?.anchors || [];
+        updateCharacterAnchors(characterId, anchors.map(anchor => anchor.id === anchorId
+            ? { ...anchor, ...patch, updatedAt: Date.now() }
+            : anchor));
+    };
+
+    const deleteCharacterAnchor = (characterId: string, anchorId: string) => {
+        const anchors = settings.characterReferences?.[characterId]?.anchors || [];
+        updateCharacterAnchors(characterId, anchors.filter(anchor => anchor.id !== anchorId));
+    };
+
+    const uploadCharacterAnchor = async (characterId: string, anchorId: string, file: File) => {
+        const assetId = await saveChatImageToIndexedDB(file);
+        updateCharacterAnchor(characterId, anchorId, { assetId, enabled: true });
+    };
+
+    const openFaceCrop = (characterId: string) => {
+        const crop = settings.characterReferences?.[characterId]?.faceCrop || { x: 0.27, y: 0.12, size: 0.46 };
+        setCropDraft(crop);
+        setCropViewport({ width: 0, height: 0 });
+        setCropCharacterId(characterId);
+    };
+
+    const openUserFaceCrop = (identityId: string) => {
+        const crop = settings.userReferences?.[identityId]?.faceCrop || { x: 0.27, y: 0.12, size: 0.46 };
+        setCropDraft(crop);
+        setCropViewport({ width: 0, height: 0 });
+        setCropUserIdentityId(identityId);
+    };
+
+    const updateCropViewport = () => {
+        const rect = cropContainerRef.current?.getBoundingClientRect();
+        if (rect) setCropViewport({ width: rect.width, height: rect.height });
+    };
+
+    const handleCropPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        cropDragRef.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            cropX: cropDraft.x,
+            cropY: cropDraft.y,
+        };
+    };
+
+    const handleCropPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        const drag = cropDragRef.current;
+        if (!drag || drag.pointerId !== event.pointerId || !cropViewport.width || !cropViewport.height) return;
+        const side = cropDraft.size * Math.min(cropViewport.width, cropViewport.height);
+        const maxX = Math.max(0, 1 - side / cropViewport.width);
+        const maxY = Math.max(0, 1 - side / cropViewport.height);
+        setCropDraft(current => ({
+            ...current,
+            x: Math.max(0, Math.min(maxX, drag.cropX + (event.clientX - drag.startX) / cropViewport.width)),
+            y: Math.max(0, Math.min(maxY, drag.cropY + (event.clientY - drag.startY) / cropViewport.height)),
+        }));
+    };
+
+    const handleCropPointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        if (cropDragRef.current?.pointerId === event.pointerId) cropDragRef.current = null;
+    };
+
+    const handleCharacterScrollPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        const list = characterListRef.current;
+        const track = event.currentTarget.parentElement?.getBoundingClientRect();
+        const thumb = event.currentTarget.getBoundingClientRect();
+        if (!list || !track) return;
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        characterScrollDragRef.current = {
+            pointerId: event.pointerId,
+            startY: event.clientY,
+            startScrollTop: list.scrollTop,
+            maxScroll: Math.max(0, list.scrollHeight - list.clientHeight),
+            maxThumbTravel: Math.max(1, track.height - thumb.height),
+        };
+    };
+
+    const handleCharacterScrollPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        const drag = characterScrollDragRef.current;
+        const list = characterListRef.current;
+        if (!drag || !list || drag.pointerId !== event.pointerId) return;
+        const delta = event.clientY - drag.startY;
+        list.scrollTop = Math.max(0, Math.min(drag.maxScroll, drag.startScrollTop + delta / drag.maxThumbTravel * drag.maxScroll));
+        syncCharacterScrollMetrics();
+    };
+
+    const handleCharacterScrollPointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        if (characterScrollDragRef.current?.pointerId === event.pointerId) characterScrollDragRef.current = null;
+    };
+
+    const selectedCharacter = characters.find(character => character.id === selectedCharacterId) || null;
+    const selectedReference = selectedCharacter ? settings.characterReferences?.[selectedCharacter.id] : undefined;
+    const characterListOverflows = characterScrollMetrics.scrollHeight > characterScrollMetrics.clientHeight + 1;
+    const characterScrollThumbPercent = characterListOverflows
+        ? Math.max(14, characterScrollMetrics.clientHeight / characterScrollMetrics.scrollHeight * 100)
+        : 100;
+    const characterScrollTopPercent = characterListOverflows
+        ? (characterScrollMetrics.scrollTop / Math.max(1, characterScrollMetrics.scrollHeight - characterScrollMetrics.clientHeight))
+            * (100 - characterScrollThumbPercent)
+        : 0;
 
     return (
         <div className="flex flex-col gap-6 pb-8">
@@ -360,18 +646,20 @@ export function ImageGenerationSettings() {
                     </Select>
                 </div>
 
-                <div className="flex flex-col gap-1">
-                    <label className="menu-desc ml-1">请求方式</label>
-                    <Select
-                        value={settings.requestMode}
-                        onChange={(event) => updateSettings({
-                            requestMode: event.target.value as ImageGenerationSettingsType["requestMode"],
-                        })}
-                    >
-                        <option value="server">服务端转发（推荐，可避免跨域报错）</option>
-                        <option value="direct">浏览器直连（需接口允许 CORS 跨域）</option>
-                    </Select>
-                </div>
+                {settings.provider === "novelai" && (
+                    <div className="flex flex-col gap-1">
+                        <label className="menu-desc ml-1">请求方式</label>
+                        <Select
+                            value={naiSettings.requestMode}
+                            onChange={(event) => updateNovelAi({
+                                requestMode: event.target.value as ImageGenerationSettingsType["requestMode"],
+                            })}
+                        >
+                            <option value="server">服务端转发（推荐，可避免跨域报错）</option>
+                            <option value="direct">浏览器直连（需接口允许 CORS 跨域）</option>
+                        </Select>
+                    </div>
+                )}
 
                 {settings.provider === "novelai" ? (
                     /* --- NovelAI 配置面板 --- */
@@ -856,18 +1144,103 @@ export function ImageGenerationSettings() {
                 </div>
             </div>
 
-            {settings.provider === "novelai" ? (
-                <div className="flex flex-col gap-2">
-                    <p className="settings-menu-section-title">Character References</p>
+            <div className="flex flex-col gap-2">
+                <p className="settings-menu-section-title">User Identity Reference</p>
+                <div className="menu-group p-4 flex flex-col gap-3">
+                    <div>
+                        <div className="menu-label">用户参考图</div>
+                        <div className="menu-desc mt-1">角色生成合照、用户照片或共同自拍时，会按角色当前绑定的用户身份自动读取对应参考图。</div>
+                    </div>
+                    {userIdentities.length === 0 ? (
+                        <div className="ui-empty py-6">
+                            <UserRound size={22} />
+                            <span className="menu-desc">请先在“用户身份”中创建身份。</span>
+                        </div>
+                    ) : userIdentities.map(identity => {
+                        const reference = settings.userReferences?.[identity.id];
+                        const preview = userReferencePreviews[identity.id];
+                        return (
+                            <div key={identity.id} className="rounded-2xl border border-[var(--c-card-border)] bg-[var(--c-input)]/45 p-3">
+                                <div className="flex items-center gap-3">
+                                    <span className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-[var(--c-page-body-bg)]">
+                                        {preview ? (
+                                            <img src={preview} alt="" className="h-full w-full object-cover" />
+                                        ) : identity.avatarUrl ? (
+                                            <img src={identity.avatarUrl} alt="" className="h-full w-full object-cover" />
+                                        ) : (
+                                            <span className="grid h-full w-full place-items-center text-[var(--c-icon)]"><UserRound size={20} /></span>
+                                        )}
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                        <span className="menu-label block truncate">{identity.name || "未命名身份"}</span>
+                                        <span className="menu-desc block truncate">
+                                            {preview ? (reference?.enabled === false ? "参考图已关闭" : "参考图已启用") : "未上传独立参考图"}
+                                        </span>
+                                    </span>
+                                    {preview && (
+                                        <button
+                                            type="button"
+                                            className={`ui-btn !px-3 ${reference?.enabled === false ? "ui-btn-primary" : "ui-btn-outline"}`}
+                                            onClick={() => updateUserReference(identity.id, { enabled: reference?.enabled === false })}
+                                        >
+                                            <Power size={15} />
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="mt-3 flex gap-2">
+                                    <button
+                                        type="button"
+                                        className="ui-btn ui-btn-soft-action flex-1"
+                                        onClick={() => {
+                                            const input = document.createElement("input");
+                                            input.type = "file";
+                                            input.accept = "image/*";
+                                            input.onchange = async () => {
+                                                const file = input.files?.[0];
+                                                if (file) await uploadUserReference(identity.id, file);
+                                            };
+                                            input.click();
+                                        }}
+                                    >
+                                        <Upload size={15} />
+                                        {preview ? "更换" : "上传参考图"}
+                                    </button>
+                                    {preview && (
+                                        <button type="button" className="ui-btn ui-btn-outline" onClick={() => updateUserReference(identity.id, { assetId: undefined })}>
+                                            <Trash2 size={15} />
+                                        </button>
+                                    )}
+                                </div>
+                                {preview && (
+                                    <button
+                                        type="button"
+                                        className="ui-btn ui-btn-outline mt-2 w-full"
+                                        onClick={() => openUserFaceCrop(identity.id)}
+                                    >
+                                        <ScanFace size={15} />
+                                        选取面部
+                                    </button>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+                <p className="settings-menu-section-title">Character Identity</p>
+                {settings.provider === "novelai" && (
                     <Alert variant="info">
                         <Info size={16} className="mt-[2px] shrink-0" />
-                        <span className="leading-[1.5]">NovelAI 当前仅使用文字提示词生成图片，不会读取角色参考图。已有参考图会保留，切回 OpenAI 兼容引擎后仍可继续使用。</span>
+                        <span className="leading-[1.5]">NovelAI 会使用角色专属特征提示词，但暂不读取参考图；切回 OpenAI 兼容引擎后参考图仍会保留。</span>
                     </Alert>
-                </div>
-            ) : (
-                <div className="flex flex-col gap-2">
-                    <p className="settings-menu-section-title">Character References</p>
-                    <div className="menu-group">
+                )}
+                <div className="relative">
+                    <div
+                        ref={characterListRef}
+                        className="menu-group max-h-[292px] overflow-y-auto overscroll-contain pr-3"
+                        onScroll={syncCharacterScrollMetrics}
+                    >
                         {characters.length === 0 ? (
                             <div className="ui-empty py-8">
                                 <Camera size={22} />
@@ -875,58 +1248,267 @@ export function ImageGenerationSettings() {
                             </div>
                         ) : characters.map(character => {
                             const preview = referencePreviews[character.id];
+                            const ref = settings.characterReferences?.[character.id];
                             return (
-                                <div key={character.id} className="menu-item">
-                                <span className="h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-[var(--c-input)]">
-                                    {preview ? (
-                                        <img src={preview} alt="" className="h-full w-full object-cover" />
-                                    ) : character.avatar ? (
-                                        <img src={character.avatar} alt="" className="h-full w-full object-cover" />
-                                    ) : (
-                                        <span className="flex h-full w-full items-center justify-center ts-13 font-semibold text-[var(--c-icon)]">
-                                            {character.name.slice(0, 1)}
+                                <button
+                                    key={character.id}
+                                    type="button"
+                                    className={`menu-item w-full text-left ${selectedCharacterId === character.id ? "bg-[var(--c-input)]" : ""}`}
+                                    onClick={() => setSelectedCharacterId(character.id)}
+                                >
+                                    <span className="h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-[var(--c-input)]">
+                                        {preview ? (
+                                            <img src={preview} alt="" className="h-full w-full object-cover" />
+                                        ) : character.avatar ? (
+                                            <img src={character.avatar} alt="" className="h-full w-full object-cover" />
+                                        ) : (
+                                            <span className="flex h-full w-full items-center justify-center ts-13 font-semibold text-[var(--c-icon)]">
+                                                {character.name.slice(0, 1)}
+                                            </span>
+                                        )}
+                                    </span>
+                                    <span className="min-w-0 flex flex-1 flex-col">
+                                        <span className="menu-label truncate">{character.name}</span>
+                                        <span className="menu-desc truncate">
+                                            {preview ? (ref?.enabled === false ? "参考图已关闭" : "参考图已启用") : "未上传参考图"}
+                                            {ref?.featurePrompt?.trim() ? " · 已设人物特征" : ""}
                                         </span>
-                                    )}
-                                </span>
-                                <span className="min-w-0 flex flex-1 flex-col">
-                                    <span className="menu-label truncate">{character.name}</span>
-                                    <span className="menu-desc truncate">{preview ? "已上传参考图" : "未上传参考图"}</span>
-                                </span>
-                                <span className="menu-right flex gap-2">
-                                    <button
-                                        type="button"
-                                        className="ui-link-btn"
-                                        aria-label={`上传 ${character.name} 的参考图`}
-                                        onClick={() => {
-                                            const input = document.createElement("input");
-                                            input.type = "file";
-                                            input.accept = "image/*";
-                                            input.onchange = async () => {
-                                                const file = input.files?.[0];
-                                                if (file) await uploadReference(character.id, file);
-                                            };
-                                            input.click();
-                                        }}
-                                    >
-                                        <Upload size={18} />
-                                    </button>
-                                    {preview && (
-                                        <button
-                                            type="button"
-                                            className="ui-link-btn"
-                                            data-variant="danger"
-                                            aria-label={`删除 ${character.name} 的参考图`}
-                                            onClick={() => removeReference(character.id)}
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
-                                    )}
-                                </span>
-                                </div>
+                                    </span>
+                                    <ChevronDown size={16} className={selectedCharacterId === character.id ? "-rotate-90 opacity-70" : "opacity-40"} />
+                                </button>
                             );
                         })}
                     </div>
+                    {characterListOverflows && (
+                        <div className="pointer-events-auto absolute bottom-3 right-1 top-3 z-10 w-1.5 rounded-full bg-black/10">
+                            <button
+                                type="button"
+                                aria-label="拖动角色列表滚动条"
+                                className="absolute left-0 w-1.5 touch-none rounded-full bg-black/45 shadow-sm"
+                                style={{
+                                    height: `${characterScrollThumbPercent}%`,
+                                    top: `${characterScrollTopPercent}%`,
+                                }}
+                                onPointerDown={handleCharacterScrollPointerDown}
+                                onPointerMove={handleCharacterScrollPointerMove}
+                                onPointerUp={handleCharacterScrollPointerUp}
+                                onPointerCancel={handleCharacterScrollPointerUp}
+                            />
+                        </div>
+                    )}
                 </div>
+
+                {selectedCharacter && (
+                    <div className="menu-group p-4 flex flex-col gap-4">
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className="menu-label truncate">{selectedCharacter.name} · 专属生图设定</div>
+                                <div className="menu-desc">只影响这个角色，不会改动角色卡正文。</div>
+                            </div>
+                            {referencePreviews[selectedCharacter.id] && (
+                                <button
+                                    type="button"
+                                    className={`ui-btn shrink-0 ${selectedReference?.enabled === false ? "ui-btn-primary" : "ui-btn-outline"}`}
+                                    onClick={() => updateCharacterReference(selectedCharacter.id, { enabled: selectedReference?.enabled === false })}
+                                >
+                                    <Power size={16} />
+                                    {selectedReference?.enabled === false ? "启用参考图" : "关闭参考图"}
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                            <label className="menu-desc ml-1">专属人物特征提示词</label>
+                            <Textarea
+                                value={selectedReference?.featurePrompt || ""}
+                                onChange={(event) => updateCharacterReference(selectedCharacter.id, { featurePrompt: event.target.value })}
+                                placeholder="例如：黑色长卷发、灰蓝色眼睛、左眼下有一颗小痣、清冷气质……"
+                                rows={4}
+                            />
+                            <span className="menu-desc ml-1">生成该角色图片时自动追加，OpenAI 与 NovelAI 均生效。</span>
+                        </div>
+
+                        {settings.provider === "novelai" && (
+                            <div className="menu-item !px-0 !py-0">
+                                <span className="settings-tools-menu-copy">
+                                    <span className="menu-label appearance-menu-item-label">NovelAI 使用人物专属提示词</span>
+                                    <span className="menu-desc settings-tools-menu-desc">关闭后 NAI 只使用当前画面描述与预设，不追加上方人物特征。</span>
+                                </span>
+                                <span className="menu-right settings-tools-menu-toggle">
+                                    <Toggle
+                                        checked={selectedReference?.novelAiFeaturePromptEnabled !== false}
+                                        onChange={(novelAiFeaturePromptEnabled) => updateCharacterReference(selectedCharacter.id, { novelAiFeaturePromptEnabled })}
+                                        className="settings-toggle-control"
+                                    />
+                                </span>
+                            </div>
+                        )}
+
+                        {settings.provider !== "novelai" && (
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    className="ui-btn ui-btn-soft-action flex-1"
+                                    onClick={() => {
+                                        const input = document.createElement("input");
+                                        input.type = "file";
+                                        input.accept = "image/*";
+                                        input.onchange = async () => {
+                                            const file = input.files?.[0];
+                                            if (file) await uploadReference(selectedCharacter.id, file);
+                                        };
+                                        input.click();
+                                    }}
+                                >
+                                    <Upload size={16} />
+                                    {referencePreviews[selectedCharacter.id] ? "更换参考图" : "选择参考图"}
+                                </button>
+                                {referencePreviews[selectedCharacter.id] && (
+                                    <button type="button" className="ui-btn ui-btn-outline flex-1" onClick={() => openFaceCrop(selectedCharacter.id)}>
+                                        <ScanFace size={16} />
+                                        选取脸部
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="border-t border-[var(--c-card-border)] pt-4">
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                                <div>
+                                    <div className="menu-label">特定锚点</div>
+                                    <div className="menu-desc mt-1">为角色固定重要配饰、衣物或外貌特征；图片与说明会一起用于生图。</div>
+                                </div>
+                                <button type="button" className="ui-btn ui-btn-outline shrink-0" onClick={() => addCharacterAnchor(selectedCharacter.id)}>
+                                    <Plus size={15} />
+                                    增加
+                                </button>
+                            </div>
+
+                            {(selectedReference?.anchors || []).length === 0 ? (
+                                <div className="rounded-xl bg-[var(--c-input)] px-3 py-5 text-center menu-desc">暂未添加锚点</div>
+                            ) : (
+                                <div className="flex flex-col gap-3">
+                                    {(selectedReference?.anchors || []).map(anchor => (
+                                        <div key={anchor.id} className="rounded-2xl border border-[var(--c-card-border)] bg-[var(--c-input)]/45 p-3">
+                                            <div className="flex items-start gap-3">
+                                                <button
+                                                    type="button"
+                                                    className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-[var(--c-page-body-bg)] text-[var(--c-icon)]"
+                                                    onClick={() => {
+                                                        const input = document.createElement("input");
+                                                        input.type = "file";
+                                                        input.accept = "image/*";
+                                                        input.onchange = async () => {
+                                                            const file = input.files?.[0];
+                                                            if (file) await uploadCharacterAnchor(selectedCharacter.id, anchor.id, file);
+                                                        };
+                                                        input.click();
+                                                    }}
+                                                >
+                                                    {anchorPreviews[anchor.id] ? (
+                                                        <img src={anchorPreviews[anchor.id]} alt="" className="h-full w-full object-cover" />
+                                                    ) : <Upload size={18} />}
+                                                </button>
+                                                <div className="min-w-0 flex-1 space-y-2">
+                                                    <Input
+                                                        value={anchor.name}
+                                                        onChange={event => updateCharacterAnchor(selectedCharacter.id, anchor.id, { name: event.target.value })}
+                                                        placeholder="锚点名称"
+                                                    />
+                                                    <Select
+                                                        value={anchor.category}
+                                                        onChange={event => updateCharacterAnchor(selectedCharacter.id, anchor.id, { category: event.target.value as CharacterAnchor["category"] })}
+                                                    >
+                                                        <option value="accessory">重要配饰</option>
+                                                        <option value="clothing">固定衣物</option>
+                                                        <option value="feature">身体/外貌特征</option>
+                                                        <option value="other">其他</option>
+                                                    </Select>
+                                                </div>
+                                                <button type="button" className="ui-bare-btn p-2 text-[var(--c-danger,#e5484d)]" onClick={() => deleteCharacterAnchor(selectedCharacter.id, anchor.id)}>
+                                                    <Trash2 size={17} />
+                                                </button>
+                                            </div>
+                                            <Textarea
+                                                value={anchor.description}
+                                                onChange={event => updateCharacterAnchor(selectedCharacter.id, anchor.id, { description: event.target.value })}
+                                                placeholder="说明这个锚点，例如：银色蛇形戒指，始终戴在右手食指，不要改变款式。"
+                                                rows={3}
+                                                className="mt-3"
+                                            />
+                                            <div className="mt-3 flex items-center justify-between gap-3">
+                                                <span className="menu-desc">{anchor.assetId ? "已上传图片" : "可只填文字说明，也可上传图片"}</span>
+                                                <Toggle
+                                                    checked={anchor.enabled !== false}
+                                                    onChange={enabled => updateCharacterAnchor(selectedCharacter.id, anchor.id, { enabled })}
+                                                    className="settings-toggle-control"
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {((cropCharacterId && referencePreviews[cropCharacterId]) || (cropUserIdentityId && userReferencePreviews[cropUserIdentityId])) && (
+                <ContentDialog
+                    title="选取脸部锁定区域"
+                    confirmLabel="保存选区"
+                    cancelLabel="取消"
+                    onCancel={() => { setCropCharacterId(null); setCropUserIdentityId(null); }}
+                    onConfirm={() => {
+                        if (cropCharacterId) updateCharacterReference(cropCharacterId, { faceCrop: cropDraft, enabled: true });
+                        if (cropUserIdentityId) updateUserReference(cropUserIdentityId, { faceCrop: cropDraft, enabled: true });
+                        setCropCharacterId(null);
+                        setCropUserIdentityId(null);
+                    }}
+                >
+                    <div className="flex flex-col gap-3">
+                        <p className="menu-desc">拖动方框覆盖{cropUserIdentityId ? "用户" : "角色"}脸部；发送参考图时只会截取这个区域，减少服装和背景干扰。</p>
+                        <div ref={cropContainerRef} className="relative mx-auto w-fit max-h-[52vh] max-w-full overflow-hidden rounded-xl bg-black/80">
+                            <img
+                                src={cropUserIdentityId ? userReferencePreviews[cropUserIdentityId] : referencePreviews[cropCharacterId!]}
+                                alt="参考图脸部选取"
+                                draggable={false}
+                                className="block max-h-[52vh] max-w-full select-none object-contain"
+                                onLoad={updateCropViewport}
+                            />
+                            {cropViewport.width > 0 && cropViewport.height > 0 && (
+                                <button
+                                    type="button"
+                                    aria-label="拖动脸部选区"
+                                    className="absolute cursor-move touch-none border-2 border-white bg-white/10 shadow-[0_0_0_999px_rgba(0,0,0,0.42)]"
+                                    style={{
+                                        left: cropDraft.x * cropViewport.width,
+                                        top: cropDraft.y * cropViewport.height,
+                                        width: cropDraft.size * Math.min(cropViewport.width, cropViewport.height),
+                                        height: cropDraft.size * Math.min(cropViewport.width, cropViewport.height),
+                                    }}
+                                    onPointerDown={handleCropPointerDown}
+                                    onPointerMove={handleCropPointerMove}
+                                    onPointerUp={handleCropPointerUp}
+                                    onPointerCancel={handleCropPointerUp}
+                                >
+                                    <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/60 px-2 py-1 text-xs text-white">拖到脸部</span>
+                                </button>
+                            )}
+                        </div>
+                        <label className="flex items-center gap-3 menu-desc">
+                            选区大小
+                            <input
+                                type="range"
+                                min="18"
+                                max="80"
+                                value={Math.round(cropDraft.size * 100)}
+                                onChange={(event) => setCropDraft(current => ({ ...current, size: Number(event.target.value) / 100 }))}
+                                className="flex-1"
+                            />
+                        </label>
+                    </div>
+                </ContentDialog>
             )}
 
             {pendingDeleteOpenAiPresetId && (
@@ -957,6 +1539,22 @@ export function ImageGenerationSettings() {
                         setPendingDeletePresetId(null);
                     }}
                     onCancel={() => setPendingDeletePresetId(null)}
+                />
+            )}
+
+            {pendingDeleteOpenAiPresetId && (
+                <ConfirmDialog
+                    title="确认删除 OpenAI 预设？"
+                    message={`预设“${openaiPresets.find(preset => preset.id === pendingDeleteOpenAiPresetId)?.name || "未命名预设"}”及其中的 API 配置删除后无法恢复。`}
+                    icon={Trash2}
+                    variant="danger"
+                    confirmLabel="确认删除"
+                    cancelLabel="取消"
+                    onConfirm={() => {
+                        deleteOpenAiPreset();
+                        setPendingDeleteOpenAiPresetId(null);
+                    }}
+                    onCancel={() => setPendingDeleteOpenAiPresetId(null)}
                 />
             )}
 

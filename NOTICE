@@ -69,3 +69,22 @@ Built-in public-domain library (书房内置书库):
   脚本抓取、去导航、分章，并使用维基文库自身的简繁转换（zh-hans）。原作品均已进入公有领域；
   维基文库页面的排版与整理按 CC BY-SA 4.0 提供，每本书的 manifest.json 保留了来源链接。
   正文没有经过模型改写或生成。
+
+Feature ports from sibling open-source projects
+（按功能移植的第三方代码，均为 AGPL-3.0-only）:
+
+- momo.float.phone — jianchu-in, https://github.com/jianchu-in/momo.float.phone
+  移植/合入：剧情分线与多人见面、邀请卡片、
+  仿真拉黑、记忆标签与身份范围、聊天小号与聊天账号范围等。
+- doremy.float.phone — doremy1203, https://github.com/doremy1203/doremy.float.phone
+  移植/合入：全局通话与通话浮窗、感知、截图打卡、桌面小组件、系统日历、
+  个人离线推送自检、安卓壳与设备动作等。
+- ai-virtual-phone-Y2Kversion — Yyk-Y2k, https://github.com/Yyk-Y2k/ai-virtual-phone-Y2Kversion
+  按功能手工移植：仿苹果 iMessage 聊天室外观（styles/imessage26.css、
+  styles/chat-settings.css、styles/chat-social-apple.css、public/imessage26/**）、
+  气泡与尾巴分组、输入区、长按 Tapback 菜单、Tapback 候选与自定义、
+  消息侧的 [Tapback:emoji] 协议、Apple Pay 转账卡与语音条图形、
+  动态/主页的苹果社交页外观、回声/爱心/烟花屏幕特效（lib/message-effects/**、
+  components/chat/message-effect-playback.tsx、use-chat-echo.tsx、
+  use-echo-send-gesture.tsx）、群聊 @提及候选（use-group-mentions.tsx）。
+  来源项目与本项目同为 AGPL-3.0-only；这些文件与修改继续按 AGPL-3.0-only 提供。

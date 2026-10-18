@@ -1,9 +1,9 @@
 "use client";
 
-import { Component, useState, useEffect, useCallback, type CSSProperties, type ReactNode } from "react";
+import { Component, useState, useEffect, useCallback, useMemo, type CSSProperties, type ReactNode } from "react";
 import { Trash2, Zap, Clock, Users, Archive, AlertCircle, Search, Brain, FileText, MoreHorizontal, Plus, Edit3, X, Check, ChevronRight, Filter, type LucideIcon } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/modal";
-import { MemoryTimeline } from "./memory-timeline";
+import { getMemoryEventSourceTag, MEMORY_SOURCE_TAG_ORDER, MemoryTimeline } from "./memory-timeline";
 import { Toggle } from "@/components/ui/form";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
@@ -13,16 +13,18 @@ import {
     loadMemoryConfig,
     saveMemoryConfig,
     loadMemoryEntriesByType,
+    deleteMemoryEntries,
+    memoryEntryInAccount,
+    resolveMemoryAccountScope,
     saveMemoryEntry,
     deleteMemoryEntry,
-    deleteCharacterMemoriesByType,
     getAllCharacterIdsWithMemories,
     getMemoryCountByType,
     getLastSummarizedTimestamp,
     getLastCoreSummarizedTimestamp,
 } from "@/lib/memory-storage";
 import { hydrateChatStorage } from "@/lib/chat-storage";
-import { loadNativeTimeline, type NativeTimelineEntry } from "@/lib/short-term-assembler";
+import { hideNativeTimelineEntries, loadNativeTimeline, type NativeTimelineEntry } from "@/lib/short-term-assembler";
 import { runSummarizationPipeline } from "@/lib/memory-summarizer";
 import { runCoreMemoryPipeline } from "@/lib/core-memory-builder";
 import { resolveAuxiliaryApiConfig, resolveUserIdentity } from "@/lib/settings-storage";
@@ -181,9 +183,22 @@ type Props = {
     selectedCharId?: string;
     onSelectChar: (charId: string) => void;
     onNotice?: (msg: string) => void;
+    filterOpen?: boolean;
+    onFilterOpenChange?: (open: boolean) => void;
+    onFilterStateChange?: (state: { visible: boolean; activeCount: number; bulkDeleteVisible: boolean; bulkSelecting: boolean }) => void;
+    bulkDeleteRequest?: number;
 };
 
-export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }: Props) {
+export function MemoryBankPage({
+    view,
+    selectedCharId,
+    onSelectChar,
+    onNotice,
+    filterOpen = false,
+    onFilterOpenChange,
+    onFilterStateChange,
+    bulkDeleteRequest = 0,
+}: Props) {
     const [config, setConfig] = useState<MemoryConfig>(loadMemoryConfig);
     const [characters, setCharacters] = useState<CharacterMemoryInfo[]>([]);
     const [activeTab, setActiveTab] = useState<MemoryTab>("short");
@@ -205,6 +220,10 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
     const [savingMemory, setSavingMemory] = useState(false);
     const [summarizeRangeOpen, setSummarizeRangeOpen] = useState(false);
     const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
+    const [activeTimelineTags, setActiveTimelineTags] = useState<Set<string>>(new Set());
+    const [bulkSelectMode, setBulkSelectMode] = useState(false);
+    const [selectedTimelineIds, setSelectedTimelineIds] = useState<Set<string>>(new Set());
+    const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
     const disabledSourceCount = MEMORY_SOURCE_OPTIONS
         .filter(source => (config.shortTermAllowedSources ?? {})[source.key] === false).length;
@@ -213,6 +232,43 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
     const selectedChar = selectedCharId
         ? loadCharacters().find(c => c.id === selectedCharId) ?? null
         : null;
+
+    const filterEvents = activeTab === "shared" ? sharedEvents : shortTermEvents;
+    const timelineTagCounts = useMemo(() => {
+        const counts = new Map<string, number>();
+        for (const event of filterEvents) {
+            const tag = getMemoryEventSourceTag(event);
+            counts.set(tag, (counts.get(tag) || 0) + 1);
+        }
+        return Array.from(counts.entries()).sort((a, b) =>
+            MEMORY_SOURCE_TAG_ORDER.indexOf(a[0]) - MEMORY_SOURCE_TAG_ORDER.indexOf(b[0]));
+    }, [filterEvents]);
+
+    const timelineFilterVisible = view === "detail" && (activeTab === "short" || activeTab === "shared");
+
+    useEffect(() => {
+        onFilterStateChange?.({
+            visible: timelineFilterVisible,
+            activeCount: activeTimelineTags.size,
+            bulkDeleteVisible: timelineFilterVisible && filterEvents.length > 0,
+            bulkSelecting: bulkSelectMode,
+        });
+    }, [activeTimelineTags.size, bulkSelectMode, filterEvents.length, onFilterStateChange, timelineFilterVisible]);
+
+    useEffect(() => {
+        if (!bulkDeleteRequest || !timelineFilterVisible || filterEvents.length === 0) return;
+        setBulkSelectMode(true);
+        setSelectedTimelineIds(new Set());
+        onFilterOpenChange?.(false);
+    }, [bulkDeleteRequest, filterEvents.length, onFilterOpenChange, timelineFilterVisible]);
+
+    useEffect(() => {
+        setActiveTimelineTags(new Set());
+        setBulkSelectMode(false);
+        setSelectedTimelineIds(new Set());
+        setConfirmBulkDelete(false);
+        onFilterOpenChange?.(false);
+    }, [activeTab, onFilterOpenChange, selectedCharId]);
 
     const loadCharacterList = useCallback(async (isCancelled?: () => boolean) => {
         const allChars = loadCharacters();
@@ -272,10 +328,12 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
         setLoading(true);
         try {
             await hydrateChatStorage();
+            // 只显示当前聊天账号的记忆（旧记忆无账号字段=主号）
+            const scope = resolveMemoryAccountScope();
             const [core, lt] = await Promise.all([
                 loadMemoryEntriesByType(charId, "core"),
                 loadMemoryEntriesByType(charId, "long_term"),
-            ]);
+            ]).then(lists => lists.map(list => list.filter(entry => memoryEntryInAccount(entry, scope))));
             setCoreEntries(core);
             setLongTermEntries(lt);
         } catch {
@@ -328,11 +386,41 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
 
     const handleClearEntries = async (type: "core" | "long_term") => {
         if (!selectedCharId) return;
-        await deleteCharacterMemoriesByType(selectedCharId, type);
+        // 只清当前账号的这类记忆，不动其他账号
+        const scope = resolveMemoryAccountScope();
+        const owned = (await loadMemoryEntriesByType(selectedCharId, type)).filter(entry => memoryEntryInAccount(entry, scope));
+        await deleteMemoryEntries(owned.map(entry => entry.id));
         if (type === "core") setCoreEntries([]);
         else setLongTermEntries([]);
         loadCharacterList();
     };
+
+    const toggleTimelineCluster = useCallback((eventIds: string[]) => {
+        setSelectedTimelineIds(previous => {
+            const next = new Set(previous);
+            const allSelected = eventIds.every(id => next.has(id));
+            for (const id of eventIds) {
+                if (allSelected) next.delete(id);
+                else next.add(id);
+            }
+            return next;
+        });
+    }, []);
+
+    const cancelBulkSelect = useCallback(() => {
+        setBulkSelectMode(false);
+        setSelectedTimelineIds(new Set());
+        setConfirmBulkDelete(false);
+    }, []);
+
+    const handleBulkDeleteTimeline = useCallback(() => {
+        if (!selectedCharId || selectedTimelineIds.size === 0) return;
+        const selectedEntries = filterEvents.filter(event => selectedTimelineIds.has(event.id));
+        const removed = hideNativeTimelineEntries(selectedCharId, selectedEntries);
+        cancelBulkSelect();
+        loadDetailData(selectedCharId);
+        onNotice?.(removed > 0 ? `已从短期记忆中删除 ${removed} 条记录` : "所选记录已不在短期记忆中");
+    }, [cancelBulkSelect, filterEvents, loadDetailData, onNotice, selectedCharId, selectedTimelineIds]);
 
     const showNotice = (msg: string) => {
         onNotice?.(msg);
@@ -383,7 +471,9 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
         setRebuildingCore(true);
         try {
             const lastCoreSummarizedAt = getLastCoreSummarizedTimestamp(selectedCharId);
-            const longTermEntries = await loadMemoryEntriesByType(selectedCharId, "long_term");
+            const scope = resolveMemoryAccountScope();
+            const longTermEntries = (await loadMemoryEntriesByType(selectedCharId, "long_term"))
+                .filter(entry => memoryEntryInAccount(entry, scope));
             const pendingLongTermCount = longTermEntries.filter(entry =>
                 !lastCoreSummarizedAt || entry.createdAt > lastCoreSummarizedAt
             ).length;
@@ -539,6 +629,7 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
                     importance: type === "core" ? 0.95 : 0.8,
                     createdAt: now,
                     updatedAt: now,
+                    ...(resolveMemoryAccountScope() ? { chatAccountId: resolveMemoryAccountScope()! } : {}),
                     metadata: {
                         origin: "user_manual",
                     },
@@ -683,6 +774,10 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
                             <MemoryTimeline
                                 events={shortTermEvents}
                                 userName={resolveUserIdentity(selectedCharId!)?.name || "用户"}
+                                activeTags={activeTimelineTags}
+                                selectionMode={bulkSelectMode}
+                                selectedEventIds={selectedTimelineIds}
+                                onToggleCluster={toggleTimelineCluster}
                             />
                         </>
                     ) : activeTab === "shared" ? (
@@ -695,6 +790,10 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
                             <MemoryTimeline
                                 events={sharedEvents}
                                 userName={resolveUserIdentity(selectedCharId!)?.name || "用户"}
+                                activeTags={activeTimelineTags}
+                                selectionMode={bulkSelectMode}
+                                selectedEventIds={selectedTimelineIds}
+                                onToggleCluster={toggleTimelineCluster}
                             />
                         )
                     ) : activeTab === "core" ? (
@@ -705,6 +804,21 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
                     )}
                     </MemoryDetailBoundary>
                 </div>
+
+                {bulkSelectMode ? (
+                    <div className="memory-bulk-delete-bar" role="toolbar" aria-label="批量删除短期记忆">
+                        <button type="button" className="memory-bulk-delete-cancel" onClick={cancelBulkSelect}>取消</button>
+                        <span>已选择 {selectedTimelineIds.size} 条</span>
+                        <button
+                            type="button"
+                            className="memory-bulk-delete-confirm"
+                            disabled={selectedTimelineIds.size === 0}
+                            onClick={() => setConfirmBulkDelete(true)}
+                        >
+                            删除
+                        </button>
+                    </div>
+                ) : null}
 
                 {/* Bottom tab bar — floating above bottom */}
                 <div className="chat-tab-bar" style={{ position: "absolute", bottom: 40, left: 40, right: 40, zIndex: 10, borderRadius: 28, borderTop: "none", padding: "10px 0" }}>
@@ -727,6 +841,63 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
                         </button>
                     ))}
                 </div>
+
+                {filterOpen && timelineFilterVisible ? (
+                    <div className="modal-overlay modal-overlay-bottom" data-ui="modal" onClick={() => onFilterOpenChange?.(false)}>
+                        <div className="modal-sheet memory-timeline-filter-sheet" data-ui="modal-sheet" onClick={event => event.stopPropagation()}>
+                            <div className="modal-header" data-ui="modal-header">
+                                <span style={{ width: 28 }} />
+                                <h3 className="modal-title">筛选记忆来源</h3>
+                                <button className="modal-header-btn modal-header-btn-muted" onClick={() => onFilterOpenChange?.(false)} aria-label="关闭筛选">
+                                    <X size={18} />
+                                </button>
+                            </div>
+                            <div className="modal-body modal-body-tight" data-ui="modal-body">
+                                <div className="memory-timeline-filter-list">
+                                    <button
+                                        type="button"
+                                        className="memory-timeline-filter-option"
+                                        data-selected={activeTimelineTags.size === 0 ? "" : undefined}
+                                        onClick={() => setActiveTimelineTags(new Set())}
+                                    >
+                                        <span>全部</span>
+                                        <span className="memory-timeline-filter-option-meta">
+                                            {filterEvents.length}
+                                            {activeTimelineTags.size === 0 ? <Check size={17} /> : null}
+                                        </span>
+                                    </button>
+                                    {timelineTagCounts.map(([tag, count]) => {
+                                        const selected = activeTimelineTags.has(tag);
+                                        return (
+                                            <button
+                                                key={tag}
+                                                type="button"
+                                                className="memory-timeline-filter-option"
+                                                data-selected={selected ? "" : undefined}
+                                                aria-pressed={selected}
+                                                onClick={() => setActiveTimelineTags(prev => {
+                                                    const next = new Set(prev);
+                                                    if (next.has(tag)) next.delete(tag);
+                                                    else next.add(tag);
+                                                    return next;
+                                                })}
+                                            >
+                                                <span>{tag}</span>
+                                                <span className="memory-timeline-filter-option-meta">
+                                                    {count}
+                                                    {selected ? <Check size={17} /> : null}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                    {timelineTagCounts.length === 0 ? (
+                                        <p className="memory-timeline-filter-empty">当前页面暂无可筛选的记忆事件</p>
+                                    ) : null}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
 
                 {/* Manual memory editor */}
                 {memoryEditor && (() => {
@@ -796,6 +967,21 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
                             setConfirmDeleteEntryId(null);
                         }}
                         onCancel={() => setConfirmDeleteEntryId(null)}
+                    />
+                )}
+
+                {confirmBulkDelete && (
+                    <ConfirmDialog
+                        title="删除短期记忆？"
+                        message={`将删除所选 ${selectedTimelineIds.size} 条短期记忆。删除后可能会导致角色记忆缺失，是否继续？`}
+                        icon={AlertCircle}
+                        variant="danger"
+                        confirmLabel="继续删除"
+                        onConfirm={() => {
+                            setConfirmBulkDelete(false);
+                            handleBulkDeleteTimeline();
+                        }}
+                        onCancel={() => setConfirmBulkDelete(false)}
                     />
                 )}
 

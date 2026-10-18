@@ -14,6 +14,8 @@ import {
     getLastSummarizedTimestamp,
     setLastSummarizedTimestamp,
     incrementCoreMemoryCounter,
+    memoryEntryInAccount,
+    resolveMemoryAccountScope,
 } from "./memory-storage";
 import { resolveAuxiliaryApiConfig } from "./settings-storage";
 import { loadNativeTimeline, formatTimelineForSummarization, filterTimelineByAllowedSources } from "./short-term-assembler";
@@ -31,20 +33,25 @@ const summarizingSet = new Set<string>();
  */
 export async function maybeRunSummarization(
     characterId: string,
-    characterName: string
+    characterName: string,
+    /** 聊天账号：undefined=当前聊天身份范围，null=主号。 */
+    chatAccountId?: string | null,
 ): Promise<void> {
     const config = loadMemoryConfig();
     if (!config.autoSummarizeEnabled) return;
 
-    const counter = getEventCounter(characterId);
+    // 进入时就固定账号，切号后这次后台总结仍写回原账号
+    const scope = resolveMemoryAccountScope(chatAccountId);
+    const counter = getEventCounter(characterId, scope);
     if (counter < config.summarizationEventInterval) return;
 
-    if (summarizingSet.has(characterId)) return;
-    summarizingSet.add(characterId);
+    const lockKey = `${characterId}::${scope || "main"}`;
+    if (summarizingSet.has(lockKey)) return;
+    summarizingSet.add(lockKey);
     try {
-        await runSummarizationPipeline(characterId, characterName);
+        await runSummarizationPipeline(characterId, characterName, { chatAccountId: scope });
     } finally {
-        summarizingSet.delete(characterId);
+        summarizingSet.delete(lockKey);
     }
 }
 
@@ -61,9 +68,12 @@ export async function runSummarizationPipeline(
         force?: boolean;
         /** 手动指定总结起点（覆盖进度水位线）；force 为真时忽略 */
         sinceTimestamp?: string;
+        /** 聊天账号：undefined=当前聊天身份范围，null=主号。 */
+        chatAccountId?: string | null;
     }
 ): Promise<{ success: boolean; error?: string }> {
     const config = loadMemoryConfig();
+    const scope = resolveMemoryAccountScope(options?.chatAccountId);
 
     // Resolve API from auxiliary binding
     const apiConfig = resolveAuxiliaryApiConfig("memorySummaryApiConfigId");
@@ -74,17 +84,17 @@ export async function runSummarizationPipeline(
     // Read native app data (chat messages, moments) directly — no separate event log
     const afterTimestamp = options?.force
         ? undefined
-        : options?.sinceTimestamp ?? (getLastSummarizedTimestamp(characterId) ?? undefined);
+        : options?.sinceTimestamp ?? (getLastSummarizedTimestamp(characterId, scope) ?? undefined);
     // 记忆来源开关同样作用于长期总结：被关掉的来源不进总结素材。
     // 进度水位线取「过滤后」最后一条的时间，因此关掉的来源不会把水位线推过头，
     // 但已被水位线越过的内容重新打开后也不会回补——这一点在设置里已注明。
     const allEntries = filterTimelineByAllowedSources(
-        loadNativeTimeline(characterId, afterTimestamp ? { afterTimestamp } : undefined),
+        loadNativeTimeline(characterId, { ...(afterTimestamp ? { afterTimestamp } : {}), chatAccountId: scope }),
         config.shortTermAllowedSources,
     );
 
     if (allEntries.length < 4) {
-        if (!options?.force) resetEventCounter(characterId);
+        if (!options?.force) resetEventCounter(characterId, scope);
         return { success: false, error: allEntries.length === 0 ? "没有可总结的事件" : "事件不足 4 条" };
     }
 
@@ -158,6 +168,7 @@ export async function runSummarizationPipeline(
         importance: 0.8,
         createdAt: now,
         updatedAt: now,
+        ...(scope ? { chatAccountId: scope } : {}),
         metadata: {
             summarizedEvents: allEntries.length,
             timeSpan: `${earliest} ~ ${latest}`,
@@ -167,18 +178,19 @@ export async function runSummarizationPipeline(
     await saveMemoryEntry(longTermEntry);
 
     // Update last summarized timestamp + reset counter
-    setLastSummarizedTimestamp(characterId, latest);
-    resetEventCounter(characterId);
+    setLastSummarizedTimestamp(characterId, latest, scope);
+    resetEventCounter(characterId, scope);
 
-    // Enforce long-term limit
-    const allLongTerm = await loadMemoryEntries(characterId);
+    // Enforce long-term limit（按账号各自计数，只裁当前账号自己的旧条目）
+    const allLongTerm = (await loadMemoryEntries(characterId))
+        .filter(entry => entry.type === "long_term" && memoryEntryInAccount(entry, scope));
     if (allLongTerm.length > config.maxLongTermEntries) {
         const excess = allLongTerm.slice(0, allLongTerm.length - config.maxLongTermEntries);
         await deleteMemoryEntries(excess.map(e => e.id));
     }
 
-    incrementCoreMemoryCounter(characterId);
-    await maybeRunCoreMemoryPipeline(characterId, characterName);
+    incrementCoreMemoryCounter(characterId, scope);
+    await maybeRunCoreMemoryPipeline(characterId, characterName, scope);
 
     console.log(`[MemorySummarizer] Summarized ${allEntries.length} entries → 1 long-term memory`);
     return { success: true };

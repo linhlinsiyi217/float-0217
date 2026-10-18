@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import {
     CHAT_INITIAL_VISIBLE_MESSAGE_COUNT,
     CHAT_LOAD_MORE_MESSAGE_COUNT,
+    CHAT_REQUEST_REPLY_EVENT,
     ChatSession,
     clearChatSessionMessages,
     clearChatSessionToolHistory,
@@ -16,6 +17,10 @@ import {
     removeChatContact,
     normalizeVisionImagePromptLimit,
     MAX_VISION_IMAGE_PROMPT_LIMIT,
+    loadChatAppSettings,
+    resolveChatCharacterAvatar,
+    resolveChatUserAvatar,
+    resolveVisionImagePromptLimit,
     type ChatMessage,
 } from "@/lib/chat-storage";
 import {
@@ -35,22 +40,28 @@ import {
 import { clearChatOfflineTurns } from "@/lib/chat-offline-storage";
 import { removeChatSessionCompletely } from "@/lib/chat-session-remove";
 import { triggerDeleteFriendReaction } from "@/lib/friend-request-engine";
-import { loadCharacters } from "@/lib/character-storage";
+import { loadCharacters, saveCharacters } from "@/lib/character-storage";
 import { isAgentComputerConfigured } from "@/lib/agent-computer";
 import { CharacterComputerPage } from "./character-computer-page";
-import { resolveUserIdentity, loadBindingConfig, loadPresets, resolveBinding } from "@/lib/settings-storage";
-import { getStatusRegionConfig, saveStatusRegionConfig, presetSupportsStatusRegion, isCustomStatusRegionActive, STATUS_REGION_SCHEME_TARGET, STATUS_REGION_UPDATED_EVENT, type StatusRegionConfig } from "@/lib/chat-status-region";
+import { resolveUserIdentity, loadApiConfigs, loadBindingConfig, loadPresets, resolveBinding } from "@/lib/settings-storage";
+import { resolveChatAccountUserIdentity } from "@/lib/chat-scope-storage";
+import { removeChatAltAccountFriend } from "@/lib/chat-alt-account-storage";
+import { sendLLMRequest } from "@/lib/chat-engine";
+import { clearStatusRegionConfig, getStatusRegionConfig, hasOwnStatusRegionConfig, saveStatusRegionConfig, presetSupportsStatusRegion, isCustomStatusRegionActive, STATUS_REGION_SCHEME_TARGET, STATUS_REGION_UPDATED_EVENT, type StatusRegionConfig } from "@/lib/chat-status-region";
 import { downloadFile } from "@/lib/download-utils";
+import { createChatRecordExport, importChatRecordFile } from "@/lib/chat-record-transfer";
 import { getSchemes, saveScheme, deleteScheme, type CSSScheme } from "@/lib/css-scheme-storage";
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 import { KeyboardAutoSendDebounceItem } from "@/components/chat/keyboard-auto-send-debounce-item";
-import { ChevronRight, Image as ImageIcon, Video, Mic, UserMinus, UserPlus, Users, Pin, MessageSquare, Search, AlertCircle, Code, Laptop, Trash2, Smile, Sparkles, X, Play, Upload, Download, Save, FolderOpen, type LucideIcon } from "lucide-react";
+import { SessionChatSoundsSection } from "@/components/chat/session-chat-sounds";
+import { ChevronRight, Image as ImageIcon, Video, Mic, UserMinus, UserPlus, Users, Pin, Ban, MessageSquare, Search, AlertCircle, Code, Laptop, Trash2, Smile, Sparkles, X, Play, Upload, Download, Save, FolderOpen, Camera, RefreshCw, type LucideIcon } from "lucide-react";
 import { BINDING_ACCENTS, CONTENT_APP_ACCENTS } from "@/lib/ui-accent-colors";
 import CSSSchemeBar from "@/components/ui/css-scheme-picker";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { CHAT_SESSION_CSS_EXAMPLE } from "@/lib/css-examples";
 import { Toggle, Input } from "@/components/ui/form";
 import { PageShell } from "@/components/ui/page-shell";
+import { IMESSAGE_TAPBACKS, loadIMessageTapbacks, saveIMessageTapbacks } from "@/lib/chat-tapback";
 
 // 自定义状态栏预填模板：微博主页（契约=「状态栏」章节整段正文，含【逻辑】【格式】与包裹要求）
 // 预览用的默认示例数据：契约没有自带示例时兜底，字段与下面的微博模板对应
@@ -179,6 +190,9 @@ import {
     DEFAULT_OFFLINE_CHAT_BILINGUAL_PROMPT,
 } from "@/lib/bilingual-prompt-defaults";
 import { ChatFallbackAvatar } from "./chat-fallback-avatar";
+import { BeautyPresetPicker } from "./beauty-preset-picker";
+import { BubbleColorSettings } from "./bubble-color-settings";
+import { resolveChatBeautyPreset } from "@/lib/chat-beauty-preset";
 import { MessageBubble, isStandaloneHtmlPreviewContent } from "./message-bubble";
 import { ScreenEffectSettingsModal } from "./screen-effect-settings-modal";
 
@@ -283,6 +297,29 @@ function ChatInfoIcon({ icon: Icon, color }: { icon: LucideIcon; color: string }
     );
 }
 
+function fileToAvatarDataUrl(file: File, maxSize = 640, quality = 0.86): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = reject;
+        reader.onload = () => {
+            const image = new Image();
+            image.onerror = reject;
+            image.onload = () => {
+                const scale = Math.min(maxSize / image.width, maxSize / image.height, 1);
+                const canvas = document.createElement("canvas");
+                canvas.width = Math.max(1, Math.round(image.width * scale));
+                canvas.height = Math.max(1, Math.round(image.height * scale));
+                const context = canvas.getContext("2d");
+                if (!context) { reject(new Error("无法处理图片")); return; }
+                context.drawImage(image, 0, 0, canvas.width, canvas.height);
+                resolve(canvas.toDataURL("image/webp", quality));
+            };
+            image.src = String(reader.result || "");
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
 export function ChatSettingsPanel({
     session,
     onClose,
@@ -294,12 +331,19 @@ export function ChatSettingsPanel({
     offlineHistoryBusy = false,
 }: ChatSettingsPanelProps) {
     const [backgroundImage, setBackgroundImage] = useState<string>(session.backgroundImage || "");
+    const [beautyPreset, setBeautyPreset] = useState(() => resolveChatBeautyPreset(session));
     const [alias, setAlias] = useState<string>(session.alias || "");
+    const [characterRemarkForUser, setCharacterRemarkForUser] = useState<string>(session.characterRemarkForUser || "");
+    const [notifyAliasChange, setNotifyAliasChange] = useState(session.notifyCharacterOnAliasChange === true);
+    const [refreshingCharacterRemark, setRefreshingCharacterRemark] = useState(false);
     const [videoBackground, setVideoBackground] = useState<string>(session.videoBackground || "");
     const [voiceBackground, setVoiceBackground] = useState<string>(session.voiceBackground || "");
     const [isPinned, setIsPinned] = useState(session.isPinned || false);
+    // 仿真拉黑：拉黑期间用户发出的消息会被对方拒收（仿微信红色感叹号）
+    const [isBlacklisted, setIsBlacklisted] = useState(session.isBlacklisted || false);
     // 自定义状态栏（状态区）
-    const [statusRegion, setStatusRegion] = useState<StatusRegionConfig>(() => getStatusRegionConfig(session.id));
+    const [statusRegion, setStatusRegion] = useState<StatusRegionConfig>(() => getStatusRegionConfig(session.id, !session.isGroup));
+    const [statusUsesGlobal, setStatusUsesGlobal] = useState(() => !session.isGroup && !hasOwnStatusRegionConfig(session.id));
     const [showStatusRegionDialog, setShowStatusRegionDialog] = useState(false);
     const [draftContract, setDraftContract] = useState("");
     const [draftRender, setDraftRender] = useState("");
@@ -360,6 +404,7 @@ export function ChatSettingsPanel({
     const saveStatusRegion = (next: StatusRegionConfig) => {
         setStatusRegion(next);
         saveStatusRegionConfig(session.id, next);
+        setStatusUsesGlobal(!session.isGroup && !hasOwnStatusRegionConfig(session.id));
     };
     // 小卷的状态栏工具写入后广播，这里同步刷新——否则本页状态只在挂载时初始化一次，
     // 面板开着的时候被写入就会停在旧值，表现为「后台写了、前台看不到」。
@@ -368,8 +413,9 @@ export function ChatSettingsPanel({
         const onExternalWrite = (event: Event) => {
             const detail = (event as CustomEvent<{ sessionId?: string }>).detail;
             if (detail?.sessionId && detail.sessionId !== session.id) return;
-            const next = getStatusRegionConfig(session.id);
+            const next = getStatusRegionConfig(session.id, !session.isGroup);
             setStatusRegion(next);
+            setStatusUsesGlobal(!session.isGroup && !hasOwnStatusRegionConfig(session.id));
             if (showStatusRegionDialog) {
                 setDraftContract(next.contract || STATUS_REGION_STARTER_CONTRACT);
                 setDraftRender(next.renderHtml || STATUS_REGION_STARTER_RENDER);
@@ -379,7 +425,7 @@ export function ChatSettingsPanel({
         };
         window.addEventListener(STATUS_REGION_UPDATED_EVENT, onExternalWrite);
         return () => window.removeEventListener(STATUS_REGION_UPDATED_EVENT, onExternalWrite);
-    }, [session.id, showStatusRegionDialog]);
+    }, [session.id, session.isGroup, showStatusRegionDialog]);
     const openStatusRegionDialog = () => {
         setDraftContract(statusRegion.contract || STATUS_REGION_STARTER_CONTRACT);
         setDraftRender(statusRegion.renderHtml || STATUS_REGION_STARTER_RENDER);
@@ -388,7 +434,8 @@ export function ChatSettingsPanel({
         setPreviewHtml("");
         setShowStatusRegionDialog(true);
     };
-    const [visionImagePromptLimit, setVisionImagePromptLimit] = useState(() => normalizeVisionImagePromptLimit(session.visionImagePromptLimit));
+    const [visionImagePromptLimit, setVisionImagePromptLimit] = useState(() => resolveVisionImagePromptLimit(session));
+    const [visionLimitUsesGlobal, setVisionLimitUsesGlobal] = useState(session.visionImagePromptLimitUsesGlobal !== false);
     const [bilingualTranslationEnabled, setBilingualTranslationEnabled] = useState(session.bilingualTranslationEnabled !== false);
     const [offlineSummaryRetry, setOfflineSummaryRetry] = useState(session.offlineSummaryRetry !== false);
     const [collapseBilingualTranslation, setCollapseBilingualTranslation] = useState(session.collapseBilingualTranslation !== false);
@@ -417,6 +464,10 @@ export function ChatSettingsPanel({
     const [editingAlias, setEditingAlias] = useState(false);
     const [editingBilingualPrompt, setEditingBilingualPrompt] = useState(false);
     const [editingCSS, setEditingCSS] = useState(false);
+    // Tapback 候选（来自 Y2K）：快捷回应栏，存在本机，可换成手机自带 emoji
+    const [editingTapbacks, setEditingTapbacks] = useState(false);
+    const [tapbackDraft, setTapbackDraft] = useState<string[]>(() => loadIMessageTapbacks().map(item => item.glyph));;
+    const [tapbackError, setTapbackError] = useState("");
     const [showScreenEffects, setShowScreenEffects] = useState(false);
     const [showSearch, setShowSearch] = useState(false);
     // TA 的电脑：翻看角色云端电脑（连接了角色电脑才显示入口）
@@ -428,6 +479,13 @@ export function ChatSettingsPanel({
     const [searchResults, setSearchResults] = useState<ChatMessage[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const searchRunRef = useRef(0);
+    const chatRecordImportRef = useRef<HTMLInputElement | null>(null);
+    const [chatTransferBusy, setChatTransferBusy] = useState(false);
+    const [chatTransferStatus, setChatTransferStatus] = useState<{ success: boolean; message: string } | null>(null);
+    const [showAvatarDialog, setShowAvatarDialog] = useState(false);
+    const [, setAvatarRevision] = useState(0);
+    const ownAvatarInputRef = useRef<HTMLInputElement | null>(null);
+    const characterAvatarInputRef = useRef<HTMLInputElement | null>(null);
 
     const loadSearchHistoryWindow = (count = CHAT_INITIAL_VISIBLE_MESSAGE_COUNT) => {
         const visibleMessages = loadChatMessages(session.id).filter(isSearchVisibleMessage);
@@ -515,16 +573,115 @@ export function ChatSettingsPanel({
 
     const characters = loadCharacters();
     const character = characters.find(c => c.id === session.contactId);
+    const effectiveCharacterAvatar = resolveChatCharacterAvatar(character);
+    const characterChatAvatarOnly = character?.chatAvatarEnabled === true;
 
     const characterName = session.isGroup
         ? (groupName || session.groupName || "群聊")
         : (alias || character?.name || `User_${session.contactId.slice(-4)}`);
 
+    const exportChatRecords = async () => {
+        if (chatTransferBusy) return;
+        setChatTransferBusy(true);
+        setChatTransferStatus(null);
+        try {
+            const blob = await createChatRecordExport(session, characterName);
+            const safeName = characterName.replace(/[\\/:*?"<>|]+/g, "-").slice(0, 40) || "聊天";
+            await downloadFile(blob, `Float-${safeName}-聊天记录.json`);
+            setChatTransferStatus({ success: true, message: `已导出 ${loadChatMessages(session.id).length} 条消息。` });
+        } catch (error) {
+            setChatTransferStatus({ success: false, message: error instanceof Error ? error.message : "导出失败" });
+        } finally {
+            setChatTransferBusy(false);
+        }
+    };
+
+    const importChatRecords = async (file: File) => {
+        if (chatTransferBusy) return;
+        setChatTransferBusy(true);
+        setChatTransferStatus(null);
+        try {
+            const result = await importChatRecordFile(file, session);
+            setChatTransferStatus({
+                success: true,
+                message: `已导入 ${result.inserted} 条消息，恢复 ${result.mediaRestored} 个媒体文件${result.skipped ? `，跳过 ${result.skipped} 条重复或无效记录` : ""}。`,
+            });
+        } catch (error) {
+            setChatTransferStatus({ success: false, message: error instanceof Error ? error.message : "导入失败" });
+        } finally {
+            setChatTransferBusy(false);
+            if (chatRecordImportRef.current) chatRecordImportRef.current.value = "";
+        }
+    };
+
     // Group members
     const groupChars = session.isGroup
         ? (session.participantIds || []).map(id => characters.find(c => c.id === id)).filter(Boolean)
         : [];
-    const userIdentity = resolveUserIdentity(undefined, session.isGroup ? "group_chat" : "chat");
+    const userIdentity = session.isGroup
+        ? resolveUserIdentity(undefined, "group_chat")
+        : resolveChatAccountUserIdentity(session.chatAccountId, session.contactId, "chat");
+    const effectiveUserAvatar = resolveChatUserAvatar(session, userIdentity?.avatarUrl);
+    const [notifyAvatarChange, setNotifyAvatarChange] = useState(session.notifyCharacterOnUserAvatarChange !== false);
+
+    const updateOwnAvatar = async (file: File) => {
+        const avatarUrl = await fileToAvatarDataUrl(file);
+        updateSession({ userAvatarOverride: avatarUrl });
+        if (notifyAvatarChange) {
+            const occurredAt = new Date();
+            const eventTime = occurredAt.toLocaleString("zh-CN", { hour12: false });
+            const userLabel = userIdentity?.name || "用户";
+            pushChatMessage({
+                sessionId: session.id,
+                role: "system",
+                mediaType: "system_instruction",
+                mediaData: { compactSystemInstruction: true, shortTermMemoryEvent: true },
+                content: `${userLabel}更换了头像\n<hidden-system>私聊头像更新：时间：${eventTime}；${userLabel}更换了当前私聊头像，并希望${character?.name || characterName}对此做出反应。这是需要保留的近期私聊事件。</hidden-system>`,
+            });
+            window.setTimeout(() => {
+                window.dispatchEvent(new CustomEvent(CHAT_REQUEST_REPLY_EVENT, { detail: { sessionId: session.id } }));
+            }, 0);
+        }
+        setAvatarRevision(value => value + 1);
+    };
+
+    const updateCharacterAvatar = async (file: File) => {
+        const avatar = await fileToAvatarDataUrl(file);
+        const latest = loadCharacters();
+        saveCharacters(latest.map(item => item.id === session.contactId
+            ? { ...item, chatAvatar: avatar, chatAvatarEnabled: true }
+            : item));
+        setAvatarRevision(value => value + 1);
+    };
+
+    const setCharacterChatAvatarOnly = (enabled: boolean) => {
+        const latest = loadCharacters();
+        saveCharacters(latest.map(item => item.id === session.contactId
+            ? { ...item, chatAvatarEnabled: enabled }
+            : item));
+        setAvatarRevision(value => value + 1);
+    };
+
+    const clearCharacterChatAvatar = () => {
+        const latest = loadCharacters();
+        saveCharacters(latest.map(item => item.id === session.contactId
+            ? { ...item, chatAvatar: null, chatAvatarEnabled: false }
+            : item));
+        setAvatarRevision(value => value + 1);
+    };
+
+    const handleAvatarInput = async (event: React.ChangeEvent<HTMLInputElement>, action: "own" | "character") => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        if (!file) return;
+        try {
+            if (action === "own") await updateOwnAvatar(file);
+            else await updateCharacterAvatar(file);
+        } catch (error) {
+            console.error("Failed to update avatar", error);
+            alert("头像图片处理失败，请换一张图片重试");
+        }
+    };
 
     // ── Group member management ──
     const [, setRosterVersion] = useState(0); // bump to re-render after admin actions
@@ -545,13 +702,13 @@ export function ChatSettingsPanel({
             ...(session.isSpectator ? [] : [{
                 key: GROUP_SELF_KEY,
                 name: `${userName}（我）`,
-                avatar: userIdentity?.avatarUrl || undefined,
+                avatar: effectiveUserAvatar || undefined,
                 muteMs: getGroupMuteRemainingMs(session, GROUP_SELF_KEY),
             }]),
             ...groupChars.map(c => ({
                 key: c!.id,
                 name: c!.name,
-                avatar: c!.avatar || undefined,
+                avatar: resolveChatCharacterAvatar(c!) || undefined,
                 muteMs: getGroupMuteRemainingMs(session, c!.id),
             })),
         ]
@@ -631,6 +788,95 @@ export function ChatSettingsPanel({
         }
     };
 
+    const requestCharacterRemark = async () => {
+        if (refreshingCharacterRemark || session.isGroup) return;
+        setRefreshingCharacterRemark(true);
+        try {
+            const charLabel = character?.name || characterName;
+            const userLabel = userIdentity?.name || "用户";
+            const slot = resolveBinding(loadBindingConfig(), session.contactId, "chat");
+            const config = loadApiConfigs().find(item => item.id === slot.apiConfigId);
+            if (!config) throw new Error(`请先给${charLabel}绑定聊天 API`);
+
+            const presets = loadPresets();
+            const preset = (slot.presetId ? presets.find(item => item.id === slot.presetId) : null)
+                ?? presets.find(item => item.builtIn)
+                ?? null;
+            const recentMessages = loadChatMessages(session.id)
+                .filter(msg => !msg.isRetracted && (msg.role === "user" || msg.role === "assistant"))
+                .slice(-30);
+            const historyMessages: Parameters<typeof sendLLMRequest>[2] = recentMessages.map(msg => ({
+                role: msg.role === "user" ? "user" : "assistant",
+                content: msg.content?.trim() || getChatMessagePreview(msg),
+            }));
+            const promptMessages: Parameters<typeof sendLLMRequest>[2] = [
+                {
+                    role: "system",
+                    content: `你是${charLabel}。\n\n【角色人设】\n${character?.persona?.trim() || "未填写"}`,
+                },
+                ...historyMessages,
+                {
+                    role: "user",
+                    content: `请结合你的人设、以上最近30条聊天记录和当前关系，给${userLabel}设置一个不超过20字的私聊备注。只输出备注内容，不要解释，不要模拟聊天，不要输出标签。`,
+                },
+            ];
+            const rawRemark = await sendLLMRequest(
+                config,
+                preset,
+                promptMessages,
+                [],
+                { characterName: charLabel, userName: userLabel },
+                { skipOutputRegex: true, appId: "chat-remark", debugSessionId: session.id },
+            );
+            const unwrappedRemark = rawRemark
+                .trim()
+                .replace(/^\[给用户备注[:：]\s*([\s\S]*?)\]$/, "$1")
+                .replace(/^[“\"']|[”\"']$/g, "")
+                .split(/\r?\n/, 1)[0]
+                .trim();
+            const nextRemark = Array.from(unwrappedRemark).slice(0, 20).join("");
+            if (!nextRemark) throw new Error("AI 没有生成有效备注，请重试");
+
+            const updatedAt = new Date().toISOString();
+            updateSession({
+                characterRemarkForUser: nextRemark,
+                characterRemarkForUserUpdatedAt: updatedAt,
+            });
+            setCharacterRemarkForUser(nextRemark);
+        } catch (error) {
+            alert(error instanceof Error ? error.message : "生成备注失败，请重试");
+        } finally {
+            setRefreshingCharacterRemark(false);
+        }
+    };
+
+    // 仿真拉黑：写成明确的私聊系统事件，直接进入该角色的短期记忆。
+    // 只做本地消息落库，不额外请求 AI。
+    const handleToggleBlacklist = (blocked: boolean) => {
+        setIsBlacklisted(blocked);
+        updateSession({ isBlacklisted: blocked });
+
+        const charLabel = character?.name || characterName;
+        const userLabel = userIdentity?.name || "用户";
+        const occurredAt = new Date();
+        const padTimePart = (value: number) => String(value).padStart(2, "0");
+        const occurredAtText = `${occurredAt.getFullYear()}-${padTimePart(occurredAt.getMonth() + 1)}-${padTimePart(occurredAt.getDate())} ${padTimePart(occurredAt.getHours())}:${padTimePart(occurredAt.getMinutes())}:${padTimePart(occurredAt.getSeconds())}`;
+        const eventContent = blocked
+            ? `私聊：时间：${occurredAtText}；${userLabel}把${charLabel}私聊拉黑了，${charLabel}发出的消息会被拒收`
+            : `私聊：时间：${occurredAtText}；${userLabel}解除了对${charLabel}的私聊拉黑，${charLabel}发出的消息恢复正常接收`;
+
+        pushChatMessage({
+            sessionId: session.id,
+            role: "system",
+            content: eventContent,
+            mediaData: {
+                blacklistEvent: blocked ? "block" : "unblock",
+                blacklistCharacterName: charLabel,
+                blacklistUserName: userLabel,
+            },
+        });
+    };
+
     const handleClearHistory = () => {
         clearChatSessionMessages(session.id);
         setShowConfirmClear(false);
@@ -659,7 +905,8 @@ export function ChatSettingsPanel({
     const updateVisionImagePromptLimit = (value: unknown) => {
         const next = normalizeVisionImagePromptLimit(value);
         setVisionImagePromptLimit(next);
-        updateSession({ visionImagePromptLimit: next });
+        setVisionLimitUsesGlobal(false);
+        updateSession({ visionImagePromptLimit: next, visionImagePromptLimitUsesGlobal: false });
     };
 
     const openBilingualPromptEditor = () => {
@@ -764,8 +1011,8 @@ export function ChatSettingsPanel({
                     <div className="chat-msg-wrapper" data-role={resultRole}>
                         {resultRole === "assistant" && (
                             <div className="chat-msg-avatar w-[40px] h-[40px] rounded-[20px] bg-[var(--c-page-body-bg)] shrink-0 flex items-center justify-center overflow-hidden">
-                                {senderChar?.avatar ? (
-                                    <img src={senderChar.avatar} className="w-full h-full object-cover" alt="" />
+                                {resolveChatCharacterAvatar(senderChar) ? (
+                                    <img src={resolveChatCharacterAvatar(senderChar)} className="w-full h-full object-cover" alt="" />
                                 ) : (
                                     <ChatFallbackAvatar />
                                 )}
@@ -809,8 +1056,8 @@ export function ChatSettingsPanel({
                         </div>
                         {resultRole === "user" && (
                             <div className="chat-msg-avatar w-[40px] h-[40px] rounded-[20px] bg-[var(--c-page-body-bg)] shrink-0 flex items-center justify-center overflow-hidden">
-                                {userIdentity?.avatarUrl ? (
-                                    <img src={userIdentity.avatarUrl} alt="Me" className="w-full h-full object-cover rounded-[20px]" />
+                                {effectiveUserAvatar ? (
+                                    <img src={effectiveUserAvatar} alt="Me" className="w-full h-full object-cover rounded-[20px]" />
                                 ) : (
                                     <ChatFallbackAvatar />
                                 )}
@@ -826,7 +1073,7 @@ export function ChatSettingsPanel({
     const displayedSearchMessages = searchMode ? searchResults : searchHistoryMessages;
 
     return (
-        <PageShell title="聊天信息" onBack={onClose} className="absolute inset-0 z-[100]">
+        <PageShell title="聊天信息" onBack={onClose} className="absolute inset-0 z-[100] imessage-settings-page">
             <div className="page-menu chat-info-menu">
                 {/* Basic Info & Search */}
                 <div className="menu-group">
@@ -838,6 +1085,60 @@ export function ChatSettingsPanel({
                             <ChevronRight size={16} />
                         </div>
                     </button>
+                    {!session.isGroup && (
+                        <div className="menu-item">
+                            <ChatInfoIcon icon={MessageSquare} color={CONTENT_APP_ACCENTS.chat} />
+                            <div className="menu-label-group">
+                                <span className="menu-label">更换备注后希望TA做出反应</span>
+                                <span className="menu-desc">默认关闭；开启后写入短期上下文并立即调角色 API</span>
+                            </div>
+                            <Toggle checked={notifyAliasChange} onChange={checked => {
+                                setNotifyAliasChange(checked);
+                                updateSession({ notifyCharacterOnAliasChange: checked });
+                            }} />
+                        </div>
+                    )}
+                    {!session.isGroup && (
+                        <button className="menu-item" onClick={requestCharacterRemark} disabled={refreshingCharacterRemark}>
+                            <ChatInfoIcon icon={UserPlus} color={BINDING_ACCENTS.preset} />
+                            <div className="menu-label-group">
+                                <span className="menu-label">TA 给你的备注</span>
+                                <span className="menu-desc">由角色根据人设与最近聊天决定，不可手动修改</span>
+                            </div>
+                            <div className="menu-right gap-2">
+                                <span className="menu-desc mr-1">{characterRemarkForUser || "未设置"}</span>
+                                <RefreshCw size={15} className={refreshingCharacterRemark ? "animate-spin" : ""} />
+                            </div>
+                        </button>
+                    )}
+                    {!session.isGroup && (
+                        <button className="menu-item" onClick={() => setShowAvatarDialog(true)}>
+                            <ChatInfoIcon icon={Camera} color={BINDING_ACCENTS.preset} />
+                            <div className="menu-label-group">
+                                <span className="menu-label">设置头像</span>
+                                <span className="menu-desc">我的头像仅当前私聊；对方头像可仅用于聊天 APP</span>
+                            </div>
+                            <div className="menu-right gap-1.5">
+                                <div className="h-7 w-7 overflow-hidden rounded-full bg-[var(--c-input)] ring-2 ring-[var(--c-card-bg)]">
+                                    {effectiveUserAvatar ? <img src={effectiveUserAvatar} className="h-full w-full object-cover" alt="我的头像" /> : <ChatFallbackAvatar />}
+                                </div>
+                                <div className="-ml-3 h-7 w-7 overflow-hidden rounded-full bg-[var(--c-input)] ring-2 ring-[var(--c-card-bg)]">
+                                    {effectiveCharacterAvatar ? <img src={effectiveCharacterAvatar} className="h-full w-full object-cover" alt="对方头像" /> : <ChatFallbackAvatar />}
+                                </div>
+                                <ChevronRight size={16} />
+                            </div>
+                        </button>
+                    )}
+                    {!session.isGroup && (
+                        <div className="menu-item">
+                            <ChatInfoIcon icon={Camera} color={CONTENT_APP_ACCENTS.chat} />
+                            <div className="menu-label-group">
+                                <span className="menu-label">对方头像仅用于聊天 APP</span>
+                                <span className="menu-desc">开启后不会修改角色卡、剧情及其他 APP 的头像</span>
+                            </div>
+                            <Toggle checked={characterChatAvatarOnly} onChange={setCharacterChatAvatarOnly} />
+                        </div>
+                    )}
                     <button className="menu-item" onClick={openSearchPanel}>
                         <ChatInfoIcon icon={Search} color={BINDING_ACCENTS.api} />
                         <div className="menu-label-group"><span className="menu-label">查找聊天记录</span></div>
@@ -852,6 +1153,38 @@ export function ChatSettingsPanel({
                             </div>
                             <div className="menu-right"><ChevronRight size={16} /></div>
                         </button>
+                    )}
+                </div>
+
+                <div className="menu-group">
+                    <button className="menu-item" onClick={exportChatRecords} disabled={chatTransferBusy}>
+                        <ChatInfoIcon icon={Download} color={BINDING_ACCENTS.preset} />
+                        <div className="menu-label-group">
+                            <span className="menu-label">导出聊天记录</span>
+                            <span className="menu-desc">导出当前会话消息及本地媒体</span>
+                        </div>
+                    </button>
+                    <button className="menu-item" onClick={() => chatRecordImportRef.current?.click()} disabled={chatTransferBusy}>
+                        <ChatInfoIcon icon={Upload} color={BINDING_ACCENTS.worldBook} />
+                        <div className="menu-label-group">
+                            <span className="menu-label">导入聊天记录</span>
+                            <span className="menu-desc">合并到当前会话，自动跳过重复消息</span>
+                        </div>
+                    </button>
+                    <input
+                        ref={chatRecordImportRef}
+                        type="file"
+                        accept="application/json,.json"
+                        className="hidden"
+                        onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (file) void importChatRecords(file);
+                        }}
+                    />
+                    {chatTransferStatus && (
+                        <div className={`px-4 py-3 text-sm ${chatTransferStatus.success ? "text-emerald-700" : "text-red-600"}`}>
+                            {chatTransferStatus.message}
+                        </div>
                     )}
                 </div>
 
@@ -943,6 +1276,7 @@ export function ChatSettingsPanel({
                                 <span className="menu-desc">{statusPresetSupported ? "状态值与内心的默认输出（关闭后整块从提示词移除）" : "当前预设未声明状态区宏，仅默认预设支持"}</span>
                             </div>
                             <div className="menu-right">
+                                {statusUsesGlobal && <span className="menu-desc mr-2">跟随全局</span>}
                                 <Toggle
                                     checked={statusRegion.mode === "native"}
                                     disabled={!statusPresetSupported}
@@ -982,6 +1316,13 @@ export function ChatSettingsPanel({
                                 </div>
                             </div>
                         )}
+                        {statusPresetSupported && !session.isGroup && !statusUsesGlobal && (
+                            <button className="menu-item" onClick={() => { clearStatusRegionConfig(session.id); setStatusRegion(getStatusRegionConfig(session.id, true)); setStatusUsesGlobal(true); }}>
+                                <ChatInfoIcon icon={Sparkles} color={BINDING_ACCENTS.preset} />
+                                <div className="menu-label-group"><span className="menu-label">状态栏恢复全局</span><span className="menu-desc">删除当前会话覆盖设置</span></div>
+                                <div className="menu-right"><ChevronRight size={16} /></div>
+                            </button>
+                        )}
                     </div>
                 )}
 
@@ -994,11 +1335,24 @@ export function ChatSettingsPanel({
                             <Toggle checked={isPinned} onChange={c => { setIsPinned(c); updateSession({ isPinned: c }); }} />
                         </div>
                     </div>
+                    {/* 仿真拉黑：仅私聊提供 */}
+                    {!session.isGroup && (
+                        <div className="menu-item">
+                            <ChatInfoIcon icon={Ban} color="#e5484d" />
+                            <div className="menu-label-group">
+                                <span className="menu-label">拉黑 TA</span>
+                                <span className="menu-desc">拉黑后 TA 会知道被你拉黑并做出反应；TA 发的消息会被你拒收（TA 的消息旁显示红色感叹号），你的消息不受影响</span>
+                            </div>
+                            <div className="menu-right">
+                                <Toggle checked={isBlacklisted} onChange={handleToggleBlacklist} />
+                            </div>
+                        </div>
+                    )}
                     <div className="menu-item">
                         <ChatInfoIcon icon={ImageIcon} color={BINDING_ACCENTS.api} />
                         <div className="menu-label-group">
                             <span className="menu-label">传入最近图片数</span>
-                            <span className="menu-desc">进入模型视觉上下文的最近图片数量，0 表示不传图片内容</span>
+                            <span className="menu-desc">进入模型视觉上下文的最近图片数量；当前{visionLimitUsesGlobal ? "跟随全局" : "由本会话覆盖全局"}</span>
                         </div>
                         <div className="menu-right gap-2">
                             <button
@@ -1025,6 +1379,14 @@ export function ChatSettingsPanel({
                             >
                                 +
                             </button>
+                            {!visionLimitUsesGlobal && (
+                                <button type="button" className="ui-btn ui-btn-ghost h-8 px-2" onClick={() => {
+                                    const next = normalizeVisionImagePromptLimit(loadChatAppSettings().globalVisionImagePromptLimit);
+                                    setVisionImagePromptLimit(next);
+                                    setVisionLimitUsesGlobal(true);
+                                    updateSession({ visionImagePromptLimitUsesGlobal: true });
+                                }}>全局</button>
+                            )}
                         </div>
                     </div>
                     <>
@@ -1153,17 +1515,40 @@ export function ChatSettingsPanel({
                     </>
                 </div>
 
+                {/* 角色专属提示音：私聊单独设置，优先于全局聊天信息 */}
+                {!session.isGroup && (
+                    <>
+                        <div className="px-4 pt-3 pb-2 ts-12 font-medium text-[var(--c-text-title)] opacity-80">角色专属提示音</div>
+                        <SessionChatSoundsSection session={session} accent={BINDING_ACCENTS.voice} onUpdate={updateSession} />
+                    </>
+                )}
+
                 {/* Backgrounds & UI */}
                 <div className="menu-group">
                     <label className="menu-item">
                         <ChatInfoIcon icon={ImageIcon} color={BINDING_ACCENTS.api} />
                         <div className="menu-label-group"><span className="menu-label">聊天背景</span></div>
                         <div className="menu-right">
-                            {backgroundImage && <><span className="menu-desc mr-1">已设置</span><button className="menu-desc mr-1 text-[var(--c-danger)]" onClick={e => { e.preventDefault(); setBackgroundImage(""); updateSession({ backgroundImage: "" }); }}>清除</button></>}
+                            {backgroundImage ? <><span className="menu-desc mr-1">本会话</span><button className="menu-desc mr-1 text-[var(--c-danger)]" onClick={e => { e.preventDefault(); setBackgroundImage(""); updateSession({ backgroundImage: "" }); }}>恢复全局</button></> : <span className="menu-desc mr-1">跟随全局</span>}
                             <ChevronRight size={16} />
                         </div>
                         <input type="file" accept="image/*" onChange={e => handleImageUpload(e, setBackgroundImage, "backgroundImage")} className="hidden" />
                     </label>
+                    {/* iMessage 美化（来自 Y2K）：气泡颜色 + 玻璃/经典预设，只作用于当前聊天 */}
+                    <BubbleColorSettings session={session} />
+                    <div className="menu-item">
+                        <ChatInfoIcon icon={Sparkles} color={CONTENT_APP_ACCENTS.chat} />
+                        <div className="menu-label-group">
+                            <span className="menu-label">美化预设</span>
+                            <span className="menu-desc">仅应用于当前聊天</span>
+                        </div>
+                        <div className="menu-right">
+                            <BeautyPresetPicker value={beautyPreset} onChange={preset => {
+                                setBeautyPreset(preset);
+                                updateSession({ beautyPreset: preset, glassBubblesEnabled: preset === "glass" });
+                            }} />
+                        </div>
+                    </div>
                     {session.isGroup ? (
                         <>
                             <div className="menu-item" style={{ cursor: "default" }}>
@@ -1173,7 +1558,7 @@ export function ChatSettingsPanel({
                             {groupChars.map(c => c && (
                                 <label key={c.id} className="menu-item" style={{ paddingLeft: 72 }}>
                                     <div className="w-[24px] h-[24px] rounded-full overflow-hidden bg-[var(--c-input)] shrink-0">
-                                        {c.avatar ? <img src={c.avatar} className="w-full h-full object-cover" alt="" /> : <ChatFallbackAvatar />}
+                                        {resolveChatCharacterAvatar(c) ? <img src={resolveChatCharacterAvatar(c)} className="w-full h-full object-cover" alt="" /> : <ChatFallbackAvatar />}
                                     </div>
                                     <div className="menu-label-group"><span className="menu-label">{c.name}</span></div>
                                     <div className="menu-right">
@@ -1185,8 +1570,8 @@ export function ChatSettingsPanel({
                             ))}
                             <label className="menu-item" style={{ paddingLeft: 72 }}>
                                 <div className="w-[24px] h-[24px] rounded-full overflow-hidden bg-[var(--c-input)] shrink-0 flex items-center justify-center">
-                                    {userIdentity?.avatarUrl ? (
-                                        <img src={userIdentity.avatarUrl} className="w-full h-full object-cover" alt="" />
+                                    {effectiveUserAvatar ? (
+                                        <img src={effectiveUserAvatar} className="w-full h-full object-cover" alt="" />
                                     ) : (
                                         <span className="ts-11">{(userIdentity?.name || "我")[0]}</span>
                                     )}
@@ -1224,9 +1609,14 @@ export function ChatSettingsPanel({
                 {/* Advanced */}
                 <div className="menu-group">
                     <KeyboardAutoSendDebounceItem sessionId={session.id} />
+                    <button className="menu-item" onClick={() => { setTapbackDraft(loadIMessageTapbacks().map(item => item.glyph)); setTapbackError(""); setEditingTapbacks(true); }}>
+                        <ChatInfoIcon icon={Smile} color={CONTENT_APP_ACCENTS.chat} />
+                        <div className="menu-label-group"><span className="menu-label">Tapback 候选</span><span className="menu-desc">长按消息后的快捷回应</span></div>
+                        <div className="menu-right"><ChevronRight size={16} /></div>
+                    </button>
                     <button className="menu-item" onClick={() => setEditingCSS(true)}>
                         <ChatInfoIcon icon={Code} color={BINDING_ACCENTS.embedding} />
-                        <div className="menu-label-group"><span className="menu-label">自定义 CSS 样式</span></div>
+                        <div className="menu-label-group"><span className="menu-label">自定义 CSS 样式</span><span className="menu-desc">{customCSS ? "本会话覆盖全局" : "跟随全局聊天室 CSS"}</span></div>
                         <div className="menu-right">
                             {customCSS && <span className="menu-desc mr-1">已设置</span>}
                             <ChevronRight size={16} />
@@ -1364,7 +1754,7 @@ export function ChatSettingsPanel({
                                         onClick={() => performAdminAction("invite", c.id)}
                                     >
                                         <div className="chat-contact-avatar">
-                                            {c.avatar ? <img src={c.avatar} alt="" /> : <ChatFallbackAvatar />}
+                                            {resolveChatCharacterAvatar(c) ? <img src={resolveChatCharacterAvatar(c)} alt="" /> : <ChatFallbackAvatar />}
                                         </div>
                                         <span className="chat-contact-name">{c.name}</span>
                                     </div>
@@ -1393,7 +1783,24 @@ export function ChatSettingsPanel({
                                 if (session.isGroup) {
                                     updateSession({ groupName });
                                 } else {
-                                    updateSession({ alias });
+                                    const previousAliasValue = session.alias?.trim() || "";
+                                    const previousAlias = previousAliasValue || character?.name || "角色";
+                                    const nextAlias = alias.trim();
+                                    updateSession({ alias: nextAlias });
+                                    if (nextAlias !== previousAliasValue && notifyAliasChange) {
+                                        const userLabel = userIdentity?.name || "用户";
+                                        const nextLabel = nextAlias || character?.name || "角色";
+                                        pushChatMessage({
+                                            sessionId: session.id,
+                                            role: "system",
+                                            mediaType: "system_instruction",
+                                            mediaData: { compactSystemInstruction: true, shortTermMemoryEvent: true },
+                                            content: `${userLabel}修改了你的备注\n<hidden-system>私聊：时间：${new Date().toLocaleString("zh-CN", { hour12: false })}；${userLabel}把${character?.name || characterName}在私聊中的备注从“${previousAlias}”改成了“${nextLabel}”。</hidden-system>`,
+                                        });
+                                        window.setTimeout(() => {
+                                            window.dispatchEvent(new CustomEvent(CHAT_REQUEST_REPLY_EVENT, { detail: { sessionId: session.id } }));
+                                        }, 0);
+                                    }
                                 }
                                 setEditingAlias(false);
                             }} className="ui-btn ui-btn-success flex-1">保存</button>
@@ -1541,14 +1948,82 @@ export function ChatSettingsPanel({
                     confirmLabel="删除"
                     cancelLabel="取消"
                     onConfirm={() => {
-                        removeChatContact(session.contactId);
-                        // Fire-and-forget: AI reacts to being deleted
-                        triggerDeleteFriendReaction(session.contactId).catch(() => {});
+                        if (session.chatAccountId) removeChatAltAccountFriend(session.chatAccountId, session.contactId);
+                        else {
+                            removeChatContact(session.contactId);
+                            // Fire-and-forget: AI reacts to being deleted
+                            triggerDeleteFriendReaction(session.contactId).catch(() => {});
+                        }
                         setShowConfirmDelete(false);
                         onDeleteFriend?.();
                     }}
                     onCancel={() => setShowConfirmDelete(false)}
                 />
+            )}
+
+            {/* Sub-page: Tapback 候选（来自 Y2K）：长按消息时弹出的快捷回应 */}
+            {editingTapbacks && (
+                <div style={{ position: "absolute", inset: 0, zIndex: 9999, background: "var(--settings-bg, #f2f2f7)" }}>
+                    <PageShell title="Tapback 候选" onBack={() => setEditingTapbacks(false)}>
+                        <div className="theme-section-page">
+                            <p className="ts-13 text-[var(--c-text)] mb-4 leading-relaxed">
+                                这里的 6 个候选用于长按消息后的快捷回应。角色可以按语境使用候选以外的 emoji。直接输入手机自带 emoji 即可，显示时会使用当前设备的原生表情字体。
+                            </p>
+                            <div className="rounded-[28px] bg-[var(--c-input)] px-4 py-3 flex items-center justify-between gap-2 mb-4">
+                                {tapbackDraft.map((glyph, index) => (
+                                    <span key={index} className="text-[26px] leading-none" aria-hidden="true">{glyph || "·"}</span>
+                                ))}
+                            </div>
+                            <div className="grid grid-cols-3 gap-3">
+                                {tapbackDraft.map((glyph, index) => (
+                                    <label key={index} className="flex flex-col gap-1.5">
+                                        <span className="ts-11 text-[var(--c-text-secondary)]">候选 {index + 1}</span>
+                                        <input
+                                            type="text"
+                                            value={glyph}
+                                            onChange={event => {
+                                                const next = [...tapbackDraft];
+                                                next[index] = event.target.value.slice(0, 32);
+                                                setTapbackDraft(next);
+                                                setTapbackError("");
+                                            }}
+                                            className="ui-input text-center text-[25px]"
+                                            aria-label={`Tapback 候选 ${index + 1}`}
+                                        />
+                                    </label>
+                                ))}
+                            </div>
+                            {tapbackError && <p className="ts-12 text-[var(--c-danger)] mt-3">{tapbackError}</p>}
+                            <div className="flex gap-3 mt-5">
+                                <button
+                                    type="button"
+                                    className="ui-btn ui-btn-outline flex-1"
+                                    onClick={() => {
+                                        setTapbackDraft(IMESSAGE_TAPBACKS.map(item => item.glyph));
+                                        setTapbackError("");
+                                    }}
+                                >
+                                    恢复默认
+                                </button>
+                                <button
+                                    type="button"
+                                    className="ui-btn ui-btn-soft-action flex-1"
+                                    onClick={() => {
+                                        try {
+                                            saveIMessageTapbacks(tapbackDraft);
+                                            setEditingTapbacks(false);
+                                            setTapbackError("");
+                                        } catch (error) {
+                                            setTapbackError(error instanceof Error ? error.message : "保存失败");
+                                        }
+                                    }}
+                                >
+                                    保存
+                                </button>
+                            </div>
+                        </div>
+                    </PageShell>
+                </div>
             )}
 
             {/* Sub-page: Custom CSS */}
@@ -1654,6 +2129,64 @@ export function ChatSettingsPanel({
                         </div>
                     </PageShell>
                 </div>
+                </div>
+            )}
+            {showAvatarDialog && !session.isGroup && (
+                <div className="fixed inset-0 z-[10035] flex items-end justify-center bg-black/45 sm:items-center" role="dialog" aria-modal="true" aria-label="设置头像" onClick={() => setShowAvatarDialog(false)}>
+                    <div className="w-full max-w-md overflow-hidden rounded-t-[24px] bg-[var(--c-page-body-bg)] px-4 pb-[max(20px,env(safe-area-inset-bottom))] pt-4 text-[var(--c-text)] shadow-2xl sm:rounded-[24px]" onClick={event => event.stopPropagation()}>
+                        <div className="mb-4 flex items-center justify-between px-1">
+                            <div>
+                                <div className="ts-17 font-semibold text-[var(--c-text-title)]">设置头像</div>
+                                <div className="mt-1 ts-12 opacity-55">选择要更换的头像</div>
+                            </div>
+                            <button type="button" className="modal-header-btn modal-header-btn-muted" aria-label="关闭" onClick={() => setShowAvatarDialog(false)}><X size={18} /></button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <button type="button" className="rounded-2xl bg-[var(--c-card-bg)] p-4 text-left shadow-sm" onClick={() => ownAvatarInputRef.current?.click()}>
+                                <div className="mx-auto h-16 w-16 overflow-hidden rounded-full bg-[var(--c-input)]">
+                                    {effectiveUserAvatar ? <img src={effectiveUserAvatar} className="h-full w-full object-cover" alt="我的头像" /> : <ChatFallbackAvatar />}
+                                </div>
+                                <div className="mt-3 text-center ts-14 font-medium text-[var(--c-text-title)]">我的头像</div>
+                                <div className="mt-1 text-center ts-11 opacity-50">仅当前私聊</div>
+                            </button>
+                            <button type="button" className="rounded-2xl bg-[var(--c-card-bg)] p-4 text-left shadow-sm" onClick={() => characterAvatarInputRef.current?.click()}>
+                                <div className="mx-auto h-16 w-16 overflow-hidden rounded-full bg-[var(--c-input)]">
+                                    {effectiveCharacterAvatar ? <img src={effectiveCharacterAvatar} className="h-full w-full object-cover" alt="对方头像" /> : <ChatFallbackAvatar />}
+                                </div>
+                                <div className="mt-3 text-center ts-14 font-medium text-[var(--c-text-title)]">{character?.name || "对方"}的头像</div>
+                                <div className="mt-1 text-center ts-11 opacity-50">仅聊天 APP</div>
+                            </button>
+                        </div>
+
+                        <div className="mt-3 flex items-center gap-2 rounded-xl bg-[var(--c-card-bg)] px-3 py-2">
+                            <div className="min-w-0 flex-1">
+                                <div className="ts-12 font-medium text-[var(--c-text-title)]">对方头像仅用于聊天 APP</div>
+                                <div className="mt-0.5 ts-10 opacity-55">关闭后恢复显示角色卡头像；已选专用头像会保留</div>
+                            </div>
+                            <Toggle checked={characterChatAvatarOnly} onChange={setCharacterChatAvatarOnly} />
+                        </div>
+                        {character?.chatAvatar && (
+                            <button type="button" className="mt-2 w-full rounded-xl py-2 ts-12 text-[var(--c-danger)]" onClick={clearCharacterChatAvatar}>清除对方聊天专用头像</button>
+                        )}
+
+                        {session.userAvatarOverride && (
+                            <button type="button" className="mt-3 w-full rounded-xl py-2 ts-12 text-[var(--c-danger)]" onClick={() => { updateSession({ userAvatarOverride: "" }); setAvatarRevision(value => value + 1); }}>我的头像恢复全局设置</button>
+                        )}
+                        {session.characterAvatarOverride && (
+                            <button type="button" className="mt-1 w-full rounded-xl py-2 ts-12 text-[var(--c-danger)]" onClick={() => { updateSession({ characterAvatarOverride: "" }); setAvatarRevision(value => value + 1); }}>对方头像恢复角色资料设置</button>
+                        )}
+                        <div className="mt-2 flex items-center gap-2 rounded-xl bg-[var(--c-card-bg)] px-3 py-2">
+                            <div className="min-w-0 flex-1">
+                                <div className="ts-12 font-medium text-[var(--c-text-title)]">我更换头像后希望对方做出反应</div>
+                                <div className="mt-0.5 ts-10 opacity-55">开启后写入短期记忆并立即通知对方</div>
+                            </div>
+                            <Toggle checked={notifyAvatarChange} onChange={checked => { setNotifyAvatarChange(checked); updateSession({ notifyCharacterOnUserAvatarChange: checked }); }} />
+                        </div>
+                        <p className="mt-2 px-1 ts-10 leading-4 opacity-50">聊天中发送图片并暗示对方换头像时，角色仍会按人设自行决定。</p>
+                        <input ref={ownAvatarInputRef} type="file" accept="image/*" className="hidden" onChange={event => void handleAvatarInput(event, "own")} />
+                        <input ref={characterAvatarInputRef} type="file" accept="image/*" className="hidden" onChange={event => void handleAvatarInput(event, "character")} />
+                    </div>
                 </div>
             )}
             {showStatusRegionDialog && (

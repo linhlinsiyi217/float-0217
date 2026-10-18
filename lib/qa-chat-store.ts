@@ -607,7 +607,7 @@ export async function editAndResendQaMessage(
     // 扫描被截断的消息中已 applied 的 GitHub Commit，并自动尝试回退
     const discardedMessages = session.messages.slice(messageIndex);
     for (const msg of discardedMessages) {
-        if (msg.pendingCommit?.status === "applied" && msg.pendingCommit.result?.commitSha) {
+        if (msg.pendingCommit?.status === "applied" && msg.pendingCommit.result?.sha) {
             try {
                 // await 顺序执行，防止并发撤销报错，并保留记录不自动覆盖
                 await revertQaCommit(loadQaGithubConfig()!, msg.pendingCommit.result);

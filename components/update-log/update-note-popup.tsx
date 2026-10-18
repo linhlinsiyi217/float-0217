@@ -8,6 +8,7 @@ import {
   CATEGORY_LABEL,
   CATEGORY_ORDER,
   CATEGORY_TINT,
+  normalizeUpdateCategory,
   popupEntries,
   type Release,
   type UpdateEntry,
@@ -114,7 +115,7 @@ export function UpdateNotePopup({ appName, release, onConfirm, onOpenLog, onHide
             {showAll && (
               <div className="updn-detail">
                 {CATEGORY_ORDER.map((category) => {
-                  const entries = release.entries.filter((entry) => entry.category === category);
+                  const entries = release.entries.filter((entry) => normalizeUpdateCategory(entry.category) === category);
                   if (entries.length === 0) return null;
                   return (
                     <div key={category} className="updn-detail-group">

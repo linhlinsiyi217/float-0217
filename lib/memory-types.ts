@@ -13,6 +13,8 @@ export type MemoryEntry = {
     createdAt: string;
     updatedAt: string;
     sourceMessageIds?: string[];
+    /** 由聊天小号的内容总结出的记忆；缺省=主号（旧数据都按主号处理）。 */
+    chatAccountId?: string;
     metadata?: Record<string, unknown>;
 };
 

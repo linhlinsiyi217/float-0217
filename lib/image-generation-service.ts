@@ -1,9 +1,12 @@
 import type { ImageGenerationSettings, NovelAiPreset } from "./settings-types";
-import { loadImageGenerationSettings, DEFAULT_NOVELAI_PRESET } from "./settings-storage";
+import { loadBindingConfig, loadImageGenerationSettings, loadUserIdentities, resolveBinding, DEFAULT_NOVELAI_PRESET } from "./settings-storage";
+import { applyImageGenerationBinding } from "./image-generation-binding";
+import { loadChatScope } from "./chat-scope-storage";
 import JSZip from "jszip";
 import { getChatImageFromIndexedDB } from "./chat-asset-storage";
 import { storeMediaBlob } from "./media-cache-storage";
 import { throwIfAborted } from "./abort-utils";
+import { descriptionNeedsUserReference } from "./image-reference-selection";
 import {
   NOVELAI_COMMON_MODELS,
   getNovelAiResolution,
@@ -94,8 +97,11 @@ function loadDataUrlImage(dataUrl: string): Promise<HTMLImageElement> {
   });
 }
 
-async function normalizeReferenceImageForEdit(dataUrl: string): Promise<string> {
-  if (dataUrlMimeType(dataUrl) === "image/png") return dataUrl;
+async function normalizeReferenceImageForEdit(
+  dataUrl: string,
+  crop?: { x: number; y: number; size: number },
+): Promise<string> {
+  if (!crop && dataUrlMimeType(dataUrl) === "image/png") return dataUrl;
   if (typeof document === "undefined") return dataUrl;
 
   try {
@@ -105,15 +111,85 @@ async function normalizeReferenceImageForEdit(dataUrl: string): Promise<string> 
     if (!width || !height) return dataUrl;
 
     const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
+    const normalizedSize = crop ? Math.max(0.18, Math.min(1, crop.size)) : 1;
+    const sourceSize = Math.max(1, Math.round(Math.min(width, height) * normalizedSize));
+    const sourceX = crop
+      ? Math.round(Math.max(0, Math.min(width - sourceSize, crop.x * width)))
+      : 0;
+    const sourceY = crop
+      ? Math.round(Math.max(0, Math.min(height - sourceSize, crop.y * height)))
+      : 0;
+    canvas.width = crop ? sourceSize : width;
+    canvas.height = crop ? sourceSize : height;
     const context = canvas.getContext("2d");
     if (!context) return dataUrl;
-    context.drawImage(image, 0, 0, width, height);
+    if (crop) {
+      context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, sourceSize, sourceSize);
+    } else {
+      context.drawImage(image, 0, 0, width, height);
+    }
     return canvas.toDataURL("image/png");
   } catch {
     return dataUrl;
   }
+}
+
+async function combineReferenceImagesForEdit(
+  references: Array<{ dataUrl: string; label: string }>,
+): Promise<string | null> {
+  if (references.length === 0) return null;
+  if (references.length === 1 || typeof document === "undefined") return references[0].dataUrl;
+  try {
+    const items = await Promise.all(references.slice(0, 6).map(async reference => ({
+      ...reference,
+      image: await loadDataUrlImage(reference.dataUrl),
+    })));
+    const columns = Math.min(2, items.length);
+    const rows = Math.ceil(items.length / columns);
+    const cell = 512;
+    const labelHeight = 46;
+    const gap = 12;
+    const canvas = document.createElement("canvas");
+    canvas.width = columns * cell + (columns + 1) * gap;
+    canvas.height = rows * (cell + labelHeight) + (rows + 1) * gap;
+    const context = canvas.getContext("2d");
+    if (!context) return references[0].dataUrl;
+    context.fillStyle = "#f5f5f5";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    items.forEach((item, index) => {
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      const x = gap + column * cell;
+      const y = gap + row * (cell + labelHeight);
+      context.fillStyle = "#ffffff";
+      context.fillRect(x, y, cell, cell + labelHeight);
+      const width = item.image.naturalWidth || item.image.width;
+      const height = item.image.naturalHeight || item.image.height;
+      const scale = Math.min(cell / width, cell / height);
+      const drawWidth = width * scale;
+      const drawHeight = height * scale;
+      context.drawImage(item.image, x + (cell - drawWidth) / 2, y + (cell - drawHeight) / 2, drawWidth, drawHeight);
+      context.fillStyle = "#111111";
+      context.font = "600 24px sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText(item.label, x + cell / 2, y + cell + labelHeight / 2, cell - 24);
+    });
+    return canvas.toDataURL("image/png");
+  } catch {
+    return references[0].dataUrl;
+  }
+}
+
+function resolveGenerationUserIdentityId(characterId?: string, appId?: string): string | null {
+  const scopedIdentityId = appId && ["chat", "moments", "group_chat"].includes(appId)
+    ? loadChatScope().userIdentityId
+    : null;
+  if (scopedIdentityId) return scopedIdentityId;
+  const identities = loadUserIdentities();
+  if (identities.length === 0) return null;
+  const boundId = resolveBinding(loadBindingConfig(), characterId, appId).userIdentityId;
+  return boundId && identities.some(identity => identity.id === boundId) ? boundId : identities[0].id;
 }
 
 function imageExtension(mimeType: string): string {
@@ -727,11 +803,22 @@ export async function fetchNovelAiModels(apiKey: string): Promise<string[]> {
 export async function generateImageFromConfiguredApi(params: {
   description: string;
   characterId?: string;
+  /** 内容所属 APP；用于按“角色 > APP > 全局”解析生图方案。 */
+  appId?: string;
   useReferenceImage?: boolean;
+  /** 强制是否加入角色当前绑定用户的参考图；未传时根据合照/用户照片语义自动判断。 */
+  includeUserReferenceImage?: boolean;
   settings?: ImageGenerationSettings;
   signal?: AbortSignal;
 }): Promise<ImageGenerationResult | null> {
-  const settings = params.settings ?? loadImageGenerationSettings();
+  const storedSettings = params.settings ?? loadImageGenerationSettings();
+  // 显式传入 settings 的配置测试/工具调用保持原样；正常业务调用才读取绑定。
+  const settings = params.settings
+    ? storedSettings
+    : applyImageGenerationBinding(
+        storedSettings,
+        resolveBinding(loadBindingConfig(), params.characterId, params.appId).imageConfigId,
+      );
   if (!settings.enabled) return null;
 
   const description = params.description.trim();
@@ -749,10 +836,23 @@ export async function generateImageFromConfiguredApi(params: {
 
     const positiveParts: string[] = [];
     if (activePreset.positivePrompt?.trim()) positiveParts.push(activePreset.positivePrompt.trim());
+    const novelAiCharacterReference = params.characterId
+      ? settings.characterReferences?.[params.characterId]
+      : undefined;
+    const characterFeaturePrompt = novelAiCharacterReference?.novelAiFeaturePromptEnabled !== false
+      ? novelAiCharacterReference?.featurePrompt?.trim()
+      : "";
+    if (characterFeaturePrompt) positiveParts.push(characterFeaturePrompt);
+    const anchorPrompt = (novelAiCharacterReference?.anchors || [])
+      .filter(anchor => anchor.enabled !== false && anchor.description.trim())
+      .map(anchor => `${anchor.name}: ${anchor.description.trim()}`)
+      .join(", ");
+    if (anchorPrompt) positiveParts.push(anchorPrompt);
     if (description) positiveParts.push(description);
     const fullPrompt = positiveParts.join(", ");
 
-    const data = settings.requestMode === "direct"
+    const novelAiRequestMode = settings.novelai?.requestMode || settings.requestMode;
+    const data = novelAiRequestMode === "direct"
       ? await generateNovelAiDirect({ apiKey: naiApiKey, preset: activePreset, prompt: fullPrompt, signal: params.signal })
       : await generateNovelAiViaServer({ apiKey: naiApiKey, preset: activePreset, prompt: fullPrompt, signal: params.signal });
 
@@ -779,16 +879,59 @@ export async function generateImageFromConfiguredApi(params: {
   const openaiSettings = openaiPreset ? { ...settings, ...openaiPreset } : settings;
   if (!openaiSettings.apiKey.trim() || !openaiSettings.baseUrl.trim() || !openaiSettings.model.trim()) return null;
 
-  const reference = params.characterId ? settings.characterReferences[params.characterId] : undefined;
-  const rawReferenceImageDataUrl = params.useReferenceImage && reference?.assetId
-    ? await getChatImageFromIndexedDB(reference.assetId)
-    : null;
+  const reference = params.characterId ? settings.characterReferences?.[params.characterId] : undefined;
+  // 「非自拍不使用参考图」开关已从生图设置页删除：参考图启用后始终参与生成
+  const shouldUseReference = Boolean(
+    params.useReferenceImage
+    && reference?.assetId
+    && reference.enabled !== false,
+  );
+  const referenceInputs: Array<{ dataUrl: string; label: string }> = [];
+  if (shouldUseReference && reference?.assetId) {
+    const raw = await getChatImageFromIndexedDB(reference.assetId);
+    if (raw) referenceInputs.push({
+      dataUrl: await normalizeReferenceImageForEdit(raw, reference.faceCrop),
+      label: "角色参考",
+    });
+  }
+  const activeAnchors = (reference?.anchors || []).filter(anchor => anchor.enabled !== false);
+  for (const anchor of activeAnchors) {
+    if (!anchor.assetId) continue;
+    const raw = await getChatImageFromIndexedDB(anchor.assetId);
+    if (raw) referenceInputs.push({ dataUrl: raw, label: `锚点：${anchor.name || "特征"}` });
+  }
+  const identityId = resolveGenerationUserIdentityId(params.characterId, params.appId);
+  const userIdentity = identityId ? loadUserIdentities().find(identity => identity.id === identityId) : undefined;
+  const userReference = identityId ? settings.userReferences?.[identityId] : undefined;
+  const includeUserReference = params.includeUserReferenceImage ?? descriptionNeedsUserReference(description, userIdentity?.name);
+  if (includeUserReference && userReference?.assetId && userReference.enabled !== false) {
+    const raw = await getChatImageFromIndexedDB(userReference.assetId);
+    if (raw) referenceInputs.push({
+      dataUrl: await normalizeReferenceImageForEdit(raw, userReference.faceCrop),
+      label: `用户参考：${userIdentity?.name || "用户"}`,
+    });
+  }
   throwIfAborted(params.signal);
-  const referenceImageDataUrl = rawReferenceImageDataUrl
-    ? await normalizeReferenceImageForEdit(rawReferenceImageDataUrl)
-    : null;
+  const referenceImageDataUrl = await combineReferenceImagesForEdit(referenceInputs);
   throwIfAborted(params.signal);
-  const prompt = mergePrompt(description, openaiSettings.extraPrompt);
+  const characterPrompt = reference?.featurePrompt?.trim() || "";
+  const anchorsPrompt = activeAnchors
+    .filter(anchor => anchor.description.trim())
+    .map(anchor => `${anchor.name || "特征"}：${anchor.description.trim()}`)
+    .join("；");
+  const userPrompt = includeUserReference && userIdentity
+    ? `【用户身份参考】${userIdentity.name}${userIdentity.gender && userIdentity.gender !== "保密" ? `，${userIdentity.gender}` : ""}。合照中必须保持用户与角色是两个不同人物，不得混脸。`
+    : "";
+  const prompt = mergePrompt(
+    [
+      description,
+      characterPrompt ? `【角色固定外观】${characterPrompt}` : "",
+      anchorsPrompt ? `【角色特定锚点】${anchorsPrompt}` : "",
+      userPrompt,
+      referenceInputs.length > 1 ? `【参考图说明】上传的是分格参考板，共 ${referenceInputs.length} 格；请按每格下方标签分别还原人物或物件，不要把不同格的身份混合。` : "",
+    ].filter(Boolean).join("\n\n"),
+    openaiSettings.extraPrompt,
+  );
 
   const data = openaiSettings.requestMode === "direct"
     ? await generateImageDirect({ settings: openaiSettings, prompt, referenceImageDataUrl, signal: params.signal })
@@ -824,4 +967,11 @@ export function hasCharacterReferenceImage(characterId?: string): boolean {
   const settings = loadImageGenerationSettings();
   const ref = settings.characterReferences?.[characterId];
   return Boolean(ref?.assetId);
+}
+
+export function hasUserReferenceImage(characterId?: string, appId = "chat"): boolean {
+  const identityId = resolveGenerationUserIdentityId(characterId, appId);
+  if (!identityId) return false;
+  const ref = loadImageGenerationSettings().userReferences?.[identityId];
+  return Boolean(ref?.assetId && ref.enabled !== false);
 }
