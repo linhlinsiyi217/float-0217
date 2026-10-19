@@ -93,6 +93,22 @@ export function UpdateNotePopup({ appName, release, onConfirm, onOpenLog, onHide
           </h2>
           <span className="updn-meta">
             {appName} · v{release.version} · {release.date}
+            {onOpenLog && (
+              <>
+                {" · "}
+                <button
+                  type="button"
+                  className="updn-meta-link"
+                  onClick={() => {
+                    if (leaving) return;
+                    setLeaving(true);
+                    window.setTimeout(onOpenLog, 160);
+                  }}
+                >
+                  查看完整日志
+                </button>
+              </>
+            )}
           </span>
         </header>
 

@@ -148,7 +148,7 @@ expectWiring(
   /from "@\/lib\/update-log\/system"/.test(logPageTsx) && /releases=\{SYSTEM_RELEASE_LIST\}/.test(logPageTsx),
   "设置更新日志页必须读 lib/update-log/system 的 SYSTEM_RELEASE_LIST",
 );
-expectWiring(popupTsx.includes("查看完整日志") && />\s*<Check[^>]*\/>\s*知道了\s*</.test(popupTsx), "更新弹窗必须有「查看完整日志」和「知道了」两个按钮");
+expectWiring(popupTsx.includes("查看完整日志") && />\s*<Check[^>]*\/>\s*(?:我)?知道了\s*</.test(popupTsx), "更新弹窗必须有「查看完整日志」和「知道了」两个按钮");
 expectWiring(
   /onClick=\{handleConfirm\}/.test(popupTsx) && (popupTsx.match(/handleConfirm\(\)|onClick=\{handleConfirm\}/g) ?? []).length === 1,
   "更新弹窗：只有「知道了」按钮能触发确认（handleConfirm 不能被 Esc 或其他入口调用）",

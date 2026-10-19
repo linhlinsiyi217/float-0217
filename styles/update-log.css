@@ -102,6 +102,16 @@
 }
 .updn-title { margin: 0; font-size: 17px; font-weight: 650; line-height: 1.3; color: var(--c-text-title, #14181f); }
 .updn-meta { font-size: 11.5px; color: var(--c-text, #8a93a1); font-variant-numeric: tabular-nums; }
+.updn-meta-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: #2F6FD0;
+  cursor: pointer;
+  text-decoration: none;
+}
+.updn-meta-link:active { opacity: 0.6; }
 
 .updn-list {
   list-style: none;
