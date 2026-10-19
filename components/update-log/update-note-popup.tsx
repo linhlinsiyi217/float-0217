@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 
 import {
   CATEGORY_COLOR,
@@ -18,28 +18,28 @@ type UpdateNotePopupProps = {
   /** 应用名，例如「小手机系统」「书房」 */
   appName: string;
   release: Release;
-  /** 用户点「知道了」：调用方在这里写入已读（只有这一处算确认） */
+  /** 用户点「我知道了」：调用方在这里写入已读（只有这一处算确认） */
   onConfirm: () => void;
   /** 「查看完整日志」：只收起弹窗去看日志，不算已读，下次打开还会弹 */
   onOpenLog?: () => void;
-  /** 按 Esc 收起：同样不算已读 */
+  /** 按 Esc / 点遮罩 / 点「稍后查看」收起：同样不算已读 */
   onHide?: () => void;
 };
 
-/** 条目一行：「更新应用：书房 · 书城」+ 分类标签 + 具体内容 */
+/** 紧凑条目：小色标 + 分类文字标签 + 标题，一行内放得下就单行 */
 function EntryRow({ entry }: { entry: UpdateEntry }) {
   return (
-    <li className="updn-row">
+    <li className="updn-row" title={entry.app}>
       <span className="updn-row-top">
+        <i className="updn-dot" style={{ background: CATEGORY_COLOR[entry.category] }} aria-hidden />
         <span
           className="updn-tag"
           style={{ color: CATEGORY_COLOR[entry.category], background: CATEGORY_TINT[entry.category] }}
         >
           {CATEGORY_LABEL[entry.category]}
         </span>
-        <span className="updn-row-app">更新应用：{entry.app}</span>
+        <span className="updn-row-title">{entry.title}</span>
       </span>
-      <span className="updn-row-title">{entry.title}</span>
     </li>
   );
 }
@@ -47,12 +47,10 @@ function EntryRow({ entry }: { entry: UpdateEntry }) {
 /**
  * 更新弹窗（系统与书房共用一套）。
  *
- * 样式：纯白卡、宽松内边距、层级靠字号与字重拉开，分区之间用虚线分隔，
- * 版本号做成小型角标装饰。不用淡蓝大底、不用拥挤边框、不用便签胶带折角。
- *
- * 行为：摘要 3—5 条，五秒内能读完；「知道了」立即可点，不强制等待、也不自动消失；
- * 详细内容默认折叠，想看再展开。每个实际新发布版本首次打开弹一次，
- * 只有点「知道了」才由调用方写入已读，同版本不再重复弹；看日志、按 Esc 只是暂时收起。
+ * 轻量：轻微半透明玻璃卡、1px 细边框、浅阴影、适中圆角；顶部只放
+ * WHAT'S NEW / 更新公告 / 版本号与日期，内容只列紧凑条目，不把整页日志塞进来。
+ * 行为：只有点「我知道了」才写入已读；「稍后查看」、点遮罩、按 Esc 都只是暂时收起，
+ * 同版本下次打开还会弹。无倒计时、不自动消失。
  */
 export function UpdateNotePopup({ appName, release, onConfirm, onOpenLog, onHide }: UpdateNotePopupProps) {
   const [leaving, setLeaving] = useState(false);
@@ -66,9 +64,15 @@ export function UpdateNotePopup({ appName, release, onConfirm, onOpenLog, onHide
     window.setTimeout(onConfirm, 160);
   };
 
+  const handleDismiss = () => {
+    if (leaving) return;
+    setLeaving(true);
+    window.setTimeout(() => (onHide ?? onOpenLog ?? onConfirm)(), 160);
+  };
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onHide?.();
+      if (event.key === "Escape") handleDismiss();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -76,23 +80,21 @@ export function UpdateNotePopup({ appName, release, onConfirm, onOpenLog, onHide
   }, [leaving]);
 
   return (
-    <div className="updn-mask" role="dialog" aria-modal="true" aria-labelledby="updn-title">
-      <section className="updn-card" data-leaving={leaving ? "true" : undefined}>
+    <div className="updn-mask" role="dialog" aria-modal="true" aria-labelledby="updn-title" onMouseDown={handleDismiss}>
+      <section
+        className="updn-card"
+        data-leaving={leaving ? "true" : undefined}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <header className="updn-head">
-          <span className="updn-badge" aria-hidden>
-            v{release.version}
-          </span>
-          <span className="updn-head-main">
-            <h2 className="updn-title" id="updn-title">
-              {release.name ?? `${appName}更新到 ${release.version}`}
-            </h2>
-            <span className="updn-head-meta">
-              {appName} · {release.date}
-            </span>
+          <span className="updn-eyebrow">WHAT&apos;S NEW</span>
+          <h2 className="updn-title" id="updn-title">
+            更新公告
+          </h2>
+          <span className="updn-meta">
+            {appName} · v{release.version} · {release.date}
           </span>
         </header>
-
-        <p className="updn-summary">{release.summary}</p>
 
         <ul className="updn-list">
           {summary.map((entry) => (
@@ -108,8 +110,8 @@ export function UpdateNotePopup({ appName, release, onConfirm, onOpenLog, onHide
               onClick={() => setShowAll((value) => !value)}
               aria-expanded={showAll}
             >
-              {showAll ? "收起详细内容" : `查看详细内容（共 ${release.entries.length} 条）`}
-              <ChevronDown size={14} strokeWidth={1.8} className="updn-more-arrow" aria-hidden />
+              {showAll ? "收起" : `查看全部 ${release.entries.length} 条`}
+              <ChevronDown size={13} strokeWidth={1.8} className="updn-more-arrow" aria-hidden />
             </button>
 
             {showAll && (
@@ -125,7 +127,6 @@ export function UpdateNotePopup({ appName, release, onConfirm, onOpenLog, onHide
                       </span>
                       {entries.map((entry) => (
                         <div key={entry.id} className="updn-detail-entry">
-                          <span className="updn-detail-app">更新应用：{entry.app}</span>
                           <span className="updn-detail-title">{entry.title}</span>
                           <ul>
                             {entry.items.map((item, index) => (
@@ -143,15 +144,12 @@ export function UpdateNotePopup({ appName, release, onConfirm, onOpenLog, onHide
         )}
 
         <footer className="updn-foot">
-          {onOpenLog && (
-            <button type="button" className="updn-link" onClick={onOpenLog}>
-              查看完整日志
-              <ArrowRight size={14} strokeWidth={1.8} aria-hidden />
-            </button>
-          )}
+          <button type="button" className="updn-link" onClick={handleDismiss}>
+            稍后查看
+          </button>
           <button type="button" className="updn-confirm" onClick={handleConfirm}>
-            <Check size={15} strokeWidth={2} aria-hidden />
-            知道了
+            <Check size={14} strokeWidth={2.2} aria-hidden />
+            我知道了
           </button>
         </footer>
       </section>

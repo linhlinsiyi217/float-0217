@@ -56,6 +56,7 @@ import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import type { UserIdentity } from "@/components/settings/user-identity";
 import { AlertCircle, Blocks, Check, Copy, FileText, ListChecks, ListX, Pencil, PhoneIncoming, PhoneOff, Quote, RotateCcw, Trash2, Undo2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, Wand2, X } from "lucide-react";
 import { applyAssistantTapback, applyGroupAssistantTapback, getGroupTapbacks, getTapbackGlyph, IMESSAGE_TAPBACK_APPLIED_EVENT, IMESSAGE_TAPBACKS_UPDATED_EVENT, isNativeTapbackEmoji, loadIMessageTapbacks, saveIMessageTapbacks, setGroupTapback, type MessageTapback } from "@/lib/chat-tapback";
+import { applyListeningRoomReply } from "@/lib/listen-together";
 import { useGroupMentions } from "./use-group-mentions";
 import { useEchoSendGesture } from "./use-echo-send-gesture";
 import { useChatEcho } from "./use-chat-echo";
@@ -261,6 +262,7 @@ const CHAT_MEDIA_BUBBLE_TYPES = new Set([
     "image",
     "location",
     "music_share",
+    "listening_invite",
     "xiaohongshu_note_share",
     "app_card",
     "media_file",
@@ -3189,6 +3191,10 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
             ? getLatestStateValues(session.id)
             : getLatestCharacterStateValues(session.contactId);
 
+        if (!session.isGroup) {
+            aiResponseText = applyListeningRoomReply(aiResponseText, session.id);
+        }
+
         const { parts: rawParts, stateValues, freshStateValues, statusPanel, innerMonologue, characterRemarkForUser } = parseAIResponse(aiResponseText, previousState);
         if (!session.isGroup && characterRemarkForUser) {
             const normalizedRemark = characterRemarkForUser.replace(/[\r\n]/g, " ").trim().slice(0, 20);
@@ -3358,6 +3364,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
             location: "分享了位置",
             audio: "发了一条语音",
             music_share: "分享了音乐",
+            listening_invite: "邀请你一起听歌",
             xiaohongshu_note_share: "分享了一条小红书帖子",
             app_card: "分享了一张应用卡片",
             quote: "引用回复",
@@ -3374,6 +3381,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
             if (m.mediaType === "location") return `分享了位置: ${m.mediaData?.label || ""}`.trim();
             if (m.mediaType === "audio") return `发了一条语音: ${m.mediaData?.label || ""}`.trim();
             if (m.mediaType === "music_share") return `分享了音乐: ${m.mediaData?.musicTitle || ""}`.trim();
+            if (m.mediaType === "listening_invite") return `邀请你一起听歌: ${m.mediaData?.listeningInvite?.title || ""}`.trim();
             if (m.mediaType === "xiaohongshu_note_share") return `分享了一条小红书帖子: ${m.mediaData?.xiaohongshuTitle || ""}`.trim();
             if (m.mediaType === "app_card") return `分享了${m.mediaData?.appName || "APP"}卡片: ${m.mediaData?.appCardTitle || m.mediaData?.appCardSummary || ""}`.trim();
             if (m.mediaType === "quote") return `引用回复: ${m.mediaData?.quotePreview || ""}`.trim();
