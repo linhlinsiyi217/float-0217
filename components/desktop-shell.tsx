@@ -15,6 +15,7 @@ import { PhonePlaceholderApp } from "@/components/phone-placeholder-app";
 import MusicApp from "@/components/music/music-app";
 import MusicPlayer from "@/components/music/music-player";
 import MusicFloat from "@/components/music/music-float";
+import MusicDynamicIsland from "@/components/music/music-dynamic-island";
 import MiniAppWindow from "@/components/music/mini-app-window";
 import { PhoneCalendarApp } from "@/components/calendar-app";
 import { PhoneQaApp } from "@/components/phone-qa-app";
@@ -4455,6 +4456,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                   </svg>
                 </div>
               </header>
+
+              <MusicDynamicIsland />
 
               {notice ? (
                 <aside className="phone-shell-notice" role="status" aria-live="polite">

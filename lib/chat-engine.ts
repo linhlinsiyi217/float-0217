@@ -44,6 +44,7 @@ import { buildIMessageTapbackPromptInstruction } from "./chat-tapback";
 import { buildEchoPrompt } from "./chat-echo";
 import { buildLovePrompt } from "./chat-love";
 import { buildFireworksPrompt } from "./chat-fireworks";
+import { CHARACTER_LISTENING_INVITE_PROTOCOL } from "./listen-together";
 import { MacroEngine, postProcessTrim } from "./macro-engine";
 import { getStatusRegionConfig, resolveStatusRegionSection, resolveStatusRegionExampleLine, resolveStatusRegionComposition, resolveStatusRegionFullExample } from "./chat-status-region";
 import {
@@ -2029,7 +2030,7 @@ export async function buildChatPromptMessages(
     if (!session.isGroup && !isOfflineMode && !promptProfile && resolvedAppId === "chat") {
         llmMessages.push({
             role: "system",
-            content: buildIMessageTapbackPromptInstruction() + "\n" + buildEchoPrompt() + "\n" + buildLovePrompt() + "\n" + buildFireworksPrompt(),
+            content: buildIMessageTapbackPromptInstruction() + "\n" + buildEchoPrompt() + "\n" + buildLovePrompt() + "\n" + buildFireworksPrompt() + "\n" + CHARACTER_LISTENING_INVITE_PROTOCOL,
         });
     }
     if (promptProfile?.output === "plain_text") {

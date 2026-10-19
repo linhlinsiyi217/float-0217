@@ -37,6 +37,7 @@ import { ApplePayBrand } from "./apple-pay-brand";
 import { VoiceReferenceGraphic } from "./voice-reference-graphic";
 import { currencySymbol, normalizeCurrency } from "@/lib/exchange-rates";
 import { normalizeQuotePreviewText } from "@/lib/chat-quote-preview";
+import { ListeningInviteCard } from "./listening-invite-card";
 
 interface MessageBubbleProps {
     msg: ChatMessage;
@@ -131,6 +132,8 @@ export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charNa
             return <VoiceMessageBubble msg={msg} characterId={characterId} onUpdate={onUpdate} defaultTranslationExpanded={defaultTranslationExpanded} />;
         case "meeting_invite":
             return <MeetingInviteBubble msg={msg} charName={charName} onAction={onMeetingInviteAction} />;
+        case "listening_invite":
+            return <ListeningInviteCard msg={msg} />;
         default: {
             // 聊天插件自定义消息类型：mediaType = "plugin:<kind>"，由注册插件渲染
             if (msg.mediaType?.startsWith("plugin:")) {

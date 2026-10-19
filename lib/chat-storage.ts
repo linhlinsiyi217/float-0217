@@ -138,6 +138,7 @@ export type ChatMessage = {
         | "accept_red_packet" | "decline_red_packet" | "accept_transfer" | "decline_transfer"
         | "payment_request" | "accept_payment_request" | "decline_payment_request"
         | "music" | "music_share" | "music_notify" | "music_not_found"
+        | "listening_invite"
         | "xiaohongshu_note_share"
         | "gift"
         | "contact_card"
@@ -243,6 +244,14 @@ export type ChatMessage = {
         blacklistUserName?: string;      // 拉黑事件发生时的用户名（用于事件详情与上下文）
         musicTitle?: string;      // 音乐标题
         musicArtist?: string;     // 音乐歌手
+        listeningInvite?: {       // 一起听邀请（私聊）
+            roomId: string;
+            initiator?: "user" | "character";
+            title?: string;
+            artist?: string;
+            coverUrl?: string;
+            response?: "accepted" | "declined";
+        };
         xiaohongshuAuthor?: string;       // 小红书分享作者
         xiaohongshuTitle?: string;        // 小红书分享标题
         xiaohongshuBody?: string;         // 小红书分享正文

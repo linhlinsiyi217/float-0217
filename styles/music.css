@@ -4986,3 +4986,225 @@
     font-size: calc(9px*var(--app-text-scale,1));
     color: color-mix(in srgb, var(--c-music-text) 55%, transparent);
 }
+
+/* ── 一起听邀请卡（来自 Y2K）：黑胶唱片 + 圆形专辑封面 + 左右滑接受/拒绝 ── */
+.chat-room-wrapper [data-media-type="listening_invite"] { background:transparent!important;padding:0!important;box-shadow:none!important;border:0!important; }
+.listening-invite-card { width:256px;max-width:100%;box-sizing:border-box;padding:16px 16px 0;border-radius:24px;color:#33313a;background:linear-gradient(135deg,rgba(255,248,251,.94),rgba(248,246,250,.87));border:1px solid rgba(255,255,255,.8);box-shadow:0 5px 20px #44253409,inset 0 1px 0 #fff9;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);overflow:hidden; }
+.listening-invite-heading { display:flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.08em;color:#ad6a82; }
+.listening-invite-main { display:flex;align-items:center;gap:12px;margin:13px 0 16px; }
+.listening-invite-cover { width:56px;height:56px;flex:none;border-radius:12px;overflow:hidden;display:grid;place-items:center;background:#f2e4eb;color:#b78398; }
+.listening-invite-cover img { width:100%;height:100%;display:block;object-fit:cover; }
+.listening-invite-copy { min-width:0;flex:1;font-size:12px;line-height:1.55;color:#77717d; }
+.listening-invite-copy strong { display:block;font-size:15px;font-weight:600;color:#34303a;margin-bottom:3px; }
+.listening-invite-copy small { display:block;font-size:11px;opacity:.8; }
+.listening-invite-footer { display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid #9e788014;padding:10px 0;font-size:10px;color:#958691; }
+.listening-invite-footer [role="status"] { color:#aa6983; }
+.listening-invite-card[data-status="joined"] .listening-invite-footer [role="status"] { color:#b65078; }
+@media(prefers-color-scheme:dark) {
+  .listening-invite-card { background:linear-gradient(135deg,#342a32eb,#272730eb);border-color:#ffffff16;color:#eee5eb;box-shadow:0 5px 20px #0002; }
+  .listening-invite-heading,.listening-invite-footer [role="status"] { color:#dfa8bf; }
+  .listening-invite-copy { color:#bcb0bc; }.listening-invite-copy strong { color:#f4eaf1; }
+  .listening-invite-cover { background:#4c3745;color:#e8bdcf; }.listening-invite-footer { border-color:#ffffff12;color:#b7a5b1; }
+}
+.listening-invite-record { width:248px;padding:15px 16px 0; }
+.listening-record-stage { position:relative;width:100%;height:150px;margin:14px 0 9px;isolation:isolate; }
+.listening-record-sleeve { position:absolute;left:4px;top:3px;width:136px;height:136px;border-radius:5px;overflow:hidden;z-index:2;background:#f1dce6;box-shadow:1px 2px 5px #50263f17,inset 0 0 0 1px #ffffff70; }
+.listening-record-sleeve>img { width:100%;height:100%;object-fit:cover;display:block; }
+.listening-record-sleeve-edge { position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,#ffffff48,transparent 3%,transparent 95%,#32102120);box-shadow:inset 0 0 0 1px #ffffff38;border-radius:inherit; }
+.listening-record-slide { position:absolute;left:8px;top:7px;width:128px;height:128px;transform:translateX(27px);transition:transform .65s cubic-bezier(.22,1,.36,1); }
+.listening-record-disc { position:relative;width:100%;height:100%;border-radius:50%;background:repeating-radial-gradient(circle,transparent 0 3px,#fff5 3.5px,transparent 4px),conic-gradient(from 35deg,#ffd9e8,#fff4f9,#efb8d1,#ffeaf3,#eeb5cf,#fff3f8,#ffd9e8);box-shadow:inset 0 0 0 1px #ffffffb0,0 2px 8px #83455f18;animation:listening-invite-disc-spin 12s linear infinite;animation-play-state:paused; }
+.listening-record-label { position:absolute;inset:42px;display:block;border-radius:50%;overflow:hidden;background:#f5d1e1;border:1px solid #ffffff90; }
+.listening-record-label img { width:100%;height:100%;object-fit:cover;display:block;opacity:.85; }
+.listening-record-spindle { position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:#b9819b;box-shadow:0 0 0 3px #fff7; }
+.listening-invite-record[data-status="joined"] .listening-record-slide { transform:translateX(70px); }
+.listening-invite-record[data-status="joined"] .listening-record-disc { animation-play-state:running; }
+.listening-invite-record[data-status="declined"] .listening-record-slide { transform:translateX(0); }
+.listening-record-empty { display:flex;height:100%;align-items:center;justify-content:center;flex-direction:column;gap:14px;color:#b07d91;background:linear-gradient(145deg,#fae7ef,#e5c5d5); }
+.listening-record-empty>span { font-size:9px;letter-spacing:.22em; }
+.listening-invite-record .listening-invite-copy { padding:0 3px 13px; }
+.listening-invite-record .listening-invite-copy strong { font-size:14px; }
+@keyframes listening-invite-disc-spin { to { transform:rotate(360deg); } }
+@media(prefers-color-scheme:dark) {
+  .listening-record-disc { filter:brightness(.82) saturate(.8); }
+  .listening-record-sleeve { background:#614455;box-shadow:1px 3px 8px #0003; }
+  .listening-record-empty { background:linear-gradient(145deg,#654652,#3e303c);color:#e4bdcd; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .listening-record-slide { transition:none; }
+  .listening-record-disc { animation:none; }
+}
+.listening-invite-card.listening-invite-bare {
+  width:214px;max-width:100%;padding:0;border:0;border-radius:0;
+  background:transparent;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;overflow:visible;
+}
+.listening-invite-bare .listening-record-stage { height:146px;margin:3px 0; }
+.listening-invite-gesture-hint { color:var(--c-text-muted,#a47f91);font-size:10px;line-height:1.5;text-align:center;padding:4px 0 0;max-width:214px; }
+.listening-record-stage[role="button"]:focus-visible { outline:2px solid #df8baa;outline-offset:4px;border-radius:8px; }
+.listening-invite-record[data-status="accepted"] .listening-record-slide { transform:translateX(70px); }
+
+/* ── 音乐灵动岛（顶部紧凑黑色胶囊 + 动态波形 + 独立圆形封面/头像）──
+   位于状态栏下方，不遮挡时间/信号/刘海；z-index 高于聊天内容、低于通话浮层与弹窗。 */
+.music-dynamic-island {
+  position: absolute;
+  top: calc(var(--status-bar-top, 12px) + var(--status-bar-height, 36px) + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  max-width: calc(100% - 32px);
+}
+.music-dynamic-island .mdi-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  pointer-events: auto;
+}
+.music-dynamic-island .mdi-cover {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  background: #1c1c1e;
+  color: #fff;
+  padding: 0;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.music-dynamic-island .mdi-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.music-dynamic-island .mdi-cover-fallback { display: grid; place-items: center; color: #c8c8cc; }
+.music-dynamic-island .mdi-capsule {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 13px 0 11px;
+  border: none;
+  border-radius: 20px;
+  background: #0a0a0a;
+  color: #fff;
+  cursor: pointer;
+  max-width: 210px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.music-dynamic-island .mdi-waveform {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+.music-dynamic-island .mdi-waveform i {
+  width: 2px;
+  height: 7px;
+  border-radius: 1px;
+  background: #fff;
+  opacity: 0.85;
+  transform-origin: center;
+  transform: scaleY(0.4);
+}
+.music-dynamic-island .mdi-waveform[data-playing="true"] i {
+  animation: mdi-wave 0.9s ease-in-out var(--mdi-delay, 0s) infinite;
+}
+@keyframes mdi-wave {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
+.music-dynamic-island .mdi-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  line-height: 1.2;
+}
+.music-dynamic-island .mdi-text b {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 128px;
+}
+.music-dynamic-island .mdi-text small {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 128px;
+}
+
+.music-dynamic-island .mdi-expanded {
+  margin-top: 10px;
+  width: min(288px, calc(100vw - 40px));
+  background: rgba(28, 28, 30, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  padding: 14px 16px;
+  color: #fff;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: auto;
+  animation: mdi-expand-in 0.22s cubic-bezier(0.22, 0.9, 0.32, 1) both;
+}
+@keyframes mdi-expand-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.music-dynamic-island .mdi-expanded-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.music-dynamic-island .mdi-expanded-head strong { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.music-dynamic-island .mdi-expanded-head span { font-size: 11.5px; color: rgba(255, 255, 255, 0.55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.music-dynamic-island .mdi-progress {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.16);
+  cursor: pointer;
+  overflow: hidden;
+}
+.music-dynamic-island .mdi-progress span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: 2px;
+  background: #fff;
+}
+.music-dynamic-island .mdi-controls { display: flex; align-items: center; justify-content: center; gap: 22px; }
+.music-dynamic-island .mdi-controls button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+}
+.music-dynamic-island .mdi-controls button.mdi-play { background: rgba(255, 255, 255, 0.12); }
+.music-dynamic-island .mdi-leave {
+  align-self: center;
+  border: none;
+  background: rgba(255, 59, 48, 0.16);
+  color: #ff6b5e;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+@media (prefers-reduced-motion: reduce) {
+  .music-dynamic-island .mdi-waveform i { animation: none; }
+  .music-dynamic-island .mdi-expanded { animation: none; }
+}
