@@ -1,7 +1,7 @@
 /*
  * The black capsule is already rendered by .status-island in the phone shell.
- * This file only positions and animates the existing live activity beneath it;
- * it must never draw a second hardware-looking capsule.
+ * This file only wires the existing live activity into that capsule and animates
+ * its expansion; it must never draw a second hardware-looking capsule.
  */
 .phone-status-bar .status-island {
   position: relative;
