@@ -79,7 +79,16 @@ class PushService : Service() {
         running = true
         createChannels()
         startForeground(NOTIF_FG_ID, buildKeepAliveNotification("等待连接…"))
+        KeepAliveJobService.schedule(this)
         thread(name = "shell-push-loop") { connectionLoop() }
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // Best effort only: OEM battery managers can still block this restart.
+        android.os.Handler(mainLooper).postDelayed({
+            if (!stopped) runCatching { PushService.start(this@PushService) }
+        }, 3_000)
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY

@@ -1,4 +1,4 @@
-// components/music/music-dynamic-island.tsx — 音乐灵动岛（顶部黑色胶囊 + 动态波形 + 独立圆形封面/头像）
+// components/music/music-dynamic-island.tsx — 基于现有 status-island 黑条的音乐实时活动
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
@@ -98,7 +98,7 @@ export default function MusicDynamicIsland() {
             data-state={listeningTogether ? "listeningTogether" : "music"}
             data-expanded={expanded ? "true" : undefined}
         >
-            <div className="mdi-row">
+            <div className="mdi-row" role="group" aria-label="实时活动">
                 <button
                     type="button"
                     className="mdi-cover"
@@ -119,6 +119,7 @@ export default function MusicDynamicIsland() {
                 <button
                     type="button"
                     className="mdi-capsule"
+                    aria-expanded={expanded}
                     aria-label={`${title}${subtitle ? " · " + subtitle : ""}`}
                     onPointerDown={startLongPress}
                     onPointerUp={clearLongPress}
@@ -139,7 +140,7 @@ export default function MusicDynamicIsland() {
             </div>
 
             {expanded && (
-                <div className="mdi-expanded">
+                <div className="mdi-expanded" role="dialog" aria-label="音乐实时活动">
                     <div className="mdi-expanded-head">
                         <strong>{title}</strong>
                         {subtitle ? <span>{subtitle}</span> : null}

@@ -1,0 +1,12 @@
+{
+  "versionCode": 11,
+  "versionName": "1.0.12",
+  "apkUrl": "https://github.com/linhlinsiyi217/float-0217/releases/latest/download/app-release.apk",
+  "force": false,
+  "webVersion": "0.6.0-shell-1",
+  "changelog": [
+    "原网页保持不变，由 Android 原生壳加载",
+    "增加 APK 更新检查和系统安装流程",
+    "增加网页版本变化后的缓存清理与刷新"
+  ]
+}

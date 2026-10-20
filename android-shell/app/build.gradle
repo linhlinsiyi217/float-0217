@@ -6,7 +6,9 @@ plugins {
 // 签名：CI 里通过环境变量注入 keystore（见 android-shell/README.md）；
 // 没有配置时 release 构建产出未签名 APK，debug 构建始终可直接安装测试。
 def ksFile = System.getenv("SHELL_KEYSTORE_FILE")
-def siteUrl = (System.getenv("SHELL_SITE_URL") ?: "https://example.invalid").replaceAll('/+$', '')
+// The shell must point at the existing Float-0217 site by default. CI can still
+// override this with SHELL_SITE_URL for a staging/self-hosted deployment.
+def siteUrl = (System.getenv("SHELL_SITE_URL") ?: "https://float-0217.vercel.app").replaceAll('/+$', '')
 
 android {
     namespace 'app.floatphone.shell'
