@@ -103,6 +103,7 @@ import { useChatAppearance } from "./use-chat-appearance";
 import { IMessageTapbackBadge } from "./imessage-tapback-badge";
 import { GroupSenderName } from "./group-sender-name";
 import { ChatUnreadPill } from "./chat-unread-pill";
+import { InnerVoicePopup } from "./inner-voice-popup";
 import { GroupAvatar } from "./group-avatar";
 import { HeaderVideoIcon } from "./header-video-icon";
 import { SortablePlusMenu } from "./sortable-plus-menu";
@@ -1475,6 +1476,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
 
     const wrapperRef = useRef<HTMLDivElement>(null);
     const [showHeaderCallMenu, setShowHeaderCallMenu] = useState(false);
+    const [showInnerVoice, setShowInnerVoice] = useState(false);
     // iMessage 外观（来自 Y2K）：深浅色跟随系统，壁纸亮度决定文字对比
     const chatAppearance = useChatAppearance(bgImageResolved);
     const beautyPreset = resolveChatBeautyPreset(session);
@@ -6478,7 +6480,16 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                 <div className="page-header-content imessage-private-header">
                     <ChatUnreadPill sessionId={session.id} onBack={onBack} />
                     <button className="imessage-contact-card" type="button" onClick={() => setShowSettings(true)} aria-label={session.isGroup ? "群聊设置" : "联系人详情"}>
-                        <span className="imessage-contact-avatar">
+                        <span
+                            className="imessage-contact-avatar"
+                            style={{ cursor: "pointer" }}
+                            title="心声"
+                            onClick={(e) => {
+                                // 点顶栏对方头像开心声弹窗；其余区域仍是聊天设置
+                                e.stopPropagation();
+                                setShowInnerVoice(true);
+                            }}
+                        >
                             {session.isGroup
                                 ? <GroupAvatar members={[...(!session.isSpectator ? [{ avatar: effectiveUserAvatar }] : []), ...groupCharacters.map(item => ({ avatar: resolveChatCharacterAvatar(item) }))]} />
                                 : (session.characterAvatarOverride || effectiveCharacterAvatar) ? <img src={session.characterAvatarOverride || effectiveCharacterAvatar} alt="" /> : <ChatFallbackAvatar />}
@@ -7112,12 +7123,17 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                                         const senderAvatar = session.isGroup ? senderChar?.avatar : effectiveCharacterAvatar;
                                                         return (
                                                             <>
-                                                    <div onDoubleClick={() => {
-                                                        const targetChar = session.isGroup && msg.senderCharacterId
-                                                            ? groupCharMap.get(msg.senderCharacterId) || character
-                                                            : character;
-                                                        if (targetChar) sendRichMessage("poke", { pokeTarget: targetChar.name });
-                                                    }} className="w-[40px] h-[40px] rounded-[20px] bg-[var(--c-input)] overflow-hidden cursor-pointer">
+                                                    <div
+                                                        onClick={() => setShowInnerVoice(true)}
+                                                        onDoubleClick={() => {
+                                                            const targetChar = session.isGroup && msg.senderCharacterId
+                                                                ? groupCharMap.get(msg.senderCharacterId) || character
+                                                                : character;
+                                                            if (targetChar) sendRichMessage("poke", { pokeTarget: targetChar.name });
+                                                        }}
+                                                        title="心声（双击戳一戳）"
+                                                        className="w-[40px] h-[40px] rounded-[20px] bg-[var(--c-input)] overflow-hidden cursor-pointer"
+                                                    >
                                                         {resolveChatCharacterAvatar(senderChar) ? (
                                                             <img src={resolveChatCharacterAvatar(senderChar)} className="w-full h-full object-cover" alt="" />
                                                         ) : (
@@ -7508,6 +7524,18 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                     />
                 </div>,
                 wrapperRef.current.parentElement
+            )}
+
+            {/* Inner Voice popup — 点 AI 头像弹出的心声卡片 */}
+            {showInnerVoice && (
+                <InnerVoicePopup
+                    sessionId={session.id}
+                    charName={session.alias || character?.name || ""}
+                    charAvatar={session.characterAvatarOverride || effectiveCharacterAvatar}
+                    userName={userIdentity?.name || ""}
+                    userAvatar={effectiveUserAvatar}
+                    onClose={() => setShowInnerVoice(false)}
+                />
             )}
 
             {activeCustomChatPlus && activeCustomChatPlus.presentation === "none" && (
