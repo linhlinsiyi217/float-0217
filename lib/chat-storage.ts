@@ -91,6 +91,12 @@ export type ChatSession = {
      * 关掉就只调一次 API，那一轮没摘要（不进短期记忆的事件流）。按次计费的接口想省一半调用时关它。
      */
     offlineSummaryRetry?: boolean;
+    /** 线下文风参数（书页式线下设置）：写进每轮线下生成的提示词，与线上聊天无关 */
+    offlineStyle?: { style?: string; mood?: string; pov?: string };
+    /** 线下页自定义 CSS，作用域限书页正文容器（[data-offline-page]），不影响别的页面 */
+    offlineCustomCSS?: string;
+    /** 前端卡片（线下正文里的整页 HTML）：默认关；开启后才放进无 allow-same-origin 的沙箱 iframe */
+    offlineHtmlCardEnabled?: boolean;
     /**
      * 角色专属提示音（私聊聊天信息里设置）。按种类覆盖全局聊天信息里的同名配置：
      * 会话里显式设置的字段优先，其余（音频来源、子开关等）继承全局；群聊暂无设置入口。

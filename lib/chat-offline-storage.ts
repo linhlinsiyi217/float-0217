@@ -18,7 +18,25 @@ export type ChatOfflineTurn = {
     reasoningText?: string; // 模型思维链（reasoning/CoT）内容
     thinkingText?: string; // 预设格式 <thinking> 标签解析出的思维链（展示优先于 reasoningText）
     thinkingTag?: string; // 实际用于提取思维链的标签名（preset.thinking_tag 或默认 thinking）
+    /** 段落收藏位：书页式线下页按段收藏，一段 turn 拆成我写的 / 对方写的两段，各有一个标记 */
+    faved?: { user?: boolean; assistant?: boolean };
     createdAt: string;
+};
+
+export type ChatOfflineArchive = {
+    id: string;
+    sessionId: string;
+    endedAt: string;
+    /** 结束这一场时正文里有多少段（一轮 = 两段） */
+    turnCount: number;
+    /** 第一段的时间，列表里当「开始时间」用 */
+    startedAt: string;
+    turns: ChatOfflineTurn[];
+};
+
+export type ChatOfflineOpener = {
+    id: string;
+    text: string;
 };
 
 export type ChatOfflineProjectionEntry = {
@@ -101,8 +119,18 @@ function normalizeTurn(value: unknown): ChatOfflineTurn | null {
         reasoningText: typeof item.reasoningText === "string" ? item.reasoningText : undefined,
         thinkingText: typeof item.thinkingText === "string" ? item.thinkingText : undefined,
         thinkingTag: typeof item.thinkingTag === "string" ? item.thinkingTag : undefined,
+        faved: normalizeFaved(item.faved),
         createdAt: item.createdAt,
     };
+}
+
+function normalizeFaved(value: unknown): { user?: boolean; assistant?: boolean } | undefined {
+    if (!value || typeof value !== "object") return undefined;
+    const src = value as { user?: unknown; assistant?: unknown };
+    const faved: { user?: boolean; assistant?: boolean } = {};
+    if (src.user === true) faved.user = true;
+    if (src.assistant === true) faved.assistant = true;
+    return Object.keys(faved).length ? faved : undefined;
 }
 
 export function loadChatOfflineTurns(sessionId: string): ChatOfflineTurn[] {
@@ -162,7 +190,7 @@ export function appendChatOfflineTurn(input: {
 export function updateChatOfflineTurn(
     sessionId: string,
     turnId: string,
-    patch: Partial<Pick<ChatOfflineTurn, "userContent" | "assistantContent" | "summary" | "summaryTag" | "rawText" | "reasoningText" | "thinkingText" | "thinkingTag">>,
+    patch: Partial<Pick<ChatOfflineTurn, "userContent" | "assistantContent" | "summary" | "summaryTag" | "rawText" | "reasoningText" | "thinkingText" | "thinkingTag" | "faved">>,
 ): ChatOfflineTurn | null {
     let updated: ChatOfflineTurn | null = null;
     const turns = loadChatOfflineTurns(sessionId).map((turn) => {
@@ -311,4 +339,120 @@ export function getChatOfflineTurnPreview(turn: ChatOfflineTurn | null): string 
     const source = turn.summary.trim() || turn.assistantContent.trim() || turn.userContent.trim();
     const text = compactProjectionText(source, 60);
     return text ? `[线下] ${text}` : "";
+}
+
+// ── 结束这一场：正文归档 ─────────────────────────────
+// 结束约会不是删除：这一场的正文整份搬进归档键，空出来的正文从头开始写下一场。
+// 归档按场次一条一条排，记录列表（书页空态下方）从这份读。
+const CHAT_OFFLINE_ARCHIVE_PREFIX = "ai_phone_chat_offline_archive:";
+registerDynamicPrefix(CHAT_OFFLINE_ARCHIVE_PREFIX);
+
+function archiveKey(sessionId: string): string {
+    return `${CHAT_OFFLINE_ARCHIVE_PREFIX}${sessionId}`;
+}
+
+function normalizeArchive(value: unknown): ChatOfflineArchive | null {
+    if (!value || typeof value !== "object") return null;
+    const item = value as Partial<ChatOfflineArchive>;
+    if (typeof item.id !== "string" || typeof item.sessionId !== "string") return null;
+    if (typeof item.endedAt !== "string" || !Array.isArray(item.turns)) return null;
+    const turns = item.turns.map(normalizeTurn).filter((turn): turn is ChatOfflineTurn => Boolean(turn));
+    if (!turns.length) return null;
+    return {
+        id: item.id,
+        sessionId: item.sessionId,
+        endedAt: item.endedAt,
+        turnCount: typeof item.turnCount === "number" ? item.turnCount : turns.length,
+        startedAt: typeof item.startedAt === "string" ? item.startedAt : turns[0].createdAt,
+        turns,
+    };
+}
+
+export function loadChatOfflineArchives(sessionId: string): ChatOfflineArchive[] {
+    try {
+        const parsed = JSON.parse(kvGet(archiveKey(sessionId)) || "[]") as unknown;
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+            .map(normalizeArchive)
+            .filter((item): item is ChatOfflineArchive => Boolean(item))
+            .sort((a, b) => b.endedAt.localeCompare(a.endedAt));
+    } catch {
+        return [];
+    }
+}
+
+/** 把当前正文整场归档（不 clear，调用方决定正文何时清）。返回这条归档。 */
+export function archiveChatOfflineTurns(sessionId: string): ChatOfflineArchive | null {
+    const turns = loadChatOfflineTurns(sessionId);
+    if (!turns.length) return null;
+    const archive: ChatOfflineArchive = {
+        id: `offline_archive_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        sessionId,
+        endedAt: new Date().toISOString(),
+        turnCount: turns.length,
+        startedAt: turns[0].createdAt,
+        turns,
+    };
+    const existing = loadChatOfflineArchives(sessionId);
+    try {
+        kvSet(archiveKey(sessionId), JSON.stringify([archive, ...existing]));
+    } catch {
+        // 单场太大存不下时退化为只留最近几场
+        const trimmed = [archive, ...existing].slice(0, 10);
+        try {
+            kvSet(archiveKey(sessionId), JSON.stringify(trimmed));
+        } catch {
+            return null;
+        }
+    }
+    return archive;
+}
+
+export function deleteChatOfflineArchive(sessionId: string, archiveId: string): ChatOfflineArchive[] {
+    const next = loadChatOfflineArchives(sessionId).filter((item) => item.id !== archiveId);
+    kvSet(archiveKey(sessionId), JSON.stringify(next));
+    return next;
+}
+
+// ── 开场白：一位角色一份，按 characterId 绑 ─────────────
+// 来源就一个：线下设置里手动增删改（Float 角色卡导入时 first_mes / alternate_greetings
+// 被剥离不支持，见 character-storage.ts 的 UNSUPPORTED_CHARACTER_IMPORT_FIELDS）。
+// 空态「选择开场白」读这份；选定的一条成为第一段（turn 的 assistantContent），
+// 之后还能左右划着在候选里换，跟「重写」共用同一套候选切换。
+const CHAT_OFFLINE_OPENERS_KEY = "ai_phone_chat_offline_openers";
+
+function normalizeOpener(value: unknown): ChatOfflineOpener | null {
+    if (!value || typeof value !== "object") return null;
+    const item = value as Partial<ChatOfflineOpener>;
+    if (typeof item.id !== "string" || !item.id) return null;
+    if (typeof item.text !== "string" || !item.text.trim()) return null;
+    return { id: item.id, text: item.text };
+}
+
+export function loadOfflineOpeners(characterId: string): ChatOfflineOpener[] {
+    if (!characterId) return [];
+    try {
+        const parsed = JSON.parse(kvGet(CHAT_OFFLINE_OPENERS_KEY) || "{}") as unknown;
+        if (!parsed || typeof parsed !== "object") return [];
+        const list = (parsed as Record<string, unknown>)[characterId];
+        if (!Array.isArray(list)) return [];
+        return list.map(normalizeOpener).filter((item): item is ChatOfflineOpener => Boolean(item));
+    } catch {
+        return [];
+    }
+}
+
+export function saveOfflineOpeners(characterId: string, list: ChatOfflineOpener[]): void {
+    if (!characterId) return;
+    let all: Record<string, unknown> = {};
+    try {
+        const parsed = JSON.parse(kvGet(CHAT_OFFLINE_OPENERS_KEY) || "{}") as unknown;
+        if (parsed && typeof parsed === "object") all = parsed as Record<string, unknown>;
+    } catch {
+        all = {};
+    }
+    const clean = list.map(normalizeOpener).filter((item): item is ChatOfflineOpener => Boolean(item));
+    if (clean.length) all[characterId] = clean;
+    else delete all[characterId];
+    kvSet(CHAT_OFFLINE_OPENERS_KEY, JSON.stringify(all));
 }

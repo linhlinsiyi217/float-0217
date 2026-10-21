@@ -47,7 +47,9 @@ import { deleteWeixinCloudMessagesFromCloud, emitWeixinSyncToast, syncAllWeixinB
 import { loadBindingConfig, loadPresets, loadRegexes, resolveBinding, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
 import { resolveChatAccountUserIdentity } from "@/lib/chat-scope-storage";
 import { generateGroupChatCompletion, generateGroupOfflineChatCompletion, parseGroupChatResponse, buildEditableGroupRoundText } from "@/lib/group-chat-engine";
-import { appendChatOfflineTurn, clearChatOfflineTurns, deleteChatOfflineTurn, deleteChatOfflineTurnsFrom, extractThinkingTag, loadChatOfflineTurns, parseOfflineResponse, preserveChatOfflineSummaries, saveChatOfflineTurns, updateChatOfflineTurn, type ChatOfflineTurn } from "@/lib/chat-offline-storage";
+import { appendChatOfflineTurn, archiveChatOfflineTurns, clearChatOfflineTurns, deleteChatOfflineArchive, deleteChatOfflineTurn, deleteChatOfflineTurnsFrom, extractThinkingTag, loadChatOfflineArchives, loadChatOfflineTurns, loadOfflineOpeners, parseOfflineResponse, preserveChatOfflineSummaries, saveChatOfflineTurns, updateChatOfflineTurn, type ChatOfflineArchive, type ChatOfflineOpener, type ChatOfflineTurn } from "@/lib/chat-offline-storage";
+import { OfflineBookView, type OfflineBookCandidate, type OfflineSegmentRole } from "./offline-book-view";
+import { offlineCopyPlain } from "@/lib/offline-rich";
 import { applyDisplayRegex, applyEditRegex } from "@/lib/llm-prompt-assembler";
 import { scheduleFollowUp, cancelFollowUp, cancelBackgroundGeneration, isBackgroundReplyGenerating } from "@/lib/follow-up-service";
 import { useKeyboardDismissAutoSend } from "@/components/chat/use-keyboard-dismiss-auto-send";
@@ -150,59 +152,6 @@ function isChatRoomElementVisible(element: HTMLElement | null): boolean {
     const style = window.getComputedStyle(element);
     return style.display !== "none" && style.visibility !== "hidden";
 }
-
-function splitOfflineParagraphs(text: string): string[] {
-    const normalized = text.replace(/\r\n?/g, "\n").trim();
-    if (!normalized) return [];
-    const splitPlainText = (value: string) => value
-        .split(/\n\s*\n+/)
-        .map(part => part.trim())
-        .filter(Boolean);
-
-    const parts: string[] = [];
-    const fenceRx = /(^|\n)([ \t]*)(```|~~~)[^\n]*\n[\s\S]*?\n[ \t]*\3(?=\n|$)/g;
-    let cursor = 0;
-    let match: RegExpExecArray | null;
-
-    while ((match = fenceRx.exec(normalized)) !== null) {
-        const fenceStart = match.index + match[1].length;
-        const before = normalized.slice(cursor, fenceStart);
-        parts.push(...splitPlainText(before));
-
-        const fencedBlock = normalized.slice(fenceStart, fenceRx.lastIndex).trim();
-        if (fencedBlock) parts.push(fencedBlock);
-        cursor = fenceRx.lastIndex;
-    }
-
-    parts.push(...splitPlainText(normalized.slice(cursor)));
-    return parts;
-}
-
-function hasOfflineHtmlPreview(text: string): boolean {
-    return splitOfflineParagraphs(text).some(part => isStandaloneHtmlPreviewContent(part));
-}
-
-const OfflineAssistantTextBlock = memo(function OfflineAssistantTextBlock({
-    text,
-    defaultExpanded,
-}: {
-    text: string;
-    defaultExpanded: boolean;
-}) {
-    const paragraphs = useMemo(() => splitOfflineParagraphs(text), [text]);
-    if (paragraphs.length <= 1) {
-        return <BilingualTextBlock text={text} mode="markdown" defaultExpanded={defaultExpanded} htmlFrameVariant="offline" />;
-    }
-    return (
-        <div className="chat-offline-paragraph-stack">
-            {paragraphs.map((paragraph, index) => (
-                <div className="chat-offline-paragraph" key={`${index}-${paragraph.slice(0, 16)}`}>
-                    <BilingualTextBlock text={paragraph} mode="markdown" defaultExpanded={defaultExpanded} htmlFrameVariant="offline" />
-                </div>
-            ))}
-        </div>
-    );
-});
 
 const CHAT_VISUAL_MEDIA_TYPES = new Set([
     "sticker",
@@ -542,11 +491,6 @@ type ChatRoomProps = {
     onDeleted?: () => void;
     /** Embedded callers can observe user-sent rich messages without duplicating chat logic. */
     onUserMessageSent?: (message: ChatMessage) => void;
-};
-
-type OfflineActionTarget = {
-    turnId: string;
-    role: "user" | "assistant";
 };
 
 type ContextMenuAnchor = {
@@ -1175,6 +1119,9 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
     onToggleEmojiPanel: () => void;
     onSendText: (text: string) => boolean;
     onStopGeneration: () => void;
+    /** 底栏整场菜单：继续约会 / 重写 / 时光回溯 / 结束约会（end 由输入栏自己做两段式确认） */
+    onActsMenu: (act: "continue" | "rewrite" | "warp" | "end") => void;
+    hasTurns: boolean;
 }>(function OfflineTextInputBar({
     isOfflineGenerating,
     isSpectator,
@@ -1185,10 +1132,18 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
     onToggleEmojiPanel,
     onSendText,
     onStopGeneration,
+    onActsMenu,
+    hasTurns,
 }, ref) {
     const [inputText, setInputText] = useState("");
     const inputTextRef = useRef("");
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+    // 整场菜单：「结束约会」不可逆，菜单里就地两段式——第一次点变色，3 秒内再点才真结束
+    const [actsOpen, setActsOpen] = useState(false);
+    const [endArmed, setEndArmed] = useState(false);
+    const endArmTimer = useRef(0);
+
+    useEffect(() => () => window.clearTimeout(endArmTimer.current), []);
 
     const resetTextareaHeight = () => {
         if (textareaRef.current) textareaRef.current.style.height = "auto";
@@ -1228,7 +1183,29 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
             if (inputTextRef.current.trim()) return;
             setTextAndResize(text);
         },
+        focus: () => {
+            textareaRef.current?.focus();
+        },
     }), [setTextAndResize]);
+
+    // 整场菜单的动作分发：end 在这里做两段式，其余直接交出去并收起菜单
+    const handleAct = (act: "continue" | "rewrite" | "warp" | "end") => {
+        if (act === "end") {
+            if (!endArmed) {
+                setEndArmed(true);
+                window.clearTimeout(endArmTimer.current);
+                endArmTimer.current = window.setTimeout(() => setEndArmed(false), 3000);
+                return;
+            }
+            window.clearTimeout(endArmTimer.current);
+            setEndArmed(false);
+            setActsOpen(false);
+            onActsMenu("end");
+            return;
+        }
+        setActsOpen(false);
+        onActsMenu(act);
+    };
 
     const handleSubmit = () => {
         if (isOfflineGenerating) {
@@ -1272,7 +1249,9 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
                 enterKeyHint={enterToSendEnabled ? "send" : "enter"}
                 className="chat-input-textarea"
                 disabled={isSpectator}
-                placeholder={isSpectator ? "围观中，点右侧按钮推进他们的线下互动" : undefined}
+                placeholder={isSpectator
+                    ? "围观中，点右侧按钮推进他们的线下互动"
+                    : "「对话」用引号，**动作**用星号，内心独白行首用 >"}
             />
             <div className="chat-input-actions">
                 <button
@@ -1301,6 +1280,20 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
                 </button>
                 <button
                     type="button"
+                    onClick={() => { setActsOpen(o => !o); setEndArmed(false); window.clearTimeout(endArmTimer.current); }}
+                    disabled={isSpectator}
+                    className={`ui-bare-btn text-[var(--c-text)]${actsOpen ? " is-on" : ""}`}
+                    aria-label="这一场"
+                    title="这一场"
+                >
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M12 8v8" />
+                        <path d="M8 12h8" />
+                    </svg>
+                </button>
+                <button
+                    type="button"
                     onClick={() => { if (isOfflineGenerating) onStopGeneration(); else handleSubmit(); }}
                     onPointerDown={(e) => e.preventDefault()}
                     tabIndex={-1}
@@ -1319,6 +1312,38 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
                     )}
                 </button>
             </div>
+            {actsOpen && (
+                <div className="cof-acts-menu" role="menu" aria-label="这一场">
+                    <button type="button" className="cof-acts-item" onClick={() => handleAct("continue")}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></svg>
+                        <span>继续约会</span>
+                        <small>收起菜单，接着写</small>
+                    </button>
+                    <button
+                        type="button"
+                        className="cof-acts-item"
+                        disabled={!hasTurns || isOfflineGenerating}
+                        onClick={() => handleAct("rewrite")}
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" /></svg>
+                        <span>重写最后一段</span>
+                        <small>左右划能切回旧版</small>
+                    </button>
+                    <button type="button" className="cof-acts-item" onClick={() => handleAct("warp")}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></svg>
+                        <span>时光回溯</span>
+                    </button>
+                    <button
+                        type="button"
+                        className={`cof-acts-item is-danger${endArmed ? " is-armed" : ""}`}
+                        onClick={() => handleAct("end")}
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 21V4" /><path d="M5 4h13l-2.5 4L18 12H5" /></svg>
+                        <span>{endArmed ? "再次点击结束" : "结束约会"}</span>
+                        {!endArmed ? <small>正文存进「过去的约会」</small> : null}
+                    </button>
+                </div>
+            )}
             {showEmojiPanel && (
                 <EmojiPanel onSelect={(emoji) => appendText(emoji, { focus: false })} />
             )}
@@ -1355,9 +1380,15 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
     const streamParseFrameRef = useRef(0);
     // 线下模式流式预览解析的 rAF 合并帧（独立于线上，避免互相干扰）
     const offlineStreamFrameRef = useRef(0);
-    const [activeOfflineTarget, setActiveOfflineTarget] = useState<OfflineActionTarget | null>(null);
-    const [editingOfflineTarget, setEditingOfflineTarget] = useState<OfflineActionTarget | null>(null);
-    const [editingOfflineContent, setEditingOfflineContent] = useState("");
+    // 书页式线下页：候选 / 开场白 / 过去的约会。候选只活在内存里——
+    // 重写或选开场白攒下的几条版本，横扫切到哪条就把哪条写回正文；
+    // 一旦接了别的（我的消息、AI 续写）就自然失效
+    const [offlineCandidate, setOfflineCandidate] = useState<OfflineBookCandidate | null>(null);
+    // 横扫换候选时的即时快照（useCallback 里要用最新值，不能靠闭包）
+    const offlineCandidateRef = useRef<OfflineBookCandidate | null>(null);
+    const [offlineArchives, setOfflineArchives] = useState<ChatOfflineArchive[]>([]);
+    const [offlineOpeners, setOfflineOpeners] = useState<ChatOfflineOpener[]>([]);
+    useEffect(() => { offlineCandidateRef.current = offlineCandidate; }, [offlineCandidate]);
     const [regexRevision, setRegexRevision] = useState(0);
     // Whether there are unsent user messages waiting for AI generation
     const [pendingGenerate, setPendingGenerate] = useState(false);
@@ -1697,22 +1728,14 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
 
     const closeContextMenu = () => {
         setActiveMessageId(null);
-        setActiveOfflineTarget(null);
         setContextMenuAnchor(null);
         setTapbackInputTarget(null);
         setTapbackInputError("");
     };
 
     const openMessageContextMenu = (msgId: string, anchor: ContextMenuAnchor) => {
-        setActiveOfflineTarget(null);
         setContextMenuAnchor(anchor);
         setActiveMessageId(msgId);
-    };
-
-    const openOfflineContextMenu = (target: OfflineActionTarget, anchor: ContextMenuAnchor) => {
-        setActiveMessageId(null);
-        setContextMenuAnchor(anchor);
-        setActiveOfflineTarget(target);
     };
 
     const getContextMenuInitialStyle = () => {
@@ -2081,13 +2104,10 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         offlineTextInputRef.current?.clear();
         setPendingOfflineUserText("");
         setIsOfflineGenerating(false);
-        setActiveOfflineTarget(null);
         setContextMenuAnchor(null);
         setIsMultiSelectMode(false);
         setSelectedMessageIds(new Set());
         setShowConfirmMultiDelete(false);
-        setEditingOfflineTarget(null);
-        setEditingOfflineContent("");
         setOfflineTurns(loadChatOfflineTurns(session.id));
 
         // Prewarm sticker cache for all relevant characters, then load messages
@@ -4558,42 +4578,12 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
 
     const buildOfflinePromptHistory = (turns: ChatOfflineTurn[], pendingUserContent: string): ChatMessage[] =>
         buildOfflinePromptHistoryShared(session, turns, pendingUserContent);
-    const getOfflineCopyText = (turn: ChatOfflineTurn, role: OfflineActionTarget["role"]): string => {
-        if (role === "user") return turn.userContent;
-        return formatOfflineTurnXml(turn);
-    };
-
-    const getOfflineDisplayText = useCallback((turn: ChatOfflineTurn) => {
-        const rawSource = formatOfflineTurnXml(turn);
-        const rawDisplay = renderDisplayText(rawSource, 2, true);
-        const parsed = rawDisplay !== rawSource
-            ? parseOfflineResponse(rawDisplay, turn.summaryTag || "summary")
-            : null;
-        const hasParsedDisplay = Boolean(parsed?.content.trim() || parsed?.summary.trim());
-        return {
-            userContent: renderDisplayText(turn.userContent, 1, true),
-            assistantContent: hasParsedDisplay
-                ? (parsed!.content.trim() || renderDisplayText(turn.assistantContent, 2, true))
-                : renderDisplayText(turn.assistantContent, 2, true),
-            summary: hasParsedDisplay
-                ? (parsed!.summary.trim() || renderDisplayText(turn.summary, 2, true))
-                : renderDisplayText(turn.summary, 2, true),
-        };
-    }, [formatOfflineTurnXml, renderDisplayText]);
 
     const visibleOfflineTurns = useMemo(() => {
         return offlineTurns.slice(-offlineVisibleCount);
     }, [offlineTurns, offlineVisibleCount]);
 
     const hasMoreOfflineTurns = visibleOfflineTurns.length < offlineTurns.length;
-
-    const offlineDisplayByTurnId = useMemo(() => {
-        const map = new Map<string, ReturnType<typeof getOfflineDisplayText>>();
-        for (const turn of visibleOfflineTurns) {
-            map.set(turn.id, getOfflineDisplayText(turn));
-        }
-        return map;
-    }, [getOfflineDisplayText, visibleOfflineTurns]);
 
     const loadMoreOfflineTurns = useCallback(() => {
         if (!hasMoreOfflineTurns) return;
@@ -4614,26 +4604,6 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         el.scrollTop = restore.scrollTop + (el.scrollHeight - restore.scrollHeight);
         offlineLoadMoreRestoreRef.current = null;
     }, [visibleOfflineTurns.length]);
-
-    const handleOfflinePointerDown = (e: React.PointerEvent, target: OfflineActionTarget) => {
-        if (e.pointerType === "mouse" && e.button !== 0) return;
-        e.preventDefault();
-        const anchor = { x: e.clientX, y: e.clientY };
-        startPosRef.current = anchor;
-        longPressTriggeredRef.current = false;
-        if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
-        longPressTimerRef.current = setTimeout(() => {
-            longPressTriggeredRef.current = true;
-            openOfflineContextMenu(target, anchor);
-            longPressTimerRef.current = null;
-        }, 500);
-    };
-
-    const handleOfflineEditStart = (turn: ChatOfflineTurn, role: OfflineActionTarget["role"]) => {
-        setActiveOfflineTarget(null);
-        setEditingOfflineTarget({ turnId: turn.id, role });
-        setEditingOfflineContent(role === "user" ? turn.userContent : formatOfflineTurnXml(turn));
-    };
 
     const openStoryEntry = async (migration: "summary" | "branch" | "none") => {
         if (session.isGroup) {
@@ -4732,9 +4702,11 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         setShowStickerPanel(false);
         setRichModal(null);
         setQuotingMessage(null);
-        setActiveOfflineTarget(null);
         setOfflineTurns(loadChatOfflineTurns(session.id));
         setOfflineVisibleCount(OFFLINE_INITIAL_LOAD);
+        setOfflineCandidate(null);
+        setOfflineArchives(loadChatOfflineArchives(session.id));
+        setOfflineOpeners(session.isGroup ? [] : loadOfflineOpeners(session.contactId));
         setOfflineMode(prev => {
             const next = !prev;
             kvSet(CHAT_OFFLINE_MODE_PREFIX + session.id, next ? "1" : "0");
@@ -4825,6 +4797,9 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                     thinkingTag: result.thinkingTag,
                 });
                 setOfflineTurns(prev => [...prev, saved]);
+                // 接了新的正文，旧候选失效
+                setOfflineCandidate(null);
+                offlineCandidateVersionsRef.current = [];
             } catch (error: any) {
                 if (!isCurrentOfflineRun() || isAbortLikeError(error)) return;
                 offlineTextInputRef.current?.setText(currentText);
@@ -4841,26 +4816,20 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         return true;
     };
 
-    const handleOfflineEditSave = () => {
-        if (!editingOfflineTarget) return;
-        const content = editingOfflineContent.trim();
-        const turn = offlineTurns.find(item => item.id === editingOfflineTarget.turnId);
-        if (!turn) {
-            setEditingOfflineTarget(null);
-            setEditingOfflineContent("");
-            return;
-        }
-        if (!content) {
-            showChatToast("编辑内容不能为空");
+    // 书页式就地编辑保存：user 段收 userContent，assistant 段收 XML 原文（与旧编辑行为一致，
+    // 保存时重新解析 content 与摘要，思维链按原标签重提）
+    const handleBookEditSave = (turnId: string, role: OfflineSegmentRole, text: string) => {
+        const content = text.trim();
+        const turn = offlineTurns.find(item => item.id === turnId);
+        if (!turn || !content) {
+            showChatToast("内容不能空着");
             return;
         }
 
-        if (editingOfflineTarget.role === "user") {
+        if (role === "user") {
             const nextContent = applyEditTextRegex(content, 1, true);
-            const updated = updateChatOfflineTurn(session.id, turn.id, { userContent: nextContent });
+            const updated = updateChatOfflineTurn(session.id, turnId, { userContent: nextContent });
             if (updated) setOfflineTurns(prev => prev.map(item => item.id === updated.id ? updated : item));
-            setEditingOfflineTarget(null);
-            setEditingOfflineContent("");
             return;
         }
 
@@ -4872,12 +4841,10 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
             return;
         }
         if (!parsed.summary.trim()) showChatToast(`未提取到 <${parsed.summaryTag}> 摘要`);
-        // 思维链：parseOfflineResponse 已回归官方两参数（不再提取 thinking）。
-        // 若该条原本带标签思维链（预设开启线下标签解析），按原标签从编辑后的正文重新提取，否则保持无。
         const editedThinking = turn.thinkingText !== undefined
             ? (extractThinkingTag(nextContent, turn.thinkingTag) || undefined)
             : undefined;
-        const updated = updateChatOfflineTurn(session.id, turn.id, {
+        const updated = updateChatOfflineTurn(session.id, turnId, {
             assistantContent,
             summary: parsed.summary.trim(),
             summaryTag: parsed.summaryTag,
@@ -4886,18 +4853,24 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
             thinkingTag: editedThinking !== undefined ? turn.thinkingTag : undefined,
         });
         if (updated) setOfflineTurns(prev => prev.map(item => item.id === updated.id ? updated : item));
-        setEditingOfflineTarget(null);
-        setEditingOfflineContent("");
     };
+
+    // 编辑框里先摆出来的那份：我写的段是 userContent，对方写的段是剥过 XML 的正文
+    const getOfflineEditBaseText = useCallback((turnId: string, role: OfflineSegmentRole) => {
+        const turn = offlineTurns.find(item => item.id === turnId);
+        if (!turn) return "";
+        return role === "user" ? turn.userContent : turn.assistantContent;
+    }, [offlineTurns]);
 
     const handleOfflineDeleteTurn = (turnId: string) => {
         setOfflineTurns(deleteChatOfflineTurn(session.id, turnId));
-        setActiveOfflineTarget(null);
+        // 删掉的若是能划候选的那一段，候选一起失效
+        setOfflineCandidate(prev => (prev && prev.turnId === turnId ? null : prev));
     };
 
     const handleOfflineDeleteTurnsFrom = (turnId: string) => {
         setOfflineTurns(deleteChatOfflineTurnsFrom(session.id, turnId));
-        setActiveOfflineTarget(null);
+        setOfflineCandidate(null);
     };
 
     const handleOfflineRetryFrom = async (turnId: string) => {
@@ -4916,7 +4889,6 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         }
 
         cancelFollowUp(session.id);
-        setActiveOfflineTarget(null);
         setShowPlusMenu(false);
         setShowEmojiPanel(false);
         setShowStickerPanel(false);
@@ -4988,6 +4960,195 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
             setOfflineStreamPreview(null);
         }
     };
+
+    // ── 书页式线下页的回调组 ─────────────────────────────
+    // 候选版本细节（正文之外的摘要 / 原文 XML）跟着候选列表一起只活在内存里；
+    // OfflineBookCandidate.items 只放正文文本，给横扫计数与切换用
+    type OfflineCandidateVersion = { content: string; summary: string; rawText?: string };
+    const offlineCandidateVersionsRef = useRef<OfflineCandidateVersion[]>([]);
+
+    const syncCandidateVersion = useCallback((turnId: string, index: number, version: OfflineCandidateVersion) => {
+        const updated = updateChatOfflineTurn(session.id, turnId, {
+            assistantContent: version.content,
+            summary: version.summary,
+            ...(version.rawText !== undefined ? { rawText: version.rawText } : {}),
+        });
+        if (updated) setOfflineTurns(prev => prev.map(item => item.id === updated.id ? updated : item));
+        setOfflineCandidate(prev => (prev && prev.turnId === turnId ? { ...prev, index, pending: false } : prev));
+    }, [session.id]);
+
+    // 横扫 / 点箭头换候选：原地覆盖同一段正文，不建新段、不触发 AI。
+    // 到头就不动（不循环），省得不知道自己划到哪了
+    const handleOfflineCandidateShift = useCallback((turnId: string, dir: -1 | 1) => {
+        const candidate = offlineCandidateRef.current;
+        const versions = offlineCandidateVersionsRef.current;
+        if (!candidate || candidate.turnId !== turnId || candidate.pending || !versions.length) return;
+        const nextIndex = candidate.index + dir;
+        if (nextIndex < 0 || nextIndex >= versions.length) return;
+        syncCandidateVersion(turnId, nextIndex, versions[nextIndex]);
+    }, [syncCandidateVersion]);
+
+    // 空态选开场白：选中的那条立刻成为第一段（turn 的 assistantContent），
+    // 全部开场白进候选，之后还能横扫着换
+    const handleOfflineAdoptOpener = (text: string) => {
+        if (isOfflineGenerating) {
+            showChatToast("线下回复生成中");
+            return;
+        }
+        const trimmed = text.trim();
+        if (!trimmed) return;
+        const saved = appendChatOfflineTurn({
+            sessionId: session.id,
+            userContent: "",
+            assistantContent: trimmed,
+            summary: trimmed.slice(0, 60),
+            summaryTag: "summary",
+        });
+        setOfflineTurns(prev => [...prev, saved]);
+        const versions: OfflineCandidateVersion[] = offlineOpeners.map(op => ({
+            content: op.text,
+            summary: op.text.slice(0, 60),
+        }));
+        const idx = versions.findIndex(v => v.content === trimmed);
+        offlineCandidateVersionsRef.current = versions;
+        setOfflineCandidate({ turnId: saved.id, items: versions.map(v => v.content), index: idx < 0 ? 0 : idx });
+    };
+
+    const handleOfflineToggleFav = (turnId: string, role: OfflineSegmentRole) => {
+        const turn = offlineTurns.find(item => item.id === turnId);
+        if (!turn) return;
+        const current = role === "user" ? turn.faved?.user === true : turn.faved?.assistant === true;
+        const nextFaved = { ...turn.faved, [role]: !current };
+        const updated = updateChatOfflineTurn(session.id, turnId, { faved: nextFaved });
+        if (updated) setOfflineTurns(prev => prev.map(item => item.id === updated.id ? updated : item));
+        showChatToast(updated && (role === "user" ? updated.faved?.user : updated.faved?.assistant) ? "已收藏这一段" : "已取消收藏");
+    };
+
+    // 整场菜单「重写」：只重写最新一段。旧版本不删——生成结果和当前版本一起进候选，
+    // 左右划着换，切到哪条哪条才是正文
+    const handleOfflineRewrite = async () => {
+        if (isOfflineGenerating) {
+            showChatToast("线下回复生成中");
+            return;
+        }
+        if (!offlineTurns.length) {
+            showChatToast("正文还空着，先写第一段");
+            return;
+        }
+        const lastTurn = offlineTurns[offlineTurns.length - 1];
+        const baseTurns = offlineTurns.slice(0, -1);
+        const rewriteInput = lastTurn.userContent.trim();
+        const previousVersion: OfflineCandidateVersion = {
+            content: lastTurn.assistantContent,
+            summary: lastTurn.summary,
+            rawText: lastTurn.rawText,
+        };
+
+        cancelFollowUp(session.id);
+        setShowPlusMenu(false);
+        setShowEmojiPanel(false);
+        setShowStickerPanel(false);
+        setIsOfflineGenerating(true);
+        offlineStreamAccumRef.current = "";
+        setOfflineStreamPreview(null);
+        offlineCandidateVersionsRef.current = [previousVersion];
+        setOfflineCandidate({ turnId: lastTurn.id, items: [previousVersion.content], index: 0, pending: true });
+        const offlineRun = createOfflineGenerationRun(session.id);
+        const offlineRunId = offlineRun.runId;
+        const isCurrentOfflineRun = () => isOfflineGenerationRunActive(session.id, offlineRunId);
+
+        try {
+            const history = buildOfflinePromptHistory(baseTurns, rewriteInput);
+            const onOfflineDelta = (delta: string) => {
+                if (!isCurrentOfflineRun()) return;
+                offlineStreamAccumRef.current += delta;
+                if (offlineStreamFrameRef.current) return;
+                offlineStreamFrameRef.current = window.requestAnimationFrame(() => {
+                    offlineStreamFrameRef.current = 0;
+                    if (!isCurrentOfflineRun()) return;
+                    const previewRaw = stripLiteralTexts(offlineStreamAccumRef.current, streamPreviewTagConfig.stripTexts);
+                    const parsed = parseOfflineResponse(previewRaw, streamPreviewTagConfig.summaryTag);
+                    const previewContent = (parsed.content
+                        ? stripXmlTagBlocks(parsed.content, [streamPreviewTagConfig.summaryTag, ...streamPreviewTagConfig.offlineThinking])
+                        : stripXmlTagBlocks(previewRaw, [streamPreviewTagConfig.summaryTag, ...streamPreviewTagConfig.offlineThinking])
+                            .replace(/<\/?(?:content|summary|thinking|thought|think)>/gi, "")
+                            .replace(/<[^>]+>/g, "")
+                    ).trim();
+                    setOfflineStreamPreview({ content: previewContent, summary: parsed.summary });
+                });
+            };
+            const result = session.isGroup
+                ? await generateGroupOfflineChatCompletion(session, history, { signal: offlineRun.controller.signal, onStreamDelta: onOfflineDelta })
+                : await generateOfflineChatCompletion(session, history, { signal: offlineRun.controller.signal, onStreamDelta: onOfflineDelta });
+            if (!isCurrentOfflineRun()) return;
+            const assistantContent = result.content.trim() || result.rawText.trim();
+            if (!assistantContent) throw new Error("AI 没有返回线下正文");
+            if (!result.summary.trim()) showChatToast(`未提取到 <${result.summaryTag}> 摘要`);
+            // 新版落地即写回这一段（时间戳不动），旧版本留在候选里
+            const newVersion: OfflineCandidateVersion = { content: assistantContent, summary: result.summary.trim(), rawText: result.rawText };
+            const updated = updateChatOfflineTurn(session.id, lastTurn.id, {
+                assistantContent,
+                summary: result.summary.trim(),
+                summaryTag: result.summaryTag,
+                rawText: result.rawText,
+                reasoningText: result.reasoning,
+                thinkingText: result.thinking,
+                thinkingTag: result.thinkingTag,
+            });
+            if (updated) setOfflineTurns(prev => prev.map(item => item.id === updated.id ? updated : item));
+            offlineCandidateVersionsRef.current = [previousVersion, newVersion];
+            setOfflineCandidate({ turnId: lastTurn.id, items: [previousVersion.content, newVersion.content], index: 1 });
+            showChatToast("已重写，左右划可切回旧版");
+        } catch (error: any) {
+            if (!isCurrentOfflineRun() || isAbortLikeError(error)) return;
+            showChatToast(`重写失败: ${error?.message || String(error)}`, 3000);
+            setOfflineCandidate(null);
+        } finally {
+            if (!finishOfflineGenerationRun(session.id, offlineRunId)) return;
+            setIsOfflineGenerating(false);
+            offlineStreamAccumRef.current = "";
+            setOfflineStreamPreview(null);
+        }
+    };
+
+    // 结束这一场：正文整份搬进「过去的约会」，空出来的从头写下一场
+    const handleOfflineEndSession = () => {
+        if (isOfflineGenerating) {
+            showChatToast("线下回复生成中");
+            return;
+        }
+        const archive = archiveChatOfflineTurns(session.id);
+        if (!archive) {
+            showChatToast("正文还空着，先写第一段");
+            return;
+        }
+        clearChatOfflineTurns(session.id);
+        setOfflineTurns([]);
+        setOfflineCandidate(null);
+        offlineCandidateVersionsRef.current = [];
+        setOfflineArchives(loadChatOfflineArchives(session.id));
+        showChatToast("这一场已经存进记录里");
+    };
+
+    const handleOfflineDeleteArchive = (archiveId: string) => {
+        setOfflineArchives(deleteChatOfflineArchive(session.id, archiveId));
+    };
+
+    // 底栏整场菜单：继续约会（收菜单照常写）/ 重写 / 时光回溯 / 结束约会
+    const handleOfflineActsMenu = useCallback((act: "continue" | "rewrite" | "warp" | "end") => {
+        if (act === "rewrite") {
+            void handleOfflineRewrite();
+            return;
+        }
+        if (act === "warp") {
+            showChatToast("时光回溯还在开发中");
+            return;
+        }
+        if (act === "end") {
+            handleOfflineEndSession();
+        }
+        // continue：什么都不做，菜单收起后照常写
+    }, [offlineTurns, isOfflineGenerating, offlineOpeners]);
 
     const handleRetry = async (msgId: string, retryInstruction?: string) => {
         const msgIndex = messages.findIndex(m => m.id === msgId);
@@ -5470,30 +5631,6 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
             deleteChatMessagesFrom(msgId);
             syncMessagesFromStorage();
         });
-    };
-
-    const renderOfflineContextMenu = (turn: ChatOfflineTurn, role: OfflineActionTarget["role"]) => {
-        const menu = (
-            <div
-                onPointerDown={e => e.stopPropagation()}
-                ref={positionFloatingContextMenu}
-                style={getContextMenuInitialStyle()}
-                className="ctx-menu chat-floating-ctx-menu flex flex-col items-center gap-[6px] py-[4px] px-0"
-                data-role={role}
-            >
-                <div className="flex">
-                    <button onClick={() => { copyTextToClipboard(getOfflineCopyText(turn, role)); setActiveOfflineTarget(null); }} className="ctx-menu-btn">复制</button>
-                    <button onClick={() => handleOfflineEditStart(turn, role)} className="ctx-menu-btn">编辑</button>
-                    <button onClick={() => void handleOfflineRetryFrom(turn.id)} className="ctx-menu-btn ctx-menu-btn-danger">重试以下</button>
-                </div>
-                <div className="flex">
-                    <button onClick={() => handleOfflineDeleteTurn(turn.id)} className="ctx-menu-btn ctx-menu-btn-danger">删除</button>
-                    <button onClick={() => handleOfflineDeleteTurnsFrom(turn.id)} className="ctx-menu-btn ctx-menu-btn-danger">删除以下</button>
-                </div>
-                <div data-menu-triangle className="ctx-menu-triangle absolute -top-[6px] w-0 h-0" />
-            </div>
-        );
-        return wrapperRef.current ? createPortal(menu, wrapperRef.current) : menu;
     };
 
     const getStoredActionMessageId = (msg: ChatMessage | RenderChatMessage): string => {
@@ -6553,196 +6690,39 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                 ref={scrollRef}
                 className="page-body chat-room-main-pane flex flex-col gap-4 chat-scroll-anchored"
                 onScroll={(e) => {
-                    if (activeMessageId || activeOfflineTarget) closeContextMenu();
+                    if (activeMessageId) closeContextMenu();
                 }}
                 onPointerDown={(e) => {
-                    if (activeMessageId || activeOfflineTarget) closeContextMenu();
+                    if (activeMessageId) closeContextMenu();
                     if (showEmojiPanel) setShowEmojiPanel(false);
                     if (showStickerPanel) setShowStickerPanel(false);
                     if (showPlusMenu) setShowPlusMenu(false);
                 }}
             >
                 {offlineMode && (
-                    <div className="chat-offline-body">
-                        {offlineTurns.length === 0 && !pendingOfflineUserText ? (
-                            <div className="chat-offline-empty">
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0Z" /><circle cx="12" cy="10" r="3" /></svg>
-                                线下模式
-                            </div>
-                        ) : null}
-                        {hasMoreOfflineTurns && (
-                            <button
-                                type="button"
-                                className="chat-sys-msg chat-load-more-button"
-                                onClick={loadMoreOfflineTurns}
-                            >
-                                <span>查看更多线下记录</span>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <polyline points="18 15 12 9 6 15" />
-                                </svg>
-                            </button>
-                        )}
-                        {visibleOfflineTurns.map((turn, turnIdx) => {
-                            const offlineDisplay = offlineDisplayByTurnId.get(turn.id) ?? getOfflineDisplayText(turn);
-                            const assistantHasHtmlPreview = hasOfflineHtmlPreview(offlineDisplay.assistantContent);
-                            const prevTime = turnIdx > 0 ? visibleOfflineTurns[turnIdx - 1].createdAt : null;
-                            const showTime = !prevTime || shouldShowTimestamp(turn.createdAt, prevTime);
-                            return (
-                            <Fragment key={turn.id}>
-                            {showTime && <div className="chat-offline-time">{formatChatUiTime(turn.createdAt)}</div>}
-                            <div className="chat-offline-turn">
-                                <div className="chat-offline-entry" data-role="user" style={offlineDisplay.userContent.trim() ? undefined : { display: "none" }}>
-                                    {/* 头像占位：默认 display:none（见 chat.css），供自定义 CSS 显示 */}
-                                    <div className="chat-offline-avatar" aria-hidden="true">
-                                        {effectiveUserAvatar ? <img src={effectiveUserAvatar} alt="" /> : <User size={18} color="var(--c-text)" />}
-                                    </div>
-                                    <div className="chat-offline-label">你</div>
-                                    <div
-                                        className="chat-offline-text"
-                                        onPointerDown={(e) => { e.stopPropagation(); handleOfflinePointerDown(e, { turnId: turn.id, role: "user" }); }}
-                                        onPointerUp={(e) => handleMessagePointerUp(e)}
-                                        onPointerCancel={handleMessagePointerCancel}
-                                        onPointerLeave={handleMessagePointerCancel}
-                                        onPointerMove={(e) => {
-                                            if (startPosRef.current) {
-                                                const dx = Math.abs(e.clientX - startPosRef.current.x);
-                                                const dy = Math.abs(e.clientY - startPosRef.current.y);
-                                                if (dx > 10 || dy > 10) handleMessagePointerCancel();
-                                            }
-                                        }}
-                                        onContextMenu={(e) => { e.preventDefault(); openOfflineContextMenu({ turnId: turn.id, role: "user" }, { x: e.clientX, y: e.clientY }); }}
-                                        {...(activeOfflineTarget?.turnId === turn.id && activeOfflineTarget.role === "user" ? { "data-active": "" } : {})}
-                                    >
-                                        {activeOfflineTarget?.turnId === turn.id && activeOfflineTarget.role === "user" && renderOfflineContextMenu(turn, "user")}
-                                        <BilingualTextBlock
-                                            text={offlineDisplay.userContent}
-                                            mode="markdown"
-                                            defaultExpanded={session.collapseBilingualTranslation !== false ? false : true}
-                                        />
-                                    </div>
-                                </div>
-                                <div className="chat-offline-entry" data-role="assistant">
-                                    {/* 头像占位：默认 display:none（见 chat.css），供自定义 CSS 显示 */}
-                                    <div className="chat-offline-avatar" aria-hidden="true">
-                                        {effectiveCharacterAvatar ? <img src={effectiveCharacterAvatar} alt="" /> : <ChatFallbackAvatar />}
-                                    </div>
-                                    <div className="chat-offline-label-row">
-                                        <div className="chat-offline-label">{session.isGroup ? (session.groupName || "群聊") : (character?.name || "对方")}</div>
-                                        {assistantHasHtmlPreview ? (
-                                            <button
-                                                type="button"
-                                                className="chat-offline-menu-trigger"
-                                                aria-label="线下回复操作"
-                                                title="线下回复操作"
-                                                onPointerDown={(e) => {
-                                                    e.stopPropagation();
-                                                    handleMessagePointerCancel();
-                                                }}
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    const rect = e.currentTarget.getBoundingClientRect();
-                                                    openOfflineContextMenu({ turnId: turn.id, role: "assistant" }, {
-                                                        x: rect.left + rect.width / 2,
-                                                        y: rect.bottom,
-                                                    });
-                                                }}
-                                            >
-                                                <MoreHorizontal size={16} strokeWidth={2} />
-                                            </button>
-                                        ) : null}
-                                    </div>
-                                    {/* 思维链触发条（线下模式，Claude app 风格）：优先展示预设格式 <thinking> 解析结果，缺省回退模型 API 原生思考 */}
-                                    {(turn.thinkingText || turn.reasoningText) && (
-                                        <button
-                                            type="button"
-                                            className="chat-reasoning-trigger"
-                                            onClick={(e) => { e.stopPropagation(); setReasoningSheetText(turn.thinkingText || turn.reasoningText || null); }}
-                                            aria-label="查看思考过程"
-                                        >
-                                            <Clock size={13} strokeWidth={1.8} className="chat-reasoning-trigger-icon" />
-                                            <span className="chat-reasoning-trigger-text">{reasoningPreviewLine(turn.thinkingText || turn.reasoningText || "")}</span>
-                                            <ChevronRight size={14} strokeWidth={1.8} className="chat-reasoning-trigger-icon" />
-                                        </button>
-                                    )}
-                                    <div
-                                        className="chat-offline-text"
-                                        onPointerDown={(e) => { e.stopPropagation(); handleOfflinePointerDown(e, { turnId: turn.id, role: "assistant" }); }}
-                                        onPointerUp={(e) => handleMessagePointerUp(e)}
-                                        onPointerCancel={handleMessagePointerCancel}
-                                        onPointerLeave={handleMessagePointerCancel}
-                                        onPointerMove={(e) => {
-                                            if (startPosRef.current) {
-                                                const dx = Math.abs(e.clientX - startPosRef.current.x);
-                                                const dy = Math.abs(e.clientY - startPosRef.current.y);
-                                                if (dx > 10 || dy > 10) handleMessagePointerCancel();
-                                            }
-                                        }}
-                                        onContextMenu={(e) => { e.preventDefault(); openOfflineContextMenu({ turnId: turn.id, role: "assistant" }, { x: e.clientX, y: e.clientY }); }}
-                                        {...(activeOfflineTarget?.turnId === turn.id && activeOfflineTarget.role === "assistant" ? { "data-active": "" } : {})}
-                                    >
-                                        {activeOfflineTarget?.turnId === turn.id && activeOfflineTarget.role === "assistant" && renderOfflineContextMenu(turn, "assistant")}
-                                        <OfflineAssistantTextBlock
-                                            text={offlineDisplay.assistantContent}
-                                            defaultExpanded={session.collapseBilingualTranslation !== false ? false : true}
-                                        />
-                                    </div>
-                                    {turn.summary.trim() && (
-                                        <details className="chat-offline-summary-fold">
-                                            <summary>摘要（{turn.summaryTag || "summary"}）</summary>
-                                            <div className="chat-offline-summary-content">
-                                                <BilingualTextBlock
-                                                    text={offlineDisplay.summary}
-                                                    mode="markdown"
-                                                    defaultExpanded={session.collapseBilingualTranslation !== false ? false : true}
-                                                />
-                                            </div>
-                                        </details>
-                                    )}
-                                </div>
-                            </div>
-                            </Fragment>
-                            );
-                        })}
-                        {(pendingOfflineUserText || isOfflineGenerating) && (
-                            <div className="chat-offline-turn">
-                                <div className="chat-offline-entry" data-role="user" style={pendingOfflineUserText ? undefined : { display: "none" }}>
-                                    {/* 头像占位：默认 display:none（见 chat.css），供自定义 CSS 显示 */}
-                                    <div className="chat-offline-avatar" aria-hidden="true">
-                                        {effectiveUserAvatar ? <img src={effectiveUserAvatar} alt="" /> : <User size={18} color="var(--c-text)" />}
-                                    </div>
-                                    <div className="chat-offline-label">你</div>
-                                    <div className="chat-offline-text">
-                                        <BilingualTextBlock
-                                            text={renderDisplayText(pendingOfflineUserText, 1, true)}
-                                            mode="markdown"
-                                            defaultExpanded={session.collapseBilingualTranslation !== false ? false : true}
-                                        />
-                                    </div>
-                                </div>
-                                {offlineStreamPreview?.content ? (
-                                    /* 流式预览原地长出：与正式剧情正文同结构（头像/角色名/正文区），
-                                       正文用轻量 pre-wrap 渲染（避免每帧 markdown/双语解析），落库时原地换成正式排版 */
-                                    <div className="chat-offline-entry" data-role="assistant">
-                                        <div className="chat-offline-avatar" aria-hidden="true">
-                                            {effectiveCharacterAvatar ? <img src={effectiveCharacterAvatar} alt="" /> : <ChatFallbackAvatar />}
-                                        </div>
-                                        <div className="chat-offline-label-row">
-                                            <div className="chat-offline-label">{session.isGroup ? (session.groupName || "群聊") : (character?.name || "对方")}</div>
-                                        </div>
-                                        <div className="chat-offline-text">
-                                            <div className="chat-stream-text whitespace-pre-wrap break-words">{offlineStreamPreview.content}</div>
-                                            <span className="chat-stream-cursor" aria-hidden="true" />
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="chat-offline-generating">
-                                        <span>线下回复生成中</span>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
+                    <OfflineBookView
+                        turns={visibleOfflineTurns}
+                        characterName={session.isGroup ? (session.groupName || "群聊") : (character?.name || "对方")}
+                        userLabel="你"
+                        isGenerating={isOfflineGenerating}
+                        streamContent={offlineStreamPreview?.content || ""}
+                        pendingUserText={pendingOfflineUserText}
+                        candidate={offlineCandidate}
+                        onCandidateShift={handleOfflineCandidateShift}
+                        onEditSave={handleBookEditSave}
+                        getEditText={getOfflineEditBaseText}
+                        onDeleteSegment={handleOfflineDeleteTurn}
+                        onToggleFav={handleOfflineToggleFav}
+                        onCopySegment={offlineCopyPlain}
+                        onAdoptOpener={handleOfflineAdoptOpener}
+                        openers={offlineOpeners}
+                        archives={offlineArchives}
+                        onDeleteArchive={handleOfflineDeleteArchive}
+                        htmlCardEnabled={session.offlineHtmlCardEnabled === true}
+                        customCSS={session.offlineCustomCSS}
+                        hasMore={hasMoreOfflineTurns}
+                        onLoadMore={loadMoreOfflineTurns}
+                    />
                 )}
                 {!offlineMode && hasMore && (
                     <button
@@ -7431,6 +7411,8 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                     onToggleEmojiPanel={() => { setShowEmojiPanel(!showEmojiPanel); setShowStickerPanel(false); setShowPlusMenu(false); }}
                     onSendText={handleOfflineSend}
                     onStopGeneration={clearOfflineGeneration}
+                    onActsMenu={handleOfflineActsMenu}
+                    hasTurns={offlineTurns.length > 0}
                 />
             ) : (
             <ChatTextInputBar
@@ -7510,10 +7492,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                             setOfflineVisibleCount(OFFLINE_INITIAL_LOAD);
                             setPendingOfflineUserText("");
                             offlineGenerationInputRef.current = "";
-                            setActiveOfflineTarget(null);
                             setContextMenuAnchor(null);
-                            setEditingOfflineTarget(null);
-                            setEditingOfflineContent("");
                             showChatToast("已清空线下聊天记录");
                         }}
                         onDeleteFriend={() => onBack()}
@@ -7834,52 +7813,6 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                     }}
                     onClose={() => setMediaDetailMsg(null)}
                 />
-            )}
-
-            {editingOfflineTarget && (
-                <div className="chat-html-overlay" onClick={() => { setEditingOfflineTarget(null); setEditingOfflineContent(""); }}>
-                    <div
-                        className="g-card w-[min(84vw,420px)] max-h-[78vh] p-4 flex flex-col gap-3"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div className="flex items-center justify-between gap-3">
-                            <div className="flex flex-col gap-1">
-                                <span className="menu-label">
-                                    {editingOfflineTarget.role === "user" ? "编辑线下输入" : "编辑线下回复"}
-                                </span>
-                                <span className="menu-desc !mt-0">
-                                    {editingOfflineTarget.role === "user"
-                                        ? "保存后会更新这一轮线下历史"
-                                        : "保存后会重新解析 content 和摘要，并更新短期记忆事件流"}
-                                </span>
-                            </div>
-                            <button
-                                onClick={() => { setEditingOfflineTarget(null); setEditingOfflineContent(""); }}
-                                className="ui-bare-btn text-[var(--c-icon)] ts-18 leading-none"
-                                type="button"
-                            >✕</button>
-                        </div>
-                        <textarea
-                            autoFocus
-                            value={editingOfflineContent}
-                            onChange={(e) => setEditingOfflineContent(e.target.value)}
-                            className="w-full min-h-[220px] max-h-[52vh] resize-none rounded-2xl border border-[var(--c-border)] bg-[var(--c-input)] px-4 py-3 ts-14 text-[var(--c-text)] outline-none"
-                        />
-                        <div className="flex justify-end gap-2">
-                            <button
-                                onClick={() => { setEditingOfflineTarget(null); setEditingOfflineContent(""); }}
-                                className="ui-btn ui-btn-outline"
-                                type="button"
-                            >取消</button>
-                            <button
-                                onClick={handleOfflineEditSave}
-                                disabled={!editingOfflineContent.trim()}
-                                className="ui-btn ui-btn-primary"
-                                type="button"
-                            >保存</button>
-                        </div>
-                    </div>
-                </div>
             )}
 
             {editingMessageId && (
