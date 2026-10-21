@@ -1,14 +1,16 @@
 {
-  "versionCode": 12,
-  "versionName": "1.1.0",
-  "apkUrl": "https://github.com/linhlinsiyi217/float-0217/releases/download/v1.1.0/app-release.apk",
+  "versionCode": 13,
+  "versionName": "1.2.0",
+  "apkUrl": "https://github.com/linhlinsiyi217/float-0217/releases/download/v1.2.0/app-release.apk",
   "force": false,
-  "webVersion": "2026-10-21-1",
-  "summary": "这次给安卓壳加了应用内更新弹窗和后台保活，Actions 会自动打包发布 APK；网页更新日志支持按影响范围分类显示。",
+  "webVersion": "2026-10-22-1",
+  "summary": "这次补全了灵动岛和 AI 头像心声弹窗，重做了开屏进度与模拟锁屏，线下模式改成书页式正文（荧光带台词、就地编辑、重写候选、约会记录），聊天室小弹窗全部改成只验证不误触。",
   "changes": [
-    { "type": "app", "title": "应用内更新", "detail": "新版本先弹窗，下载后拉起系统安装页，装完弹一次更新日志" },
-    { "type": "app", "title": "后台保活", "detail": "被划掉后自动拉起，首次打开引导设置" },
-    { "type": "app", "title": "自动打包", "detail": "推到 main 后 Actions 自动构建并发布 APK 到 Releases" },
-    { "type": "content", "title": "更新日志", "detail": "日志页与弹窗支持按影响范围（应用/页面内容/全局/提示词/修复）分类" }
+    { "type": "page", "title": "灵动岛补全", "detail": "岛内状态与展开内容补齐，动画衔接更顺" },
+    { "type": "page", "title": "心声式弹窗", "detail": "点 AI 头像弹出角色此刻的心声，读完即散" },
+    { "type": "page", "title": "开屏与锁屏", "detail": "开屏改为真实加载进度；新增模拟锁屏界面与锁屏设置" },
+    { "type": "page", "title": "线下书页模式", "detail": "线下正文像一本书：台词荧光带、段落四件事就地完成、重写后左右划切候选、结束约会存进记录" },
+    { "type": "prompt", "title": "线下写作参数", "detail": "会话设置里可给线下正文定文风、氛围与视角，只影响书页" },
+    { "type": "fix", "title": "小弹窗只验证", "detail": "聊天室各类小弹窗统一改为验证式交互，减少误触" }
   ]
 }
