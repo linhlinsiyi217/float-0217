@@ -54,7 +54,7 @@ import { getSchemes, saveScheme, deleteScheme, type CSSScheme } from "@/lib/css-
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 import { KeyboardAutoSendDebounceItem } from "@/components/chat/keyboard-auto-send-debounce-item";
 import { SessionChatSoundsSection } from "@/components/chat/session-chat-sounds";
-import { ChevronRight, Image as ImageIcon, Video, Mic, UserMinus, UserPlus, Users, Pin, Ban, MessageSquare, Search, AlertCircle, Code, Laptop, Trash2, Smile, Sparkles, X, Play, Upload, Download, Save, FolderOpen, Camera, RefreshCw, type LucideIcon } from "lucide-react";
+import { ChevronRight, Image as ImageIcon, Video, Mic, UserMinus, UserPlus, Users, Pin, Ban, MessageSquare, Search, AlertCircle, Code, Laptop, Trash2, Smile, Sparkles, X, Play, Upload, Download, Save, FolderOpen, Camera, RefreshCw, Heart, type LucideIcon } from "lucide-react";
 import { BINDING_ACCENTS, CONTENT_APP_ACCENTS } from "@/lib/ui-accent-colors";
 import CSSSchemeBar from "@/components/ui/css-scheme-picker";
 import { ConfirmDialog } from "@/components/ui/modal";
@@ -195,6 +195,7 @@ import { BubbleColorSettings } from "./bubble-color-settings";
 import { resolveChatBeautyPreset } from "@/lib/chat-beauty-preset";
 import { MessageBubble, isStandaloneHtmlPreviewContent } from "./message-bubble";
 import { ScreenEffectSettingsModal } from "./screen-effect-settings-modal";
+import { InnerVoiceSettingsModal } from "./inner-voice-settings";
 
 type ChatSettingsPanelProps = {
     session: ChatSession;
@@ -469,6 +470,7 @@ export function ChatSettingsPanel({
     const [tapbackDraft, setTapbackDraft] = useState<string[]>(() => loadIMessageTapbacks().map(item => item.glyph));;
     const [tapbackError, setTapbackError] = useState("");
     const [showScreenEffects, setShowScreenEffects] = useState(false);
+    const [showInnerVoice, setShowInnerVoice] = useState(false);
     const [showSearch, setShowSearch] = useState(false);
     // TA 的电脑：翻看角色云端电脑（连接了角色电脑才显示入口）
     const [showComputer, setShowComputer] = useState(false);
@@ -1512,6 +1514,16 @@ export function ChatSettingsPanel({
                                 <ChevronRight size={16} />
                             </div>
                         </button>
+                        <button className="menu-item" onClick={() => setShowInnerVoice(true)}>
+                            <ChatInfoIcon icon={Heart} color={BINDING_ACCENTS.preset} />
+                            <div className="menu-label-group">
+                                <span className="menu-label">心声</span>
+                                <span className="menu-desc">点 AI 头像弹出的自定义卡片：主题、字段与 HTML 模板</span>
+                            </div>
+                            <div className="menu-right">
+                                <ChevronRight size={16} />
+                            </div>
+                        </button>
                     </>
                 </div>
 
@@ -1879,6 +1891,9 @@ export function ChatSettingsPanel({
 
             {/* Modal: Screen Effects */}
             {showScreenEffects && <ScreenEffectSettingsModal onClose={() => setShowScreenEffects(false)} />}
+
+            {/* Modal: Inner Voice (心声) */}
+            {showInnerVoice && <InnerVoiceSettingsModal sessionId={session.id} onClose={() => setShowInnerVoice(false)} />}
 
             {/* Modal: Confirm Clear History */}
             {showConfirmClear && (

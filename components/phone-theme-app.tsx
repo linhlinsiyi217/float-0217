@@ -10,6 +10,7 @@ import {
   Download,
   LayoutGrid,
   PaintBucket,
+  Pill,
   Plus,
   RotateCcw,
   Save,
@@ -394,30 +395,46 @@ export function PhoneThemeApp({
             <div>
               <h3 className="appearance-menu-section-title">System Settings</h3>
               <div className="menu-group mt-2.5">
-                {/* 状态栏开关 + 位置调节 */}
+                {/* 状态栏开关 + 位置调节；mode=auto 表示「跟平台默认走」，不落成 true/false */}
                 {(() => {
                   const caseItem = MENU_ITEMS.find(i => i.section === "case")!;
+                  const statusBarChecked = draft.statusBarMode !== "off";
                   return (
                     <div className="menu-item cursor-pointer" onClick={() => setShowStatusBarAdjust(true)}>
                       <span className="card-icon card-icon-glass"><GlassIcon name={caseItem.glass} /></span>
                       <span className="menu-label appearance-menu-item-label">{caseItem.label}</span>
+                      {draft.statusBarMode !== "auto" ? (
+                        <button
+                          type="button"
+                          className="ts-11 cursor-pointer shrink-0 ml-auto"
+                          style={{ background: "none", border: "none", color: "var(--c-icon)", padding: "4px" }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const next = { ...draft, statusBarMode: "auto" as const };
+                            onDraftChange(next);
+                            onApply(next);
+                          }}
+                        >
+                          恢复默认
+                        </button>
+                      ) : null}
                       <label
                         className="block w-10 h-[22px] cursor-pointer relative shrink-0 ml-auto"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <input
                           type="checkbox"
-                          checked={!draft.hideTopBar}
-                          onChange={(e) => { const next = { ...draft, hideTopBar: !e.target.checked }; onDraftChange(next); onApply(next); }}
+                          checked={statusBarChecked}
+                          onChange={(e) => { const next = { ...draft, statusBarMode: e.target.checked ? "on" as const : "off" as const }; onDraftChange(next); onApply(next); }}
                           className="w-full h-full rounded-[11px] m-0 outline-none"
                           style={{
                             appearance: "none",
-                            backgroundColor: !draft.hideTopBar ? "var(--c-success)" : "var(--c-page-body-bg)",
+                            backgroundColor: statusBarChecked ? "var(--c-success)" : "var(--c-page-body-bg)",
                             transition: "0.2s",
                           }}
                         />
                         <div className="absolute w-[18px] h-[18px] bg-white rounded-full top-[2px] pointer-events-none" style={{
-                          left: !draft.hideTopBar ? 20 : 2,
+                          left: statusBarChecked ? 20 : 2,
                           transition: "0.2s",
                           boxShadow: "0 2px 4px rgba(0,0,0,0.15)",
                         }} />
@@ -425,6 +442,41 @@ export function PhoneThemeApp({
                     </div>
                   );
                 })()}
+                {/* 灵动岛开关：状态栏关了灵动岛也不显示 */}
+                <div className="menu-item cursor-pointer" onClick={() => {
+                  const next = { ...draft, islandMode: draft.islandMode === "off" ? "on" as const : "off" as const };
+                  onDraftChange(next);
+                  onApply(next);
+                }}>
+                  <span className="card-icon card-icon-glass" style={{ display: "grid", placeItems: "center" }}>
+                    <Pill size={18} strokeWidth={1.75} />
+                  </span>
+                  <span className="menu-label appearance-menu-item-label">灵动岛</span>
+                  <span className="ts-11 shrink-0 ml-auto" style={{ color: "var(--c-icon)" }}>
+                    {draft.islandMode === "auto" ? "跟默认" : draft.islandMode === "on" ? "常开" : "关闭"}
+                  </span>
+                  <label
+                    className="block w-10 h-[22px] cursor-pointer relative shrink-0 ml-auto"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={draft.islandMode !== "off"}
+                      onChange={(e) => { const next = { ...draft, islandMode: e.target.checked ? "on" as const : "off" as const }; onDraftChange(next); onApply(next); }}
+                      className="w-full h-full rounded-[11px] m-0 outline-none"
+                      style={{
+                        appearance: "none",
+                        backgroundColor: draft.islandMode !== "off" ? "var(--c-success)" : "var(--c-page-body-bg)",
+                        transition: "0.2s",
+                      }}
+                    />
+                    <div className="absolute w-[18px] h-[18px] bg-white rounded-full top-[2px] pointer-events-none" style={{
+                      left: draft.islandMode !== "off" ? 20 : 2,
+                      transition: "0.2s",
+                      boxShadow: "0 2px 4px rgba(0,0,0,0.15)",
+                    }} />
+                  </label>
+                </div>
                 {MENU_ITEMS.filter(item => ["text"].includes(item.section)).map((item) => (
                   <button
                     key={item.section}
@@ -1164,9 +1216,11 @@ function GlobalCSSPage({
         placeholder={'[data-ui="card"] {\n  border-radius: 14px;\n}\n\n.ui-btn {\n  border-radius: 999px;\n}'}
         value={localCSS}
         onChange={(e) => setLocalCSS(e.target.value)}
+        maxLength={20000}
         spellCheck={false}
       />
       <div className="flex gap-2 mt-3 items-center">
+        <span className="ts-11" style={{ color: "var(--c-icon)" }}>{localCSS.length}/20000</span>
         <CSSSchemeBar target="global" currentCSS={localCSS} onLoad={setLocalCSS} />
         <button type="button" className="ui-btn ui-btn-outline flex-1" onClick={() => setLocalCSS("")}>清除</button>
         <button type="button" className="ui-btn ui-btn-soft-action flex-1" onClick={handleApply}>应用</button>

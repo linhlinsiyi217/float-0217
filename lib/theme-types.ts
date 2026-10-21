@@ -49,6 +49,10 @@ export type ThemeProfile = {
   fontFamily: string;
   // 手机外观
   hideTopBar: boolean;
+  // 状态栏 / 灵动岛：auto=跟平台默认走（安卓壳开、网页按 hideTopBar），on=强制开，off=强制关。
+  // 「用户没设置过」必须存成 auto，否则云备份换设备后默认值会错。
+  statusBarMode: "auto" | "on" | "off";
+  islandMode: "auto" | "on" | "off";
   // 移动端：手机画面整体上移的像素数，用于裁掉顶部状态栏占位、把底部栏顶回可视区。
   // 0 = 不上移（iOS 等能全屏的浏览器保持 0）；安卓按真实状态栏高度调到刚好铺满。
   statusBarDropPx: number;
@@ -179,6 +183,8 @@ export const DEFAULT_THEME_PROFILE: ThemeProfile = {
   fontAssetId: null,
   fontFamily: DEFAULT_FONT_FAMILY,
   hideTopBar: true,
+  statusBarMode: "auto",
+  islandMode: "auto",
   statusBarDropPx: 0,
   cssOverrides: {},
   globalCustomCSS: "",
@@ -327,6 +333,11 @@ export function normalizeThemeProfile(raw: unknown): ThemeProfile {
   base.hideTopBar = typeof source.hideTopBar === "boolean" ? source.hideTopBar : base.hideTopBar;
   base.statusBarDropPx = typeof source.statusBarDropPx === "number" && isFinite(source.statusBarDropPx as number)
     ? Math.min(120, Math.max(0, Math.round(source.statusBarDropPx as number))) : 0;
+  const MODE_VALUES: Array<ThemeProfile["statusBarMode"]> = ["auto", "on", "off"];
+  base.statusBarMode = MODE_VALUES.includes(source.statusBarMode as ThemeProfile["statusBarMode"])
+    ? (source.statusBarMode as ThemeProfile["statusBarMode"]) : "auto";
+  base.islandMode = MODE_VALUES.includes(source.islandMode as ThemeProfile["islandMode"])
+    ? (source.islandMode as ThemeProfile["islandMode"]) : "auto";
 
   // ── CSS Overrides ──
   base.cssOverrides = normalizeStringMap(source.cssOverrides);

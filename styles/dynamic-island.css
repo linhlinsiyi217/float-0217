@@ -1,0 +1,125 @@
+/*
+ * The black capsule is already rendered by .status-island in the phone shell.
+ * This file only wires the existing live activity into that capsule and animates
+ * its expansion; it must never draw a second hardware-looking capsule.
+ */
+.phone-status-bar .status-island {
+  position: relative;
+  overflow: visible;
+  z-index: 40;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  transition: width 260ms cubic-bezier(.22, 1, .36, 1),
+    border-radius 220ms ease, box-shadow 220ms ease;
+}
+
+.phone-status-bar .status-island > .music-dynamic-island {
+  position: static;
+  transform: none;
+  z-index: 41;
+  width: 100%;
+  max-width: none;
+  pointer-events: auto;
+}
+
+.phone-status-bar .status-island > .music-dynamic-island .mdi-row {
+  width: 100%;
+  height: 100%;
+  gap: 0;
+  justify-content: center;
+  filter: none;
+}
+
+.phone-status-bar .status-island > .music-dynamic-island .mdi-cover {
+  display: none;
+}
+
+.phone-status-bar .status-island > .music-dynamic-island .mdi-capsule {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: 36px;
+  justify-content: center;
+  border-radius: inherit;
+  padding-inline: 10px;
+  background: transparent;
+  box-shadow: none;
+  transition: width 260ms cubic-bezier(.22, 1, .36, 1),
+    transform 180ms ease, filter 180ms ease;
+}
+
+.phone-status-bar .status-island > .music-dynamic-island .mdi-capsule:active,
+.phone-status-bar .status-island > .music-dynamic-island .mdi-cover:active {
+  transform: scale(.96);
+}
+
+.phone-status-bar .status-island > .music-dynamic-island[data-state="presence"] .mdi-waveform i {
+  height: 4px;
+  opacity: .58;
+  animation: mdi-presence-breathe 1.7s ease-in-out infinite;
+}
+
+.phone-status-bar .status-island > .music-dynamic-island[data-state="presence"] .mdi-waveform i:nth-child(2n) {
+  animation-delay: .22s;
+}
+
+.phone-status-bar .status-island > .music-dynamic-island[data-state="presence"] .mdi-waveform i:nth-child(3n) {
+  animation-delay: .44s;
+}
+
+.mdi-presence-copy {
+  margin: 8px 0 4px;
+  color: rgba(255, 255, 255, .72);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+@keyframes mdi-presence-breathe {
+  0%, 100% { transform: scaleY(.7); opacity: .45; }
+  50% { transform: scaleY(1.4); opacity: .9; }
+}
+
+.phone-status-bar .status-island:has(> .music-dynamic-island[data-expanded="true"]) {
+  width: min(300px, calc(100vw - 40px));
+  box-shadow: 0 7px 18px rgba(0, 0, 0, .28);
+}
+
+.phone-status-bar .status-island:has(> .music-dynamic-island[data-expanded="true"]) .mdi-row {
+  justify-content: flex-start;
+  gap: 7px;
+  padding-inline: 7px;
+}
+
+.phone-status-bar .status-island:has(> .music-dynamic-island[data-expanded="true"]) .mdi-cover {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  border-width: 1px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .30);
+}
+
+.phone-status-bar .status-island:has(> .music-dynamic-island[data-expanded="true"]) .mdi-capsule {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  width: auto;
+  text-align: left;
+}
+
+.phone-status-bar .status-island > .music-dynamic-island .mdi-expanded {
+  width: min(292px, calc(100vw - 40px));
+  margin-top: 7px;
+  border-radius: 22px;
+  transform-origin: top center;
+  animation: mdi-live-expand .30s cubic-bezier(.22, 1, .36, 1) both;
+}
+
+@keyframes mdi-live-expand {
+  from { opacity: 0; transform: translateY(-5px) scale(.88); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phone-status-bar .status-island > .music-dynamic-island .mdi-expanded { animation: none; }
+}

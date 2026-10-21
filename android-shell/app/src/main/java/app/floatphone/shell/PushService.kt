@@ -1,5 +1,6 @@
 package app.floatphone.shell
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -11,6 +12,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Base64
 import android.webkit.CookieManager
 import androidx.core.app.NotificationCompat
@@ -79,10 +81,29 @@ class PushService : Service() {
         running = true
         createChannels()
         startForeground(NOTIF_FG_ID, buildKeepAliveNotification("等待连接…"))
+        KeepAlive.scheduleJob(this)
         thread(name = "shell-push-loop") { connectionLoop() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+
+    /**
+     * 用户在最近任务里划掉 App：前台服务也会被一起杀。
+     * 这里用精确闹钟 3 秒后把自己再拉起来（START_STICKY 的系统重启要等更久）。
+     * 国产 ROM 可能拦闹钟拉起，属尽力而为；15 分钟一次的 KeepAliveJobService 再兜底。
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        try {
+            val i = Intent(applicationContext, PushService::class.java)
+            val pi = if (Build.VERSION.SDK_INT >= 26)
+                PendingIntent.getForegroundService(this, 1, i, PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE)
+            else
+                PendingIntent.getService(this, 1, i, PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE)
+            val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            am.set(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime() + 3000, pi)
+        } catch (_: Exception) {}
+        super.onTaskRemoved(rootIntent)
+    }
 
     override fun onDestroy() {
         stopped = true

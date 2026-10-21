@@ -10,6 +10,75 @@ import type { Release } from "./types";
 
 export const SYSTEM_RELEASES: Release[] = [
   {
+    version: "0.6.11",
+    releaseId: "system-2026-10-21-v0611",
+    date: "2026-10-21",
+    name: "工坊 Claude 风格改造与安卓壳发布修复",
+    summary: "工坊：加入 Claude 风格欢迎页、思考过程动效与上下文入口；安卓壳：修复 release lint 阻断并保留后台保活、应用内更新；聊天菜单定位继续保留。",
+    entries: [
+      {
+        id: "sys-0611-workshop-claude",
+        category: "feat",
+        app: "工坊 · Claude 风格答疑",
+        scope: "app-content",
+        title: "工坊支持思考过程展示与更清晰的上下文入口",
+        items: [
+          "欢迎页改为暖色 Claude 风格，保留原有答疑、仓库读写、文件预览和工具执行能力",
+          "模型返回思考过程时显示可展开的思考卡片，生成中有点状动效，完成后可回看摘要",
+          "输入区显示当前工作区、仓库连接状态与更明确的发送状态；手机端临时层支持返回键或 Escape 关闭",
+        ],
+      },
+      {
+        id: "sys-0611-workshop-identity",
+        category: "fix",
+        app: "工坊 · 用户身份",
+        scope: "app-content",
+        title: "欢迎语和提示跟随用户自己设置的名字",
+        items: [
+          "工坊不再写死问候名称，读取本机内置用户身份并在身份更新后即时同步",
+          "未设置名字时使用中性的「你」作为兜底，不影响原有会话和工具功能",
+        ],
+      },
+      {
+        id: "sys-0611-chat-menu",
+        category: "fix",
+        app: "聊天 · 消息菜单",
+        scope: "app-content",
+        title: "长按消息时菜单定位和层级更稳定",
+        items: [
+          "菜单会以气泡边缘为基准显示，不再从气泡中间压住正文或被气泡盖住",
+          "屏幕顶部或底部空间不足时自动翻转并限制在屏幕内",
+        ],
+      },
+      {
+        id: "sys-0611-shell",
+        category: "fix",
+        app: "桌面 · 安卓壳自动打包与保活",
+        scope: "app",
+        title: "修复 release APK 被 Android lint 拦截的问题",
+        items: [
+          "为被划掉任务后的 PendingIntent 补齐不可变标记，release lint 不再因 Android 12 安全检查失败",
+          "保留 3 秒拉起、15 分钟 JobScheduler 检查、后台设置引导和应用内更新弹窗",
+        ],
+      },
+      {
+        id: "sys-0611-update-log",
+        category: "perf",
+        app: "设置 · 更新日志",
+        scope: "app-content",
+        title: "更新日志继续按影响范围呈现本次改动",
+        items: [
+          "应用、页面内容、全局、提示词和修复等影响范围在日志页与更新弹窗中保持一致",
+          "本次工坊和安卓壳改动会在更新公告中分别标出，方便判断是否需要安装 APK",
+        ],
+      },
+    ],
+    pending: [
+      "工坊思考过程和输入区已通过 TypeScript 与生产构建检查，仍建议在真机窄屏上确认键盘弹出、滚动和动画节奏",
+      "安卓壳安装更新、后台保活效果受具体 ROM 的电池策略影响，需要在你的手机上最终确认",
+    ],
+  },
+  {
     version: "0.6.9",
     releaseId: "system-2026-10-20-v069",
     date: "2026-10-20",

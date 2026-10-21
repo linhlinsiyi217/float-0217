@@ -103,11 +103,13 @@ import { useChatAppearance } from "./use-chat-appearance";
 import { IMessageTapbackBadge } from "./imessage-tapback-badge";
 import { GroupSenderName } from "./group-sender-name";
 import { ChatUnreadPill } from "./chat-unread-pill";
+import { InnerVoicePopup } from "./inner-voice-popup";
 import { GroupAvatar } from "./group-avatar";
 import { HeaderVideoIcon } from "./header-video-icon";
 import { SortablePlusMenu } from "./sortable-plus-menu";
 import { getQuotePreview } from "@/lib/chat-quote-preview";
 import { useGlassContrast } from "./use-glass-contrast";
+import { publishFloatPresence } from "@/lib/float-presence";
 import { useChatEdgeTint } from "./use-chat-edge-tint";
 import { useGroupBubbleTint } from "./use-group-bubble-tint";
 import { resolveChatBeautyPreset } from "@/lib/chat-beauty-preset";
@@ -551,6 +553,15 @@ type OfflineActionTarget = {
 type ContextMenuAnchor = {
     x: number;
     y: number;
+    /**
+     * The message bounds are kept separately from the pointer location. A
+     * long-press normally lands in the middle of a bubble; using that point
+     * as the menu anchor makes a tall menu overlap the bubble itself. Keeping
+     * the edge coordinates lets the menu sit just outside the bubble and
+     * flip below it only when there is not enough room above.
+     */
+    top?: number;
+    bottom?: number;
 };
 
 type RenderChatMessage = ChatMessage & {
@@ -1341,6 +1352,19 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
     const [offlineVisibleCount, setOfflineVisibleCount] = useState(OFFLINE_INITIAL_LOAD);
     const [pendingOfflineUserText, setPendingOfflineUserText] = useState("");
     const [isOfflineGenerating, setIsOfflineGenerating] = useState(false);
+    useEffect(() => {
+        publishFloatPresence(
+            isOfflineGenerating ? "offline" : isGenerating ? "thinking" : "idle",
+            {
+                label: isOfflineGenerating ? "线下互动中" : isGenerating ? "正在思考" : "刚刚活跃",
+                characterName: character?.name,
+                sessionId: session.id,
+            },
+        );
+        return () => {
+            publishFloatPresence("idle", { label: "刚刚活跃", sessionId: session.id });
+        };
+    }, [character?.name, isGenerating, isOfflineGenerating, session.id]);
     // 流式生成预览：线上（单聊/群聊）与线下各一份，生成中实时刷新，结束后清空
     const [streamPreview, setStreamPreview] = useState<null | {
         /** 单聊：按空行定型的分段气泡列表，最后一段在打字 */
@@ -1372,6 +1396,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
     const [customPlusActions, setCustomPlusActions] = useState<RegisteredCustomAppChatPlusAction[]>(() => loadCustomAppChatPlusActions());
     const [activeCustomChatPlus, setActiveCustomChatPlus] = useState<ActiveCustomChatPlus | null>(null);
     const [showSettings, setShowSettings] = useState(false);
+    const [showAvatarStatusModal, setShowAvatarStatusModal] = useState(false);
     // 通话状态已提升到全局 store（lib/call-session-store），聊天室不再持有。
     const [userIdentity, setUserIdentity] = useState<UserIdentity | null>(null);
     const [enterToSendEnabled, setEnterToSendEnabled] = useState(() => loadChatAppSettings().enterToSendEnabled === true);
@@ -1475,6 +1500,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
 
     const wrapperRef = useRef<HTMLDivElement>(null);
     const [showHeaderCallMenu, setShowHeaderCallMenu] = useState(false);
+    const [showInnerVoice, setShowInnerVoice] = useState(false);
     // iMessage 外观（来自 Y2K）：深浅色跟随系统，壁纸亮度决定文字对比
     const chatAppearance = useChatAppearance(bgImageResolved);
     const beautyPreset = resolveChatBeautyPreset(session);
@@ -1707,6 +1733,21 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         setActiveMessageId(msgId);
     };
 
+    const contextMenuAnchorFromElement = (
+        element: EventTarget | null,
+        fallbackX: number,
+        fallbackY: number,
+    ): ContextMenuAnchor => {
+        if (!(element instanceof HTMLElement)) return { x: fallbackX, y: fallbackY };
+        const rect = element.getBoundingClientRect();
+        return {
+            x: Math.max(rect.left, Math.min(fallbackX, rect.right)),
+            y: rect.top,
+            top: rect.top,
+            bottom: rect.bottom,
+        };
+    };
+
     const openOfflineContextMenu = (target: OfflineActionTarget, anchor: ContextMenuAnchor) => {
         setActiveMessageId(null);
         setContextMenuAnchor(anchor);
@@ -1716,7 +1757,8 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
     const getContextMenuInitialStyle = () => {
         const anchor = contextMenuAnchor;
         if (!anchor) return { left: 0, top: 0 };
-        return { left: anchor.x, top: Math.max(8, anchor.y - 90) };
+        const top = anchor.top ?? anchor.y;
+        return { left: anchor.x, top: Math.max(8, top - 90) };
     };
 
     const positionFloatingContextMenu = (el: HTMLDivElement | null) => {
@@ -1730,8 +1772,10 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         const viewportH = window.innerHeight;
         let left = anchor.x - menuW / 2;
         left = Math.max(margin, Math.min(left, viewportW - menuW - margin));
-        const placeBelow = anchor.y - menuH - gap < margin;
-        let top = placeBelow ? anchor.y + gap : anchor.y - menuH - gap;
+        const anchorTop = anchor.top ?? anchor.y;
+        const anchorBottom = anchor.bottom ?? anchor.y;
+        const placeBelow = anchorTop - menuH - gap < margin;
+        let top = placeBelow ? anchorBottom + gap : anchorTop - menuH - gap;
         top = Math.max(margin, Math.min(top, viewportH - menuH - margin));
         el.style.left = `${left}px`;
         el.style.top = `${top}px`;
@@ -4551,6 +4595,13 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
     // 自定义状态栏：custom 生效时新消息盖戳，折叠区改走用户渲染代码；旧消息按原生渲染
     const statusRegionCfg = getStatusRegionConfig(session.id, !session.isGroup);
     const customStatusActive = isCustomStatusRegionActive(statusRegionCfg);
+    const latestStatusRaw = useMemo(() => {
+        for (let index = messages.length - 1; index >= 0; index -= 1) {
+            const raw = messages[index]?.statusPanel?.trim();
+            if (raw) return raw;
+        }
+        return statusRegionCfg.previewRaw?.trim() || "状态栏还没有收到新的状态";
+    }, [messages, statusRegionCfg.previewRaw]);
 
     const formatOfflineTurnXml = useCallback((turn: ChatOfflineTurn): string => formatOfflineTurnXmlShared(turn), []);
 
@@ -5355,7 +5406,13 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         // Prevent text selection on long press
         e.preventDefault();
 
-        const anchor = { x: e.clientX, y: e.clientY };
+        const rect = e.currentTarget.getBoundingClientRect();
+        const anchor = {
+            x: Math.max(rect.left, Math.min(e.clientX, rect.right)),
+            y: rect.top,
+            top: rect.top,
+            bottom: rect.bottom,
+        };
         startPosRef.current = anchor;
         longPressTriggeredRef.current = false;
 
@@ -6478,7 +6535,22 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                 <div className="page-header-content imessage-private-header">
                     <ChatUnreadPill sessionId={session.id} onBack={onBack} />
                     <button className="imessage-contact-card" type="button" onClick={() => setShowSettings(true)} aria-label={session.isGroup ? "群聊设置" : "联系人详情"}>
-                        <span className="imessage-contact-avatar">
+                        <span
+                            className="imessage-contact-avatar imessage-contact-avatar-action"
+                            role="button"
+                            tabIndex={0}
+                            title="点击查看心声，双击查看状态栏"
+                            aria-label="查看心声"
+                            onClick={(event) => { event.stopPropagation(); setShowInnerVoice(true); }}
+                            onDoubleClick={(event) => { event.stopPropagation(); setShowAvatarStatusModal(true); }}
+                            onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    setShowInnerVoice(true);
+                                }
+                            }}
+                        >
                             {session.isGroup
                                 ? <GroupAvatar members={[...(!session.isSpectator ? [{ avatar: effectiveUserAvatar }] : []), ...groupCharacters.map(item => ({ avatar: resolveChatCharacterAvatar(item) }))]} />
                                 : (session.characterAvatarOverride || effectiveCharacterAvatar) ? <img src={session.characterAvatarOverride || effectiveCharacterAvatar} alt="" /> : <ChatFallbackAvatar />}
@@ -6773,7 +6845,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                             if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                         }
                                     }}
-                                    onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(`vc-${vcGroup.startId}`, { x: e.clientX, y: e.clientY }); }}
+                                    onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(`vc-${vcGroup.startId}`, contextMenuAnchorFromElement(e.currentTarget, e.clientX, e.clientY)); }}
                                     onClick={() => {
                                         if (activeMessageId === `vc-${vcGroup.startId}`) return;
                                         setExpandedVoiceCallIds(prev => {
@@ -6837,7 +6909,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                                                 if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                                             }
                                                         }}
-                                                        onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(gMsg.id, { x: e.clientX, y: e.clientY }); }}
+                                                        onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(gMsg.id, contextMenuAnchorFromElement(e.currentTarget, e.clientX, e.clientY)); }}
                                                         className="chat-sys-msg relative cursor-pointer"
                                                         {...(activeMessageId === gMsg.id ? { "data-active": "" } : {})}
                                                     >
@@ -6863,7 +6935,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                                                     if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                                                 }
                                                             }}
-                                                            onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(gMsg.id, { x: e.clientX, y: e.clientY }); }}
+                                                            onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(gMsg.id, contextMenuAnchorFromElement(e.currentTarget, e.clientX, e.clientY)); }}
                                                             className={`chat-bubble-role-${gMsg.role} py-2 px-3 rounded-md break-words relative cursor-pointer`}
                                                             {...(activeMessageId === gMsg.id ? { "data-active": "" } : {})}
                                                         >
@@ -6998,7 +7070,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                                 if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                             }
                                         }}
-                                        onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(msg.id, { x: e.clientX, y: e.clientY }); }}
+                                        onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(msg.id, contextMenuAnchorFromElement(e.currentTarget, e.clientX, e.clientY)); }}
                                         className={isCompactSystemInstruction
                                             ? "chat-sys-msg break-all max-w-[90%] relative cursor-pointer"
                                             : isSystemInstruction
@@ -7065,7 +7137,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                                 if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                             }
                                         }}
-                                        onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(msg.id, { x: e.clientX, y: e.clientY }); }}
+                                        onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(msg.id, contextMenuAnchorFromElement(e.currentTarget, e.clientX, e.clientY)); }}
                                         className="chat-sys-msg mx-auto relative cursor-pointer"
                                         {...(activeMessageId === msg.id ? { "data-active": "" } : {})}
                                     >
@@ -7089,7 +7161,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                                             if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                                         }
                                                     }}
-                                                    onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(msg.id, { x: e.clientX, y: e.clientY }); }}
+                                                    onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(msg.id, contextMenuAnchorFromElement(e.currentTarget, e.clientX, e.clientY)); }}
                                                     onClick={(e) => {
                                                         if (activeMessageId === msg.id) return;
                                                         e.stopPropagation();
@@ -7112,12 +7184,17 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                                         const senderAvatar = session.isGroup ? senderChar?.avatar : effectiveCharacterAvatar;
                                                         return (
                                                             <>
-                                                    <div onDoubleClick={() => {
-                                                        const targetChar = session.isGroup && msg.senderCharacterId
-                                                            ? groupCharMap.get(msg.senderCharacterId) || character
-                                                            : character;
-                                                        if (targetChar) sendRichMessage("poke", { pokeTarget: targetChar.name });
-                                                    }} className="w-[40px] h-[40px] rounded-[20px] bg-[var(--c-input)] overflow-hidden cursor-pointer">
+                                                    <div
+                                                        onClick={() => setShowInnerVoice(true)}
+                                                        onDoubleClick={() => {
+                                                            const targetChar = session.isGroup && msg.senderCharacterId
+                                                                ? groupCharMap.get(msg.senderCharacterId) || character
+                                                                : character;
+                                                            if (targetChar) sendRichMessage("poke", { pokeTarget: targetChar.name });
+                                                        }}
+                                                        title="心声（双击戳一戳）"
+                                                        className="w-[40px] h-[40px] rounded-[20px] bg-[var(--c-input)] overflow-hidden cursor-pointer"
+                                                    >
                                                         {resolveChatCharacterAvatar(senderChar) ? (
                                                             <img src={resolveChatCharacterAvatar(senderChar)} className="w-full h-full object-cover" alt="" />
                                                         ) : (
@@ -7151,7 +7228,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                                         if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                                     }
                                                 },
-                                                onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); openMessageContextMenu(msg.id, { x: e.clientX, y: e.clientY }); },
+                                                onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); openMessageContextMenu(msg.id, contextMenuAnchorFromElement(e.currentTarget, e.clientX, e.clientY)); },
                                             } : {})}
                                             className={`chat-bubble-role-${msg.role} ${isMediaBubble ? "chat-bubble-media" : ""} ${isStandaloneHtmlPreview ? "chat-bubble-html-preview" : ""} ${renderMsg.mediaType === "music_share" ? "chat-bubble-music-share" : ""} ${renderMsg.mediaType === "gift" || renderMsg.mediaType === "image" || isStandaloneHtmlPreview ? "rounded-none" : "rounded-md"} break-words relative cursor-pointer select-none`}
                                             style={isStandaloneHtmlPreview ? STANDALONE_CARD_BUBBLE_STYLE : undefined}
@@ -7508,6 +7585,18 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                     />
                 </div>,
                 wrapperRef.current.parentElement
+            )}
+
+            {/* Inner Voice popup — 点 AI 头像弹出的心声卡片 */}
+            {showInnerVoice && (
+                <InnerVoicePopup
+                    sessionId={session.id}
+                    charName={session.alias || character?.name || ""}
+                    charAvatar={session.characterAvatarOverride || effectiveCharacterAvatar}
+                    userName={userIdentity?.name || ""}
+                    userAvatar={effectiveUserAvatar}
+                    onClose={() => setShowInnerVoice(false)}
+                />
             )}
 
             {activeCustomChatPlus && activeCustomChatPlus.presentation === "none" && (
@@ -7956,6 +8045,42 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                     message={imageGenerationFailure}
                     onClose={() => setImageGenerationFailure(null)}
                 />
+            )}
+
+            {showAvatarStatusModal && (
+                <div
+                    className="chat-avatar-status-overlay"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="线上自定义状态栏"
+                    onClick={() => setShowAvatarStatusModal(false)}
+                >
+                    <section className="chat-avatar-status-modal" onClick={(event) => event.stopPropagation()}>
+                        <header className="chat-avatar-status-modal-head">
+                            <div>
+                                <strong>线上状态栏</strong>
+                                <span>点击头像进入；内容由你在聊天设置里自定义 HTML</span>
+                            </div>
+                            <button type="button" className="ui-bare-btn" onClick={() => setShowAvatarStatusModal(false)} aria-label="关闭">✕</button>
+                        </header>
+                        <div className="chat-avatar-status-modal-body">
+                            {customStatusActive && statusRegionCfg.renderHtml.trim() ? (
+                                <CustomStatusFrame
+                                    key={`${statusRegionCfg.renderHtml}:${latestStatusRaw}`}
+                                    html={statusRegionCfg.renderHtml}
+                                    raw={latestStatusRaw}
+                                    title="线上自定义状态栏"
+                                />
+                            ) : (
+                                <BilingualTextBlock
+                                    text={latestStatusRaw}
+                                    mode="markdown"
+                                    defaultExpanded
+                                />
+                            )}
+                        </div>
+                    </section>
+                </div>
             )}
 
             {/* Chat toast notification (overlay, does not affect layout) */}

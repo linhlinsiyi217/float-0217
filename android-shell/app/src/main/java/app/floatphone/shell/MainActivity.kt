@@ -17,6 +17,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Base64
@@ -55,7 +57,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         val SITE_URL: String = BuildConfig.SITE_URL
-        const val VERSION = "1.0.10"
+        const val VERSION: String = BuildConfig.VERSION_NAME
         /** 来电接听等场景的站内深链（必须以 SITE_URL 开头，否则忽略） */
         const val EXTRA_OPEN_URL = "open_url"
         /** 外部 App（如桌宠）唤起本壳用的自定义 scheme：floatshell://open?url=<站内地址> */
@@ -382,7 +384,38 @@ class MainActivity : AppCompatActivity() {
         // 冷启动带深链（如来电接听）直接加载目标；否则加载首页
         webView.loadUrl(consumeOpenUrl(intent) ?: SITE_URL)
         ensurePushService()
+
+        // 新版本第一次打开：弹一次「已更新到 x.y.z」（更新日志），之后不再弹
+        UpdateManager.showChangelogIfNeeded(this)
+
+        // 给网页用的小开关：网页里「检查更新」「后台保活」按钮可以直接调用
+        // （window.FloatNative.checkUpdate() / openKeepAliveGuide()）
+        webView.addJavascriptInterface(object {
+            @JavascriptInterface
+            fun checkUpdate() {
+                runOnUiThread { UpdateManager.check(this@MainActivity, webView) }
+            }
+
+            @JavascriptInterface
+            fun openKeepAliveGuide() {
+                runOnUiThread { KeepAlive.showGuide(this@MainActivity) }
+            }
+        }, "FloatNative")
+
+        // 后台保活：把常驻服务再确认一次 + 注册 15 分钟定时检查
+        KeepAlive.ensureService(this)
+        KeepAlive.scheduleJob(this)
+
+        // 第一次打开：保活引导（延迟一点，避免和更新弹窗抢位置）
+        Handler(Looper.getMainLooper()).postDelayed({ KeepAlive.showGuideOnce(this) }, 1500)
     }
+
+    /** 每次打开 / 从后台切回前台都检查线上有没有更高版本（内部有节流，同一时间只弹一个窗）。 */
+    override fun onResume() {
+        super.onResume()
+        UpdateManager.check(this, webView)
+    }
+
 
     /** singleTask：App 已在运行时（如全屏来电页接听）通过 onNewIntent 送达深链 */
     override fun onNewIntent(intent: Intent) {
