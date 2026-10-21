@@ -551,6 +551,15 @@ type OfflineActionTarget = {
 type ContextMenuAnchor = {
     x: number;
     y: number;
+    /**
+     * The message bounds are kept separately from the pointer location. A
+     * long-press normally lands in the middle of a bubble; using that point
+     * as the menu anchor makes a tall menu overlap the bubble itself. Keeping
+     * the edge coordinates lets the menu sit just outside the bubble and
+     * flip below it only when there is not enough room above.
+     */
+    top?: number;
+    bottom?: number;
 };
 
 type RenderChatMessage = ChatMessage & {
@@ -1707,6 +1716,21 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         setActiveMessageId(msgId);
     };
 
+    const contextMenuAnchorFromElement = (
+        element: EventTarget | null,
+        fallbackX: number,
+        fallbackY: number,
+    ): ContextMenuAnchor => {
+        if (!(element instanceof HTMLElement)) return { x: fallbackX, y: fallbackY };
+        const rect = element.getBoundingClientRect();
+        return {
+            x: Math.max(rect.left, Math.min(fallbackX, rect.right)),
+            y: rect.top,
+            top: rect.top,
+            bottom: rect.bottom,
+        };
+    };
+
     const openOfflineContextMenu = (target: OfflineActionTarget, anchor: ContextMenuAnchor) => {
         setActiveMessageId(null);
         setContextMenuAnchor(anchor);
@@ -1716,7 +1740,8 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
     const getContextMenuInitialStyle = () => {
         const anchor = contextMenuAnchor;
         if (!anchor) return { left: 0, top: 0 };
-        return { left: anchor.x, top: Math.max(8, anchor.y - 90) };
+        const top = anchor.top ?? anchor.y;
+        return { left: anchor.x, top: Math.max(8, top - 90) };
     };
 
     const positionFloatingContextMenu = (el: HTMLDivElement | null) => {
@@ -1730,8 +1755,10 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         const viewportH = window.innerHeight;
         let left = anchor.x - menuW / 2;
         left = Math.max(margin, Math.min(left, viewportW - menuW - margin));
-        const placeBelow = anchor.y - menuH - gap < margin;
-        let top = placeBelow ? anchor.y + gap : anchor.y - menuH - gap;
+        const anchorTop = anchor.top ?? anchor.y;
+        const anchorBottom = anchor.bottom ?? anchor.y;
+        const placeBelow = anchorTop - menuH - gap < margin;
+        let top = placeBelow ? anchorBottom + gap : anchorTop - menuH - gap;
         top = Math.max(margin, Math.min(top, viewportH - menuH - margin));
         el.style.left = `${left}px`;
         el.style.top = `${top}px`;
@@ -5355,7 +5382,13 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         // Prevent text selection on long press
         e.preventDefault();
 
-        const anchor = { x: e.clientX, y: e.clientY };
+        const rect = e.currentTarget.getBoundingClientRect();
+        const anchor = {
+            x: Math.max(rect.left, Math.min(e.clientX, rect.right)),
+            y: rect.top,
+            top: rect.top,
+            bottom: rect.bottom,
+        };
         startPosRef.current = anchor;
         longPressTriggeredRef.current = false;
 
@@ -6773,7 +6806,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                             if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                         }
                                     }}
-                                    onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(`vc-${vcGroup.startId}`, { x: e.clientX, y: e.clientY }); }}
+                                    onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(`vc-${vcGroup.startId}`, contextMenuAnchorFromElement(e.currentTarget, e.clientX, e.clientY)); }}
                                     onClick={() => {
                                         if (activeMessageId === `vc-${vcGroup.startId}`) return;
                                         setExpandedVoiceCallIds(prev => {
@@ -6837,7 +6870,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                                                 if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                                             }
                                                         }}
-                                                        onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(gMsg.id, { x: e.clientX, y: e.clientY }); }}
+                                                        onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(gMsg.id, contextMenuAnchorFromElement(e.currentTarget, e.clientX, e.clientY)); }}
                                                         className="chat-sys-msg relative cursor-pointer"
                                                         {...(activeMessageId === gMsg.id ? { "data-active": "" } : {})}
                                                     >
@@ -6863,7 +6896,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                                                     if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                                                 }
                                                             }}
-                                                            onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(gMsg.id, { x: e.clientX, y: e.clientY }); }}
+                                                            onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(gMsg.id, contextMenuAnchorFromElement(e.currentTarget, e.clientX, e.clientY)); }}
                                                             className={`chat-bubble-role-${gMsg.role} py-2 px-3 rounded-md break-words relative cursor-pointer`}
                                                             {...(activeMessageId === gMsg.id ? { "data-active": "" } : {})}
                                                         >
@@ -6998,7 +7031,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                                 if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                             }
                                         }}
-                                        onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(msg.id, { x: e.clientX, y: e.clientY }); }}
+                                        onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(msg.id, contextMenuAnchorFromElement(e.currentTarget, e.clientX, e.clientY)); }}
                                         className={isCompactSystemInstruction
                                             ? "chat-sys-msg break-all max-w-[90%] relative cursor-pointer"
                                             : isSystemInstruction
@@ -7065,7 +7098,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                                 if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                             }
                                         }}
-                                        onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(msg.id, { x: e.clientX, y: e.clientY }); }}
+                                        onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(msg.id, contextMenuAnchorFromElement(e.currentTarget, e.clientX, e.clientY)); }}
                                         className="chat-sys-msg mx-auto relative cursor-pointer"
                                         {...(activeMessageId === msg.id ? { "data-active": "" } : {})}
                                     >
@@ -7089,7 +7122,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                                             if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                                         }
                                                     }}
-                                                    onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(msg.id, { x: e.clientX, y: e.clientY }); }}
+                                                    onContextMenu={(e) => { e.preventDefault(); openMessageContextMenu(msg.id, contextMenuAnchorFromElement(e.currentTarget, e.clientX, e.clientY)); }}
                                                     onClick={(e) => {
                                                         if (activeMessageId === msg.id) return;
                                                         e.stopPropagation();
@@ -7151,7 +7184,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                                         if (dx > 10 || dy > 10) handleMessagePointerCancel();
                                                     }
                                                 },
-                                                onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); openMessageContextMenu(msg.id, { x: e.clientX, y: e.clientY }); },
+                                                onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); openMessageContextMenu(msg.id, contextMenuAnchorFromElement(e.currentTarget, e.clientX, e.clientY)); },
                                             } : {})}
                                             className={`chat-bubble-role-${msg.role} ${isMediaBubble ? "chat-bubble-media" : ""} ${isStandaloneHtmlPreview ? "chat-bubble-html-preview" : ""} ${renderMsg.mediaType === "music_share" ? "chat-bubble-music-share" : ""} ${renderMsg.mediaType === "gift" || renderMsg.mediaType === "image" || isStandaloneHtmlPreview ? "rounded-none" : "rounded-md"} break-words relative cursor-pointer select-none`}
                                             style={isStandaloneHtmlPreview ? STANDALONE_CARD_BUBBLE_STYLE : undefined}
