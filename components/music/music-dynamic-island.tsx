@@ -67,7 +67,8 @@ export default function MusicDynamicIsland() {
         return resolveChatCharacterAvatar(character);
     }, [listeningTogether, room]);
 
-    // 通知优先：岛短暂展开为「头像 + 标题 + 一句话」，结束后回到音乐 / 一起听
+    // 通知优先：岛短暂展开为「头像 + 一句话」，结束后回到音乐 / 一起听。
+    // 空闲时不把“在线/刚刚活跃”塞进灵动岛；系统胶囊本身保持安静。
     if (notification && handleNotifyClick) {
         return (
             <div className="music-dynamic-island" data-state="notify">
@@ -86,12 +87,13 @@ export default function MusicDynamicIsland() {
         );
     }
 
-    const hasPresence = presence.state !== "idle" || Date.now() - presence.updatedAt < 15_000;
-    if (!listeningTogether && !track && !hasPresence) return null;
+    const presenceAge = Date.now() - presence.updatedAt;
+    const hasTransientPresence = presence.state !== "idle" && presenceAge < 12_000;
+    if (!listeningTogether && !track && !hasTransientPresence) return null;
 
     const coverUrl = listeningTogether ? (room?.song?.coverUrl || partnerAvatar) : track?.coverUrl;
-    const title = listeningTogether ? (room?.song?.title || "一起听") : track?.title || (presence.state === "thinking" ? "正在思考" : "Float 在线");
-    const subtitle = listeningTogether ? "一起听" : track?.artist || presence.label;
+    const title = listeningTogether ? (room?.song?.title || "一起听") : track?.title || (presence.state === "thinking" ? "正在思考" : "正在处理");
+    const subtitle = listeningTogether ? "一起听" : track?.artist || (presence.state === "thinking" ? "" : "");
     const isPlaying = player?.isPlaying ?? false;
     const duration = player?.duration ?? 0;
     const currentTime = player?.currentTime ?? 0;

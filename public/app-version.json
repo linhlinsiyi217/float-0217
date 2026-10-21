@@ -3,12 +3,14 @@
   "versionName": "1.1.0",
   "apkUrl": "https://github.com/linhlinsiyi217/float-0217/releases/download/v1.1.0/app-release.apk",
   "force": false,
-  "webVersion": "2026-10-21-2",
-  "summary": "这次给安卓壳加了应用内更新弹窗和后台保活，Actions 会自动打包发布 APK；网页更新日志支持按影响范围分类显示；工坊加入思考过程动效并同步用户名称。",
+  "webVersion": "2026-10-21-3",
+  "summary": "工坊、更新公告和灵动岛完成视觉重做：界面更克制，活动状态只在真实发生时出现。",
   "changes": [
     { "type": "app", "title": "应用内更新", "detail": "新版本先弹窗，下载后拉起系统安装页，装完弹一次更新日志" },
     { "type": "app", "title": "后台保活", "detail": "被划掉后自动拉起，首次打开引导设置" },
     { "type": "app", "title": "自动打包", "detail": "推到 main 后 Actions 自动构建并发布 APK 到 Releases" },
-    { "type": "content", "title": "更新日志与工坊", "detail": "日志页与弹窗支持按影响范围分类；工坊加入思考过程动效并同步用户名称" }
+    { "type": "content", "title": "工坊界面", "detail": "欢迎页、消息层级与思考过程改为轻量工作台样式，继续同步用户自己的名字" },
+    { "type": "app", "title": "更新公告", "detail": "改为摘要优先的分组卡片，保留稍后查看和查看完整日志" },
+    { "type": "app", "title": "灵动岛", "detail": "空闲时保持安静，有真实活动时显示头像与动态波形" }
   ]
 }

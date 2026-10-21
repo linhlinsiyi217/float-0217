@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Check, ChevronDown } from "lucide-react";
 
 import {
   CATEGORY_COLOR,
   CATEGORY_LABEL,
   CATEGORY_ORDER,
-  CATEGORY_TINT,
   normalizeUpdateCategory,
   popupEntries,
   releaseHasScope,
@@ -30,33 +29,21 @@ type UpdateNotePopupProps = {
   onHide?: () => void;
 };
 
-/** 紧凑条目：小色标 + 分类文字标签 + 标题，一行内放得下就单行。
- *  标了影响范围的条目用五类小圆点（应用/页面内容/全局/提示词/修复），
- *  老条目保持原来的性质分类（新功能/体验优化/…）。 */
+/** 弹窗摘要条目：范围、标题和一条真正有用的说明，避免只列一串裸标题。 */
 function EntryRow({ entry }: { entry: UpdateEntry }) {
+  const color = entry.scope ? SCOPE_COLOR[entry.scope] : CATEGORY_COLOR[entry.category];
+  const label = entry.scope ? SCOPE_LABEL[entry.scope] : CATEGORY_LABEL[entry.category];
   return (
-    <li className="updn-row" title={entry.app}>
-      <span className="updn-row-top">
-        {entry.scope ? (
-          <>
-            <i className="updn-dot" style={{ background: SCOPE_COLOR[entry.scope] }} aria-hidden />
-            <span className="updn-tag" style={{ color: SCOPE_COLOR[entry.scope] }}>
-              {SCOPE_LABEL[entry.scope]}
-            </span>
-          </>
-        ) : (
-          <>
-            <i className="updn-dot" style={{ background: CATEGORY_COLOR[entry.category] }} aria-hidden />
-            <span
-              className="updn-tag"
-              style={{ color: CATEGORY_COLOR[entry.category], background: CATEGORY_TINT[entry.category] }}
-            >
-              {CATEGORY_LABEL[entry.category]}
-            </span>
-          </>
-        )}
-        <span className="updn-row-title">{entry.title}</span>
-      </span>
+    <li className="updn-row" title={entry.app} style={{ "--updn-row-color": color } as CSSProperties}>
+      <div className="updn-row-mark" aria-hidden><i /></div>
+      <div className="updn-row-content">
+        <div className="updn-row-top">
+          <span className="updn-tag">{label}</span>
+          <span className="updn-row-app">{entry.app}</span>
+        </div>
+        <strong className="updn-row-title">{entry.title}</strong>
+        {entry.items[0] && <span className="updn-row-detail">{entry.items[0]}</span>}
+      </div>
     </li>
   );
 }
@@ -129,6 +116,8 @@ export function UpdateNotePopup({ appName, release, onConfirm, onOpenLog, onHide
           </span>
         </header>
 
+        <p className="updn-summary">{release.summary}</p>
+        <div className="updn-section-label">本次更新</div>
         <ul className="updn-list">
           {summary.map((entry) => (
             <EntryRow key={entry.id} entry={entry} />
