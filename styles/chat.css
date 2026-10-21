@@ -1040,9 +1040,6 @@
      can paint over the menu on mobile.  Leave the retry/modal layers (270+)
      above it so a real modal still wins the stacking order. */
   z-index: 240;
-  max-height: min(72vh, calc(100vh - 16px));
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 .chat-floating-ctx-menu[data-role="user"],
 .chat-floating-ctx-menu[data-role="assistant"] {
