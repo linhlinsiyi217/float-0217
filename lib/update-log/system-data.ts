@@ -10,6 +10,52 @@ import type { Release } from "./types";
 
 export const SYSTEM_RELEASES: Release[] = [
   {
+    version: "0.6.12",
+    releaseId: "system-2026-10-21-v0612",
+    date: "2026-10-21",
+    name: "工坊界面与系统活动视觉重做",
+    summary: "工坊改成更克制的 Claude 式工作台；更新公告改为摘要优先的分组卡片；灵动岛只在有真实活动时显示头像和动态波形。",
+    entries: [
+      {
+        id: "sys-0612-workshop-visual",
+        category: "feat",
+        app: "工坊 · 工作台",
+        scope: "content",
+        title: "重做工坊欢迎页、消息层级和思考动效",
+        items: [
+          "移除像素螃蟹与厚重玻璃装饰，改为留白、轻量标记和文档流消息",
+          "思考过程保留可展开回看，生成中以细小点状动效提示，不抢正文焦点",
+        ],
+      },
+      {
+        id: "sys-0612-update-popup",
+        category: "feat",
+        app: "设置 · 更新公告",
+        scope: "content",
+        title: "更新弹窗改为摘要优先的分组卡片",
+        items: [
+          "先展示本次更新摘要，再按影响范围显示标题、应用和一条具体说明",
+          "保留稍后查看、我知道了和查看完整日志的原有行为",
+        ],
+      },
+      {
+        id: "sys-0612-dynamic-island",
+        category: "fix",
+        app: "桌面 · 灵动岛",
+        scope: "app",
+        title: "修正空闲灵动岛的显示状态",
+        items: [
+          "空闲时不再显示「Float 在线 / 刚刚活跃」文案；有音乐、一起听或短暂通知时才展示活动",
+          "紧凑态改为头像加动态波形，点开后才显示标题、进度和控制按钮",
+        ],
+      },
+    ],
+    pending: [
+      "工坊与弹窗已通过 TypeScript 和生产构建检查，建议在真机窄屏上确认键盘、弹窗滚动和深色模式",
+      "灵动岛依赖浏览器对 :has() 的支持；不支持时仍保留黑色系统胶囊和完整展开控件",
+    ],
+  },
+  {
     version: "0.6.11",
     releaseId: "system-2026-10-21-v0611",
     date: "2026-10-21",
@@ -20,7 +66,7 @@ export const SYSTEM_RELEASES: Release[] = [
         id: "sys-0611-workshop-claude",
         category: "feat",
         app: "工坊 · Claude 风格答疑",
-        scope: "app-content",
+        scope: "content",
         title: "工坊支持思考过程展示与更清晰的上下文入口",
         items: [
           "欢迎页改为暖色 Claude 风格，保留原有答疑、仓库读写、文件预览和工具执行能力",
@@ -32,7 +78,7 @@ export const SYSTEM_RELEASES: Release[] = [
         id: "sys-0611-workshop-identity",
         category: "fix",
         app: "工坊 · 用户身份",
-        scope: "app-content",
+        scope: "content",
         title: "欢迎语和提示跟随用户自己设置的名字",
         items: [
           "工坊不再写死问候名称，读取本机内置用户身份并在身份更新后即时同步",
@@ -43,7 +89,7 @@ export const SYSTEM_RELEASES: Release[] = [
         id: "sys-0611-chat-menu",
         category: "fix",
         app: "聊天 · 消息菜单",
-        scope: "app-content",
+        scope: "content",
         title: "长按消息时菜单定位和层级更稳定",
         items: [
           "菜单会以气泡边缘为基准显示，不再从气泡中间压住正文或被气泡盖住",
@@ -65,7 +111,7 @@ export const SYSTEM_RELEASES: Release[] = [
         id: "sys-0611-update-log",
         category: "perf",
         app: "设置 · 更新日志",
-        scope: "app-content",
+        scope: "content",
         title: "更新日志继续按影响范围呈现本次改动",
         items: [
           "应用、页面内容、全局、提示词和修复等影响范围在日志页与更新弹窗中保持一致",

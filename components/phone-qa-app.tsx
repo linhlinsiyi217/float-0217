@@ -280,30 +280,12 @@ function QaStreamingText({ text }: { text: string }) {
   );
 }
 
-/** 欢迎页使用的近似 Claude 像素螃蟹图形；它是 UI 图标，不依赖外部素材。 */
-function QaPixelCrab() {
+/** 欢迎页的轻量品牌标记。保持 Claude 的克制感，不再使用像素螃蟹贴纸。 */
+function QaWorkshopMark() {
   return (
-    <svg className="qa-pixel-crab" viewBox="0 0 64 64" aria-hidden>
-      <g shapeRendering="crispEdges">
-        <rect x="20" y="12" width="24" height="5" fill="#d97757" />
-        <rect x="14" y="17" width="36" height="7" fill="#d97757" />
-        <rect x="9" y="24" width="46" height="17" fill="#c96549" />
-        <rect x="16" y="20" width="10" height="8" fill="#f3b09a" />
-        <rect x="38" y="20" width="10" height="8" fill="#f3b09a" />
-        <rect x="20" y="28" width="7" height="7" fill="#fff9f2" />
-        <rect x="37" y="28" width="7" height="7" fill="#fff9f2" />
-        <rect x="23" y="30" width="4" height="4" fill="#4c332b" />
-        <rect x="37" y="30" width="4" height="4" fill="#4c332b" />
-        <rect x="26" y="38" width="12" height="4" fill="#693d32" />
-        <rect x="4" y="28" width="6" height="12" fill="#c96549" />
-        <rect x="54" y="28" width="6" height="12" fill="#c96549" />
-        <rect x="7" y="40" width="9" height="6" fill="#c96549" />
-        <rect x="48" y="40" width="9" height="6" fill="#c96549" />
-        <rect x="15" y="41" width="7" height="12" fill="#b95640" />
-        <rect x="42" y="41" width="7" height="12" fill="#b95640" />
-        <rect x="20" y="48" width="7" height="8" fill="#d97757" />
-        <rect x="37" y="48" width="7" height="8" fill="#d97757" />
-      </g>
+    <svg className="qa-workshop-mark" viewBox="0 0 64 64" aria-hidden>
+      <path d="M32 7c2.8 13.4 5.6 21 12.6 25C37.6 36 34.8 43.6 32 57c-2.8-13.4-5.6-21-12.6-25C26.4 28 29.2 20.4 32 7Z" fill="currentColor" />
+      <path d="M7 32c13.4-2.8 21-5.6 25-12.6C36 26.4 43.6 29.2 57 32c-13.4 2.8-21 5.6-25 12.6C28 37.6 20.4 34.8 7 32Z" fill="currentColor" opacity=".82" />
     </svg>
   );
 }
@@ -1306,8 +1288,8 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
           </button>
         </div>
         <div className="qa-header-center">
-          <span className="qa-header-title">Claude</span>
-          <span className="qa-header-sub">克克 · 工坊</span>
+          <span className="qa-header-title">工坊</span>
+          <span className="qa-header-sub">AI 工作台</span>
         </div>
         <div className="qa-header-right">
           <button
@@ -1338,7 +1320,7 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
         {messages.length === 0 ? (
           <div className="qa-welcome">
             <div className="qa-welcome-badge" aria-hidden>
-              <QaPixelCrab />
+              <QaWorkshopMark />
             </div>
             <div className="qa-welcome-title">你好，{userName}</div>
             {!apiReady && (
