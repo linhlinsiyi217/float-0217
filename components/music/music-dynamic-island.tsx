@@ -2,9 +2,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
-import { Pause, Play, SkipBack, SkipForward, Headphones } from "lucide-react";
+import { Pause, Play, SkipBack, SkipForward, Headphones, MessageCircle } from "lucide-react";
 import { useMusicPlayerOptional } from "@/lib/music-context";
 import { getListeningRoom, exitListeningRoom, subscribeListeningRoom } from "@/lib/listen-together";
+import { dismissIslandNotification, getIslandNotification, subscribeIslandNotification } from "@/lib/island-notify";
 import { loadCharacters } from "@/lib/character-storage";
 import { resolveChatCharacterAvatar } from "@/lib/chat-storage";
 
@@ -34,12 +35,41 @@ export default function MusicDynamicIsland() {
     const listeningTogether = room?.status === "joined";
     const track = player?.currentTrack ?? null;
 
+    // 通知状态：优先于音乐 / 一起听；点击进入对应会话，超时由 store 自动收回
+    const notification = useSyncExternalStore(subscribeIslandNotification, getIslandNotification, () => null);
+
+    const handleNotifyClick = notification
+        ? () => {
+            dismissIslandNotification(notification.id);
+            window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: "chat", sessionId: notification.sessionId } }));
+        }
+        : null;
+
     // 一起听状态下，用对方头像兜底；有共同歌曲封面时优先用封面。
     const partnerAvatar = useMemo(() => {
         if (!listeningTogether || !room) return "";
         const character = loadCharacters().find((item) => item.id === room.characterId);
         return resolveChatCharacterAvatar(character);
     }, [listeningTogether, room]);
+
+    // 通知优先：岛短暂展开为「头像 + 标题 + 一句话」，结束后回到音乐 / 一起听
+    if (notification && handleNotifyClick) {
+        return (
+            <div className="music-dynamic-island" data-state="notify">
+                <button type="button" className="mdi-notify" onClick={handleNotifyClick}>
+                    {notification.avatar ? (
+                        <img src={notification.avatar} alt="" draggable={false} />
+                    ) : (
+                        <span className="mdi-notify-fallback"><MessageCircle size={12} strokeWidth={1.8} /></span>
+                    )}
+                    <span className="mdi-text">
+                        <b>{notification.title}</b>
+                        <small>{notification.text}</small>
+                    </span>
+                </button>
+            </div>
+        );
+    }
 
     if (!listeningTogether && !track) return null;
 

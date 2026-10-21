@@ -188,6 +188,11 @@
   visibility: hidden;
 }
 
+/* 状态栏关闭（设置里强制关，或网页默认关）——灵动岛由 React 条件渲染，状态栏内容由 CSS 隐藏 */
+.phone-shell-wrap[data-status-bar="off"] .phone-status-bar>* {
+  visibility: hidden;
+}
+
 .status-time {
   font-size: calc(13px*var(--app-text-scale,1));
   font-weight: 600;
