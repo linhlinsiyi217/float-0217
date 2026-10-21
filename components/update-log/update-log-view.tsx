@@ -10,6 +10,10 @@ import {
   normalizeUpdateCategory,
   releaseApps,
   releaseCounts,
+  releaseHasScope,
+  scopeGroups,
+  SCOPE_COLOR,
+  SCOPE_LABEL,
   type Release,
 } from "@/lib/update-log/types";
 
@@ -69,29 +73,51 @@ export function UpdateLogView({ releases, currentReleaseId, seen }: UpdateLogVie
 
             {expanded && (
               <div className="upd-body">
-                {CATEGORY_ORDER.map((category) => {
-                  const entries = release.entries.filter((entry) => normalizeUpdateCategory(entry.category) === category);
-                  if (entries.length === 0) return null;
-                  return (
-                    <div key={category} className="upd-group">
-                      <span className="upd-group-label" style={{ color: CATEGORY_COLOR[category] }}>
-                        <i style={{ background: CATEGORY_COLOR[category] }} aria-hidden />
-                        {CATEGORY_LABEL[category]}
-                      </span>
-                      {entries.map((entry) => (
-                        <div key={entry.id} className="upd-entry">
-                          <span className="upd-entry-app">{entry.app}</span>
-                          <span className="upd-entry-title">{entry.title}</span>
-                          <ul>
-                            {entry.items.map((item, index) => (
-                              <li key={index}>{item}</li>
-                            ))}
-                          </ul>
+                {releaseHasScope(release)
+                  ? // 新数据：按影响范围分组（应用/页面内容/全局/提示词/修复），小圆点配色与安卓壳弹窗一致
+                    scopeGroups(release.entries).map((group) => (
+                      <div key={group.scope} className="upd-group">
+                        <span className="upd-group-label" style={{ color: SCOPE_COLOR[group.scope] }}>
+                          <i style={{ background: SCOPE_COLOR[group.scope] }} aria-hidden />
+                          {SCOPE_LABEL[group.scope]}
+                        </span>
+                        {group.entries.map((entry) => (
+                          <div key={entry.id} className="upd-entry">
+                            <span className="upd-entry-app">{entry.app}</span>
+                            <span className="upd-entry-title">{entry.title}</span>
+                            <ul>
+                              {entry.items.map((item, index) => (
+                                <li key={index}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    ))
+                  : // 老数据：整版没标影响范围，退回按「新功能/体验优化/…」性质分类
+                    CATEGORY_ORDER.map((category) => {
+                      const entries = release.entries.filter((entry) => normalizeUpdateCategory(entry.category) === category);
+                      if (entries.length === 0) return null;
+                      return (
+                        <div key={category} className="upd-group">
+                          <span className="upd-group-label" style={{ color: CATEGORY_COLOR[category] }}>
+                            <i style={{ background: CATEGORY_COLOR[category] }} aria-hidden />
+                            {CATEGORY_LABEL[category]}
+                          </span>
+                          {entries.map((entry) => (
+                            <div key={entry.id} className="upd-entry">
+                              <span className="upd-entry-app">{entry.app}</span>
+                              <span className="upd-entry-title">{entry.title}</span>
+                              <ul>
+                                {entry.items.map((item, index) => (
+                                  <li key={index}>{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  );
-                })}
+                      );
+                    })}
 
                 {/* pending（待完成 / 待实机确认）只留在发布数据与交付报告里，
                     不在用户界面上渲染成开发提示卡。 */}
