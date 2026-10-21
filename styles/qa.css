@@ -26,10 +26,10 @@
   --qa-text-secondary: #6a685f;
   --qa-text-tertiary: #9a978c;
   --qa-text-inverse: #ffffff;
-  /* Accent：品牌紫 */
-  --qa-accent: #7359e6;
-  --qa-accent-hover: #6246d8;
-  --qa-accent-subtle: rgba(115, 89, 230, 0.12);
+  /* Accent：Claude 暖橙 */
+  --qa-accent: #c96f52;
+  --qa-accent-hover: #b85e43;
+  --qa-accent-subtle: rgba(201, 111, 82, 0.14);
   --qa-danger: #d0564b;
   --success: #4f9e63;
 
@@ -2063,6 +2063,92 @@
 }
 .qa-file-card-btn:active { opacity: 0.7; }
 .qa-file-card-error { width: 100%; font-size: 11px; color: var(--c-danger, #d33); }
+
+/* ── Claude 风格增强层：思考过程、消息节奏与输入栏 ── */
+.qa-app-shell {
+  --qa-bg-canvas: #f7f6f2;
+  --qa-bg-raised: #eeece6;
+  --qa-text-primary: #272521;
+  --qa-text-secondary: #6f6b62;
+  --qa-text-tertiary: #a29d91;
+}
+
+.qa-header-title { font-size: 16px; font-weight: 650; letter-spacing: .015em; }
+.qa-header-center { background: rgba(255,255,255,.72); box-shadow: 0 3px 14px rgba(50,42,30,.06), inset 0 1px 1px #fff; }
+.qa-icon-btn { width: 40px; height: 40px; background: rgba(255,255,255,.78); }
+
+.qa-messages { gap: 26px; max-width: 720px; }
+.qa-msg-user { max-width: 84%; padding: 11px 15px; border-radius: 18px 18px 5px 18px; background: #e9e7e0; font-size: 15px; line-height: 1.6; }
+.qa-msg-assistant { font-size: 15.5px; line-height: 1.78; }
+.qa-msg-assistant .qa-markdown > :first-child { margin-top: 0; }
+.qa-msg-assistant .qa-markdown > :last-child { margin-bottom: 0; }
+
+.qa-reasoning {
+  margin: 0 0 13px;
+  border-radius: 13px;
+  background: rgba(237, 232, 221, .72);
+  overflow: hidden;
+  transition: background .2s ease, box-shadow .2s ease;
+}
+.qa-reasoning.is-streaming { background: rgba(238, 232, 219, .9); box-shadow: 0 4px 16px rgba(89, 67, 40, .05); }
+.qa-reasoning-trigger {
+  width: 100%; min-height: 40px; display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+  border: 0; background: transparent; color: var(--qa-text-secondary); text-align: left; cursor: pointer; font: inherit; font-size: 13px;
+}
+.qa-reasoning-mark { display: inline-flex; color: var(--qa-accent); }
+.qa-reasoning-label { flex: 0 0 auto; font-weight: 650; color: #625d53; }
+.qa-reasoning-preview { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #999183; font-size: 12px; }
+.qa-reasoning-chevron { margin-left: auto; transition: transform .22s ease; color: #9a9185; }
+.qa-reasoning.is-open .qa-reasoning-chevron { transform: rotate(180deg); }
+.qa-reasoning-body { display: flex; gap: 10px; padding: 0 14px 13px 17px; color: #756e62; font-size: 13px; line-height: 1.68; animation: qa-reasoning-open .2s ease-out; }
+.qa-reasoning-line { width: 2px; flex: 0 0 2px; border-radius: 99px; background: linear-gradient(#d98c6f, rgba(217,140,111,.18)); }
+.qa-reasoning-text { min-width: 0; white-space: pre-wrap; word-break: break-word; }
+.qa-reasoning-cursor { margin-top: 4px; background: var(--qa-accent); }
+.qa-reasoning-dots { display: inline-flex; gap: 3px; align-items: center; }
+.qa-reasoning-dots i { width: 3px; height: 3px; border-radius: 50%; background: var(--qa-accent); animation: qa-reasoning-dot 1.15s infinite ease-in-out; }
+.qa-reasoning-dots i:nth-child(2) { animation-delay: .14s; }.qa-reasoning-dots i:nth-child(3) { animation-delay: .28s; }
+@keyframes qa-reasoning-dot { 0%, 60%, 100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
+@keyframes qa-reasoning-open { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: translateY(0); } }
+
+.qa-thinking { display: inline-flex; align-items: center; gap: 8px; color: #8c8579; font-size: 13px; }
+.qa-thinking::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--qa-accent); box-shadow: 0 0 0 4px rgba(201,111,82,.12); animation: qa-thinking-pulse 1.25s infinite ease-in-out; }
+@keyframes qa-thinking-pulse { 0%,100% { opacity: .45; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
+
+.qa-composer { border-radius: 22px; padding: 13px 13px 11px; background: rgba(255,255,255,.82); box-shadow: 0 8px 28px rgba(48,40,28,.11), inset 0 1px 1px #fff; }
+.qa-composer:focus-within { box-shadow: 0 10px 32px rgba(48,40,28,.15), 0 0 0 1px rgba(201,111,82,.15), inset 0 1px 1px #fff; }
+.qa-composer-input { font-size: 16px; }
+.qa-send-btn { background: var(--qa-accent); color: #fff; box-shadow: 0 3px 10px rgba(201,111,82,.24); }
+.qa-send-btn:disabled { background: #c8c4bb; color: #f8f7f3; box-shadow: none; }
+.qa-attach-btn { background: #eeece6; }
+
+.qa-suggestion { background: rgba(255,255,255,.7); border: 1px solid rgba(55,45,30,.07); }
+.qa-welcome-title { font-size: 22px; font-weight: 600; }
+.qa-welcome-sub { max-width: 520px; }
+
+/* 欢迎页：参考 Claude 的大留白与像素螃蟹，不放教程段落或建议问题墙。 */
+.qa-welcome { padding-top: 25vh; min-height: min(58vh, 500px); box-sizing: border-box; }
+.qa-welcome-badge { width: 72px; height: 72px; margin-bottom: 20px; border-radius: 22px; background: #f2e6dc; box-shadow: none; }
+.qa-pixel-crab { width: 58px; height: 58px; display: block; }
+.qa-welcome-title { font-size: clamp(21px, 5.5vw, 28px); font-weight: 550; letter-spacing: .01em; color: #332c27; }
+.qa-welcome-warn { margin-top: 16px; color: #8c654c; border-color: rgba(201,111,82,.22); background: rgba(201,111,82,.08); }
+
+/* 真实状态控件位于输入框上方：仅显示当前浏览器实际知道的工作区与仓库连接状态。 */
+.qa-composer-context { display: flex; align-items: center; gap: 7px; min-height: 29px; padding: 0 2px 2px; overflow-x: auto; scrollbar-width: none; }
+.qa-composer-context::-webkit-scrollbar { display: none; }
+.qa-context-pill { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; min-height: 28px; padding: 0 10px; border: 1px solid rgba(57,48,37,.08); border-radius: 999px; background: rgba(241,239,233,.82); color: #777065; font: inherit; font-size: 11.5px; white-space: nowrap; }
+.qa-context-pill-repo { max-width: min(62vw, 270px); overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: background .16s ease, color .16s ease, border-color .16s ease; }
+.qa-context-pill-repo:hover { color: var(--qa-accent-hover); border-color: rgba(201,111,82,.28); background: rgba(201,111,82,.08); }
+.qa-context-pill-repo.is-connected { color: #806557; background: rgba(201,111,82,.10); border-color: rgba(201,111,82,.18); }
+.qa-context-dot { width: 6px; height: 6px; border-radius: 50%; background: #8a9a78; box-shadow: 0 0 0 3px rgba(138,154,120,.14); }
+
+@media (prefers-reduced-motion: reduce) {
+  .qa-app-shell *, .qa-app-shell *::before, .qa-app-shell *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 .qa-file-card-ready {
   width: 100%;
   border: 0;

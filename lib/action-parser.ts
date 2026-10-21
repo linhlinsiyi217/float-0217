@@ -20,6 +20,7 @@ import { sendBrowserNotification } from "./browser-notification";
 import type { MomentPost, MomentComment } from "./moments-types";
 import { attachMomentPhotoInBackground, parseMomentPostResponse } from "./moments-engine";
 import { isAbortError, throwIfAborted } from "./abort-utils";
+import { saveMindRecordFromDispatch } from "./inner-voice";
 
 // ── Types ──
 
@@ -40,7 +41,7 @@ export type ActionContext = {
 
 // ── Parser ──
 
-const ACTION_TAGS = ["朋友圈", "群消息", "评论", "回复", "消息", "私信"] as const;
+const ACTION_TAGS = ["朋友圈", "群消息", "评论", "回复", "消息", "私信", "心声"] as const;
 
 function normalizeActionQuotes(text: string): string {
     return text.replace(/[\u201C\u201D\u2018\u2019\u300C\u300D]/g, "\"");
@@ -152,6 +153,12 @@ export function parseActionTags(text: string): {
     let { actions, ranges } = collectActionBlocks(normalized, true);
 
     if (actions.length > 0) {
+        // 引号替换是等长的，ranges 与原文索引一一对应：rawText 用原文切片，
+        // 保留值里的弯引号（心声 JSON 的字符串值里弯引号合法，不该被改写）
+        actions.forEach((action, i) => {
+            const range = ranges[i];
+            if (range) action.rawText = text.slice(range.start, range.end);
+        });
         cleanText = removeActionRanges(normalized, ranges).trim();
     }
 
@@ -159,6 +166,10 @@ export function parseActionTags(text: string): {
     if (actions.length === 0) {
         ({ actions, ranges } = collectActionBlocks(normalized, false));
         if (actions.length > 0) {
+            actions.forEach((action, i) => {
+                const range = ranges[i];
+                if (range) action.rawText = text.slice(range.start, range.end);
+            });
             cleanText = removeActionRanges(normalized, ranges).trim();
         }
     }
@@ -178,7 +189,7 @@ export function parseActionTags(text: string): {
  */
 const KNOWN_ACTION_TAGS = [
     // 中文方括号格式
-    "朋友圈", "评论", "回复", "消息", "群消息", "私信",
+    "朋友圈", "评论", "回复", "消息", "群消息", "私信", "心声",
     // XML 格式 (AI 偶尔幻觉输出)
     "action_chat_message", "action_moments_post",
     "action_comment", "action_reply",
@@ -247,6 +258,9 @@ export async function dispatchActions(
                 case "群消息":
                     await dispatchGroupChatMessage(action, effectiveCtx);
                     break;
+                case "心声":
+                    dispatchInnerVoice(action, effectiveCtx);
+                    break;
             }
         } catch (err) {
             if (isAbortError(err)) return;
@@ -271,6 +285,36 @@ function resolveActorContext(action: ActionTag, context: ActionContext): ActionC
 }
 
 // ── Action Handlers ──
+
+// 心声：内容是一份 JSON，落到当前会话的心声历史里（弹窗由用户点 AI 头像打开）
+function dispatchInnerVoice(action: ActionTag, context: ActionContext): void {
+    const sessionId = context.sessionId;
+    if (!sessionId) {
+        console.warn("[ActionParser] 心声缺少 sessionId，跳过");
+        return;
+    }
+    // rawText 是原文切片（保留弯引号）；拿不到才退回规范化后的 content
+    let text = (action.rawText ?? action.content).trim();
+    // 掐掉方括号标签壳本身
+    text = text.replace(/^\[[^\]\n]*\]/, "").replace(/\[[^\]\n]*\]\s*$/, "").trim();
+    // 模型偶尔套一层代码围栏
+    text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start < 0 || end <= start) {
+        console.warn("[ActionParser] 心声内容里没有 JSON，跳过");
+        return;
+    }
+    let raw: unknown;
+    try {
+        raw = JSON.parse(text.slice(start, end + 1));
+    } catch (err) {
+        console.warn("[ActionParser] 心声 JSON 解析失败:", err);
+        return;
+    }
+    const rec = saveMindRecordFromDispatch(sessionId, raw);
+    if (rec) console.log("[ActionParser]", `mind record saved: session=${sessionId} theme=${rec.tname}`);
+}
 
 function ensureCharacterChatContact(characterId: string): void {
     const exists = loadChatContacts().some(contact => contact.characterId === characterId);

@@ -6,6 +6,7 @@ import { extractTextToolDirectiveText } from "./text-tool-protocol";
 import type { ApiConfig, PresetConfig, RegexConfig } from "./settings-types";
 import { loadCharacters } from "./character-storage";
 import { buildScreenEffectPromptHint } from "./chat-screen-effects";
+import { buildInnerVoicePromptFragment } from "./inner-voice";
 import { buildGroupTapbackPrompt } from "./chat-tapback";
 import { buildEchoPrompt, echoHistoryText } from "./chat-echo";
 import { buildLovePrompt, loveHistoryText } from "./chat-love";
@@ -445,7 +446,7 @@ async function buildGroupChatPromptMessages(
         hint: buildChatPluginPromptFragments(session.id),
     });
     const pluginPromptHint = pluginPrompt.hint?.trim() ? `\n\n### 扩展插件\n${pluginPrompt.hint.trim()}\n` : "";
-    const customAppRichMediaDirectives = formatCustomAppChatDirectivesForPrompt({ group: true }) + buildScreenEffectPromptHint() + pluginPromptHint;
+    const customAppRichMediaDirectives = formatCustomAppChatDirectivesForPrompt({ group: true }) + buildScreenEffectPromptHint() + pluginPromptHint + buildInnerVoicePromptFragment(session.id);
     const toolsPrompt = usesNativeActions
         ? "需要动作时使用可用动作接口。"
         : formatToolsForPrompt(enabledTools);

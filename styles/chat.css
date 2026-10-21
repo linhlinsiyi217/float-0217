@@ -1035,7 +1035,11 @@
   right: auto !important;
   bottom: auto !important;
   transform: none !important;
-  z-index: 80;
+  /* The active message row is raised to z-index 130 while a menu is open.
+     Keep the portal above that row, otherwise a bubble (or its tapback badge)
+     can paint over the menu on mobile.  Leave the retry/modal layers (270+)
+     above it so a real modal still wins the stacking order. */
+  z-index: 240;
 }
 .chat-floating-ctx-menu[data-role="user"],
 .chat-floating-ctx-menu[data-role="assistant"] {

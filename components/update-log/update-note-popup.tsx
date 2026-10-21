@@ -10,6 +10,10 @@ import {
   CATEGORY_TINT,
   normalizeUpdateCategory,
   popupEntries,
+  releaseHasScope,
+  scopeGroups,
+  SCOPE_COLOR,
+  SCOPE_LABEL,
   type Release,
   type UpdateEntry,
 } from "@/lib/update-log/types";
@@ -26,18 +30,31 @@ type UpdateNotePopupProps = {
   onHide?: () => void;
 };
 
-/** 紧凑条目：小色标 + 分类文字标签 + 标题，一行内放得下就单行 */
+/** 紧凑条目：小色标 + 分类文字标签 + 标题，一行内放得下就单行。
+ *  标了影响范围的条目用五类小圆点（应用/页面内容/全局/提示词/修复），
+ *  老条目保持原来的性质分类（新功能/体验优化/…）。 */
 function EntryRow({ entry }: { entry: UpdateEntry }) {
   return (
     <li className="updn-row" title={entry.app}>
       <span className="updn-row-top">
-        <i className="updn-dot" style={{ background: CATEGORY_COLOR[entry.category] }} aria-hidden />
-        <span
-          className="updn-tag"
-          style={{ color: CATEGORY_COLOR[entry.category], background: CATEGORY_TINT[entry.category] }}
-        >
-          {CATEGORY_LABEL[entry.category]}
-        </span>
+        {entry.scope ? (
+          <>
+            <i className="updn-dot" style={{ background: SCOPE_COLOR[entry.scope] }} aria-hidden />
+            <span className="updn-tag" style={{ color: SCOPE_COLOR[entry.scope] }}>
+              {SCOPE_LABEL[entry.scope]}
+            </span>
+          </>
+        ) : (
+          <>
+            <i className="updn-dot" style={{ background: CATEGORY_COLOR[entry.category] }} aria-hidden />
+            <span
+              className="updn-tag"
+              style={{ color: CATEGORY_COLOR[entry.category], background: CATEGORY_TINT[entry.category] }}
+            >
+              {CATEGORY_LABEL[entry.category]}
+            </span>
+          </>
+        )}
         <span className="updn-row-title">{entry.title}</span>
       </span>
     </li>
@@ -132,28 +149,47 @@ export function UpdateNotePopup({ appName, release, onConfirm, onOpenLog, onHide
 
             {showAll && (
               <div className="updn-detail">
-                {CATEGORY_ORDER.map((category) => {
-                  const entries = release.entries.filter((entry) => normalizeUpdateCategory(entry.category) === category);
-                  if (entries.length === 0) return null;
-                  return (
-                    <div key={category} className="updn-detail-group">
-                      <span className="updn-detail-label" style={{ color: CATEGORY_COLOR[category] }}>
-                        <i style={{ background: CATEGORY_COLOR[category] }} aria-hidden />
-                        {CATEGORY_LABEL[category]}
-                      </span>
-                      {entries.map((entry) => (
-                        <div key={entry.id} className="updn-detail-entry">
-                          <span className="updn-detail-title">{entry.title}</span>
-                          <ul>
-                            {entry.items.map((item, index) => (
-                              <li key={index}>{item}</li>
-                            ))}
-                          </ul>
+                {releaseHasScope(release)
+                  ? scopeGroups(release.entries).map((group) => (
+                      <div key={group.scope} className="updn-detail-group">
+                        <span className="updn-detail-label" style={{ color: SCOPE_COLOR[group.scope] }}>
+                          <i style={{ background: SCOPE_COLOR[group.scope] }} aria-hidden />
+                          {SCOPE_LABEL[group.scope]}
+                        </span>
+                        {group.entries.map((entry) => (
+                          <div key={entry.id} className="updn-detail-entry">
+                            <span className="updn-detail-title">{entry.title}</span>
+                            <ul>
+                              {entry.items.map((item, index) => (
+                                <li key={index}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    ))
+                  : CATEGORY_ORDER.map((category) => {
+                      const entries = release.entries.filter((entry) => normalizeUpdateCategory(entry.category) === category);
+                      if (entries.length === 0) return null;
+                      return (
+                        <div key={category} className="updn-detail-group">
+                          <span className="updn-detail-label" style={{ color: CATEGORY_COLOR[category] }}>
+                            <i style={{ background: CATEGORY_COLOR[category] }} aria-hidden />
+                            {CATEGORY_LABEL[category]}
+                          </span>
+                          {entries.map((entry) => (
+                            <div key={entry.id} className="updn-detail-entry">
+                              <span className="updn-detail-title">{entry.title}</span>
+                              <ul>
+                                {entry.items.map((item, index) => (
+                                  <li key={index}>{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  );
-                })}
+                      );
+                    })}
               </div>
             )}
           </>

@@ -5141,6 +5141,45 @@
   max-width: 128px;
 }
 
+/* 灵动岛通知态：来新消息短暂展开为「头像 + 标题 + 一句话」，动效克制 */
+.music-dynamic-island .mdi-notify {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px 0 8px;
+  border: none;
+  border-radius: 20px;
+  background: #0a0a0a;
+  color: #fff;
+  cursor: pointer;
+  max-width: 240px;
+  pointer-events: auto;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  animation: mdi-notify-in 0.26s cubic-bezier(0.22, 0.9, 0.32, 1) both;
+}
+@keyframes mdi-notify-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.music-dynamic-island .mdi-notify img {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+.music-dynamic-island .mdi-notify-fallback {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.12);
+  color: #d8d8dc;
+  flex: 0 0 auto;
+}
+
 .music-dynamic-island .mdi-expanded {
   margin-top: 10px;
   width: min(288px, calc(100vw - 40px));

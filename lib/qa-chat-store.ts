@@ -506,7 +506,7 @@ export async function carryOverQaSession(sessionId: string): Promise<string | nu
 }
 
 export function getQaEditAndResendBlockReason(sessionId: string, msgId: string): string | null {
-    if (isGenerating || isCompacting) return "小坊正在执行或整理上下文，请等待当前任务完成。";
+    if (isGenerating || isCompacting) return "克克正在执行或整理上下文，请等待当前任务完成。";
     const session = sessions.find((candidate) => candidate.id === sessionId);
     if (!session) return "会话已不存在。";
     const messageIndex = session.messages.findIndex((message) => message.id === msgId);
@@ -536,7 +536,7 @@ export function updateQaMessageContent(
     images?: string[],
     files?: QaTextAttachment[],
 ): QaMessageEditResult {
-    if (isGenerating || isCompacting) return { ok: false, reason: "小坊正在执行或整理上下文，请稍后再修改。" };
+    if (isGenerating || isCompacting) return { ok: false, reason: "克克正在执行或整理上下文，请稍后再修改。" };
     if (!content.trim() && !images?.length && !files?.length) return { ok: false, reason: "消息内容不能为空。" };
     const filesError = validateQaTextAttachments(files);
     if (filesError) return { ok: false, reason: filesError };

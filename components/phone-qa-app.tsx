@@ -7,11 +7,10 @@ import remarkGfm from "remark-gfm";
 // （** 后跟标点时要求前面是空格/标点，中文里前面通常是汉字），中文消息大量中招。
 import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkBreaks from "remark-breaks";
-import { AppWindow, ArrowUp, BrushCleaning, Check, ChevronLeft, ChevronDown, ChevronRight, Copy, Drama, FileCode2, FileText, Gamepad2, Github, Image as ImageIcon, Loader2, Menu, MoreVertical, Paperclip, Pencil, Pin, PinOff, Play, Plus, Square, Trash2, Wrench, X, List, ArrowDown } from "lucide-react";
+import { AppWindow, ArrowUp, BrushCleaning, Check, ChevronLeft, ChevronDown, ChevronRight, Copy, Drama, FileCode2, FileText, Gamepad2, Github, Image as ImageIcon, Loader2, Menu, MoreVertical, Paperclip, Pencil, Pin, PinOff, Play, Plus, Square, Trash2, Wrench, X, List, ArrowDown, Sparkles } from "lucide-react";
 import { getQaApiLogs, clearQaApiLogs, type DebugInfo } from "@/lib/api-log-store";
 import { QaFileCard } from "@/components/qa-file-card";
 import { parseQaFileMarker } from "@/lib/qa-computer-tools";
-import { mdiHammerWrench } from "@mdi/js";
 import { CustomAppRunner } from "@/components/app-market/custom-app-runner";
 import { CustomAppForegroundBoundary } from "@/components/app-market/custom-app-failure";
 import { GameHubApp } from "@/components/game/game-hub-app";
@@ -71,6 +70,7 @@ import {
   QA_MAX_OUTPUT_TOKENS_MAX,
 } from "@/lib/qa-prefs";
 import { resolveQaApiConfig } from "@/lib/qa-agent-engine";
+import { resolveUserIdentity, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
 import {
   loadQaGithubConfig,
   saveQaGithubConfig,
@@ -85,14 +85,6 @@ type PhoneQaAppProps = {
   onClose: () => void;
   onNotice?: (msg: string) => void;
 };
-
-const SUGGESTIONS = [
-  "怎么添加我的 API？",
-  "聊天没有回复怎么排查？",
-  "怎么部署到 Netlify / Vercel？",
-  "数据存在哪里，怎么备份？",
-  "帮我写个小游戏装到本机",
-];
 
 function formatRelativeTime(ts: number): string {
   const diff = Date.now() - ts;
@@ -288,6 +280,61 @@ function QaStreamingText({ text }: { text: string }) {
   );
 }
 
+/** 欢迎页使用的近似 Claude 像素螃蟹图形；它是 UI 图标，不依赖外部素材。 */
+function QaPixelCrab() {
+  return (
+    <svg className="qa-pixel-crab" viewBox="0 0 64 64" aria-hidden>
+      <g shapeRendering="crispEdges">
+        <rect x="20" y="12" width="24" height="5" fill="#d97757" />
+        <rect x="14" y="17" width="36" height="7" fill="#d97757" />
+        <rect x="9" y="24" width="46" height="17" fill="#c96549" />
+        <rect x="16" y="20" width="10" height="8" fill="#f3b09a" />
+        <rect x="38" y="20" width="10" height="8" fill="#f3b09a" />
+        <rect x="20" y="28" width="7" height="7" fill="#fff9f2" />
+        <rect x="37" y="28" width="7" height="7" fill="#fff9f2" />
+        <rect x="23" y="30" width="4" height="4" fill="#4c332b" />
+        <rect x="37" y="30" width="4" height="4" fill="#4c332b" />
+        <rect x="26" y="38" width="12" height="4" fill="#693d32" />
+        <rect x="4" y="28" width="6" height="12" fill="#c96549" />
+        <rect x="54" y="28" width="6" height="12" fill="#c96549" />
+        <rect x="7" y="40" width="9" height="6" fill="#c96549" />
+        <rect x="48" y="40" width="9" height="6" fill="#c96549" />
+        <rect x="15" y="41" width="7" height="12" fill="#b95640" />
+        <rect x="42" y="41" width="7" height="12" fill="#b95640" />
+        <rect x="20" y="48" width="7" height="8" fill="#d97757" />
+        <rect x="37" y="48" width="7" height="8" fill="#d97757" />
+      </g>
+    </svg>
+  );
+}
+
+/** Claude 风格思考过程：生成时自动展开，完成后折叠成一条可回看的摘要。 */
+function QaReasoningBlock({ reasoning, isStreaming }: { reasoning: string; isStreaming: boolean }) {
+  const [open, setOpen] = useState(isStreaming);
+  useEffect(() => {
+    if (isStreaming) setOpen(true);
+  }, [isStreaming]);
+  const preview = reasoning.replace(/\s+/g, " ").trim();
+  return (
+    <div className={`qa-reasoning ${isStreaming ? "is-streaming" : ""} ${open ? "is-open" : ""}`}>
+      <button type="button" className="qa-reasoning-trigger" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+        <span className="qa-reasoning-mark" aria-hidden><Sparkles size={14} strokeWidth={1.8} /></span>
+        <span className="qa-reasoning-label">{isStreaming ? "正在思考" : "思考过程"}</span>
+        {isStreaming && <span className="qa-reasoning-dots" aria-hidden><i /><i /><i /></span>}
+        {!isStreaming && preview && <span className="qa-reasoning-preview">{preview}</span>}
+        <ChevronDown size={14} className="qa-reasoning-chevron" aria-hidden />
+      </button>
+      {open && (
+        <div className="qa-reasoning-body">
+          <div className="qa-reasoning-line" aria-hidden />
+          <div className="qa-reasoning-text">{reasoning}</div>
+          {isStreaming && <span className="qa-cursor qa-reasoning-cursor" />}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const QaMessageItem = memo(function QaMessageItem({
   msg,
   isStreaming,
@@ -374,6 +421,9 @@ const QaMessageItem = memo(function QaMessageItem({
 
   return msgWrap(
     <div className="qa-msg-assistant">
+      {msg.reasoning && (
+        <QaReasoningBlock reasoning={msg.reasoning} isStreaming={isStreaming} />
+      )}
       {segmentBlocks ? (
         segmentBlocks.map((block, i) =>
           block.kind === "tools" ? (
@@ -667,7 +717,7 @@ function QaSettingsSheet({ onClose, onNotice }: { onClose: () => void; onNotice?
           />
         </label>
         <div className="qa-settings-hint">
-          小坊翻页读答疑文档 / 本机内容 / 仓库源码时，每页返回的字符数。默认 {QA_DEFAULT_PAGE_CHARS.toLocaleString()}；调大读得快但更占上下文，小上下文模型建议调小。
+          克克翻页读答疑文档 / 本机内容 / 仓库源码时，每页返回的字符数。默认 {QA_DEFAULT_PAGE_CHARS.toLocaleString()}；调大读得快但更占上下文，小上下文模型建议调小。
         </div>
         <label className="qa-settings-field">
           <span>单轮工具调用上限（次）</span>
@@ -682,7 +732,7 @@ function QaSettingsSheet({ onClose, onNotice }: { onClose: () => void; onNotice?
           />
         </label>
         <div className="qa-settings-hint">
-          一次提问里小坊最多连续执行多少轮工具，用完会提示「回复继续」。默认 {QA_DEFAULT_MAX_ROUNDS}；复杂任务（写游戏、改代码）可调大，想控制 token 消耗可调小。
+          一次提问里克克最多连续执行多少轮工具，用完会提示「回复继续」。默认 {QA_DEFAULT_MAX_ROUNDS}；复杂任务（写游戏、改代码）可调大，想控制 token 消耗可调小。
         </div>
         <label className="qa-settings-field">
           <span>单次最大输出 token</span>
@@ -698,7 +748,7 @@ function QaSettingsSheet({ onClose, onNotice }: { onClose: () => void; onNotice?
           />
         </label>
         <div className="qa-settings-hint">
-          输出长度护栏：每次请求带 max_tokens，小坊会按该预算分段写大文件，写超被安全截断后自动续接，不再整轮报废。默认 {QA_DEFAULT_MAX_OUTPUT_TOKENS.toLocaleString()}；留空 = 不传该参数（部分模型/中转不支持 max_tokens 时请留空）。
+          输出长度护栏：每次请求带 max_tokens，克克会按该预算分段写大文件，写超被安全截断后自动续接，不再整轮报废。默认 {QA_DEFAULT_MAX_OUTPUT_TOKENS.toLocaleString()}；留空 = 不传该参数（部分模型/中转不支持 max_tokens 时请留空）。
         </div>
         <div className="qa-devnotice-actions is-row">
           <button type="button" className="qa-devnotice-btn" onClick={reset}>恢复默认</button>
@@ -860,7 +910,9 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
   const editFileInputRef = useRef<HTMLInputElement | null>(null);
   const [apiReady, setApiReady] = useState(true);
   const [modelName, setModelName] = useState("");
+  const [userName, setUserName] = useState(() => resolveUserIdentity()?.name?.trim() || "你");
   const [repoWritable, setRepoWritable] = useState(false);
+  const [repoLabel, setRepoLabel] = useState("");
   const [writeMode, setWriteMode] = useState<"confirm" | "auto">("confirm");
   const [carryingSessionId, setCarryingSessionId] = useState<string | null>(null);
   const [outlineOpen, setOutlineOpen] = useState(false);
@@ -875,8 +927,16 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
     setVisionEnabled(resolveQaApiConfig()?.enableImageRecognition === true);
     const gh = loadQaGithubConfig();
     setRepoConnected(gh != null);
+    setRepoLabel(gh ? `${gh.owner}/${gh.repo}${gh.branch ? ` · ${gh.branch}` : ""}` : "");
     setRepoWritable(Boolean(gh?.token));
     setWriteMode(gh?.writeMode ?? "confirm");
+  }, []);
+
+  useEffect(() => {
+    const refreshUserName = () => setUserName(resolveUserIdentity()?.name?.trim() || "你");
+    refreshUserName();
+    window.addEventListener(USER_IDENTITIES_UPDATED_EVENT, refreshUserName);
+    return () => window.removeEventListener(USER_IDENTITIES_UPDATED_EVENT, refreshUserName);
   }, []);
 
   useEffect(() => {
@@ -887,7 +947,7 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
   // 清理原生 tool 调用历史（防报错）：与小卷同款——移除上下文里的工具记录与原生元数据
   const handleClearToolHistory = useCallback(() => {
     if (snapshot.isGenerating) {
-      onNotice?.("小坊正在执行，完成后再清理。");
+      onNotice?.("克克正在执行，完成后再清理。");
       return;
     }
     if (!hasQaToolHistory()) {
@@ -925,6 +985,25 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
     () => (previewItem?.type === "app" ? getInstalledCustomApp(previewItem.refId) : null),
     [previewItem],
   );
+
+  // 手机端所有临时层都支持返回键／Escape，避免预览或抽屉把用户困住。
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (viewerImage) { setViewerImage(null); return; }
+      if (editingMsg) { setEditingMsg(null); return; }
+      if (previewOpen) { setPreviewOpen(false); setPreviewItem(null); return; }
+      if (repoSheetOpen) { setRepoSheetOpen(false); return; }
+      if (settingsOpen) { setSettingsOpen(false); return; }
+      if (apiLogOpen) { setApiLogOpen(false); return; }
+      if (clearToolsOpen) { setClearToolsOpen(false); return; }
+      if (outlineOpen) { setOutlineOpen(false); return; }
+      if (attachMenuOpen) { setAttachMenuOpen(false); return; }
+      if (drawerOpen) setDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [viewerImage, editingMsg, previewOpen, repoSheetOpen, settingsOpen, apiLogOpen, clearToolsOpen, outlineOpen, attachMenuOpen, drawerOpen]);
 
   useEffect(() => {
     const el = bodyRef.current;
@@ -1049,7 +1128,7 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
     const targetId = typeof targetSessionId === "string" && targetSessionId ? targetSessionId : snapshot.activeSessionId;
     if (!targetId) return;
     if (snapshot.isGenerating || snapshot.isCompacting) {
-      onNotice?.("小坊正在执行任务或整理上下文，完成后再结转。");
+      onNotice?.("克克正在执行任务或整理上下文，完成后再结转。");
       return;
     }
     setCarryingSessionId(targetId);
@@ -1227,8 +1306,8 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
           </button>
         </div>
         <div className="qa-header-center">
-          <span className="qa-header-title">工坊</span>
-          {repoConnected && <span className="qa-header-sub">已连接仓库</span>}
+          <span className="qa-header-title">Claude</span>
+          <span className="qa-header-sub">克克 · 工坊</span>
         </div>
         <div className="qa-header-right">
           <button
@@ -1259,36 +1338,12 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
         {messages.length === 0 ? (
           <div className="qa-welcome">
             <div className="qa-welcome-badge" aria-hidden>
-              <svg viewBox="0 0 24 24" width="26" height="26">
-                <path d={mdiHammerWrench} fill="currentColor" />
-              </svg>
+              <QaPixelCrab />
             </div>
-            <div className="qa-welcome-title">有什么问题？</div>
-            <div className="qa-welcome-sub">
-              我是小坊，工坊的驻场工程师。使用问题、报错排查、部署配置，都可以问我。
-              <br />
-              我还能动手：写小游戏 / APP / 剧场直接装进本机试玩；连接仓库后我会查源码答疑，填了有写权限的 PAT 还能帮你改代码。
-              <br />
-              想创作角色、世界书或美化桌面，找桌面上的小卷更合适。
-            </div>
+            <div className="qa-welcome-title">你好，{userName}</div>
             {!apiReady && (
               <div className="qa-welcome-warn">还没有可用的 API：请先到「设置 → API 设置」添加 LLM API。</div>
             )}
-            <div className="qa-suggestions">
-              {SUGGESTIONS.map((text) => (
-                <button
-                  key={text}
-                  type="button"
-                  className="qa-suggestion"
-                  onClick={() => {
-                    stickToBottomRef.current = true;
-                    void sendQaMessage(text);
-                  }}
-                >
-                  {text}
-                </button>
-              ))}
-            </div>
           </div>
         ) : (
           <div className="qa-messages">
@@ -1337,6 +1392,16 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
               ))}
             </div>
           )}
+          <div className="qa-composer-context" aria-label="当前工作环境">
+            <span className="qa-context-pill qa-context-pill-env">
+              <span className="qa-context-dot" aria-hidden />
+              本机工作区
+            </span>
+            <button type="button" className={`qa-context-pill qa-context-pill-repo ${repoConnected ? "is-connected" : ""}`} onClick={() => setRepoSheetOpen(true)}>
+              <Github size={13} strokeWidth={1.8} />
+              {repoConnected ? repoLabel : "连接仓库"}
+            </button>
+          </div>
           <textarea
             ref={textareaRef}
             className="qa-composer-input hide-scrollbar"
@@ -1418,15 +1483,6 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
                 <Play size={16} />
               </button>
             )}
-
-            <button
-              type="button"
-              className={`qa-circle-btn qa-github-btn ${repoConnected ? "is-active" : ""}`}
-              onClick={() => setRepoSheetOpen(true)}
-              aria-label="连接仓库"
-            >
-              <Github size={16} strokeWidth={1.75} />
-            </button>
 
             {snapshot.isGenerating ? (
               <button type="button" className="qa-circle-btn qa-send-btn is-stop" onClick={stopQaGeneration} aria-label="停止生成">
@@ -1571,7 +1627,7 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
           <div className="qa-devnotice" role="alertdialog" aria-label="清理工具历史确认" onClick={(e) => e.stopPropagation()}>
             <div className="qa-devnotice-title">清理工具调用历史？</div>
             <div className="qa-devnotice-text">
-              将移除本会话上下文中的工具调用与工具结果记录，用于修复原生工具协议的报错。普通对话内容不会删除，之前的工具结论仍保留在小坊的回复文字里。
+              将移除本会话上下文中的工具调用与工具结果记录，用于修复原生工具协议的报错。普通对话内容不会删除，之前的工具结论仍保留在克克的回复文字里。
             </div>
             <div className="qa-devnotice-actions is-row">
               <button type="button" className="qa-devnotice-btn" onClick={() => setClearToolsOpen(false)}>

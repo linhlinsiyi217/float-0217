@@ -130,7 +130,8 @@ import { WidgetRenderer } from "@/components/widgets/widget-renderer";
 import type { DIYWidgetTemplate } from "@/lib/widget-types";
 import { DebugPromptPanel } from "@/components/debug-prompt-panel";
 import { QuickActionFloat } from "@/components/quick-action-float";
-import { CHAT_MESSAGE_PUSHED_EVENT, CHAT_REQUEST_REPLY_EVENT, findChatSessionById, hydrateChatStorage, loadChatSessions, loadChatMessages, pushChatMessage, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
+import { CHAT_MESSAGE_PUSHED_EVENT, CHAT_REQUEST_REPLY_EVENT, findChatSessionById, hydrateChatStorage, loadChatSessions, loadChatMessages, pushChatMessage, resolveChatCharacterAvatar, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
+import { publishIslandNotification } from "@/lib/island-notify";
 import { ensureGlobalBindingDefaults, resolveUserIdentity } from "@/lib/settings-storage";
 import { loadCharacters } from "@/lib/character-storage";
 import { generateChatCompletion, flattenCompletionResult } from "@/lib/chat-engine";
@@ -150,6 +151,7 @@ import { canSendShellNotification, sendShellNotification } from "@/lib/shell-not
 import type { ChatSharePayload } from "@/lib/chat-share";
 import { completePendingMcpOAuthCallback } from "@/lib/tool-executor";
 import { LayoutGrid, LoaderCircle, RefreshCw } from "lucide-react";
+import { PhoneLockScreen } from "@/components/phone-lock-screen";
 
 const EMOJI_FONTS = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla"';
 
@@ -616,12 +618,68 @@ function StatusClock() {
         new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })
       );
     };
+    // 对齐到下一分钟再刷新（不按秒轮询），+50ms 容差防止整点抢跑
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      const now = new Date();
+      const delay = 60000 - (now.getSeconds() * 1000 + now.getMilliseconds()) + 50;
+      timer = setTimeout(() => { update(); schedule(); }, delay);
+    };
     update();
-    const timer = window.setInterval(update, 10000);
-    return () => window.clearInterval(timer);
+    schedule();
+    return () => clearTimeout(timer);
   }, []);
 
   return <span className="status-time">{label}</span>;
+}
+
+type BatteryLike = {
+  level: number;
+  charging: boolean;
+  addEventListener?: (type: string, listener: () => void) => void;
+  removeEventListener?: (type: string, listener: () => void) => void;
+};
+
+function StatusBattery() {
+  // 真实电量：Battery Status API 读不到时保持满格占位
+  const [battery, setBattery] = useState<{ level: number; charging: boolean } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const nav = navigator as Navigator & { getBattery?: () => Promise<BatteryLike> };
+    if (!nav.getBattery) return;
+    nav.getBattery().then((b) => {
+      if (cancelled) return;
+      const sync = () => setBattery({ level: b.level, charging: b.charging });
+      sync();
+      b.addEventListener?.("levelchange", sync);
+      b.addEventListener?.("chargingchange", sync);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const pct = battery ? Math.max(0, Math.min(1, battery.level)) : 1;
+  const charging = battery?.charging ?? false;
+  const low = pct <= 0.2 && !charging;
+  // 电量再低也保留一小条，宽度不为 0
+  const bodyWidth = Math.max(2.2, Math.round(pct * 20 * 10) / 10);
+
+  return (
+    <svg viewBox="0 0 26 12" className="status-battery" fill="currentColor" aria-hidden>
+      <rect x="0.5" y="0.5" width="22" height="11" rx="2.6" fill="none" stroke="currentColor" strokeOpacity="0.42" strokeWidth="1" />
+      <rect x="22.7" y="4" width="1.8" height="4" rx="0.7" opacity="0.42" />
+      <rect x="2" y="2" width={bodyWidth} height="8" rx="1.5" fill={low ? "#FF3B30" : "currentColor"} />
+      {charging ? (
+        <path
+          d="M13.4 2 9.9 6.6h2.4l-1.1 3.5 3.9-4.7h-2.4z"
+          fill="#fff"
+          stroke="currentColor"
+          strokeWidth="0.5"
+          strokeLinejoin="round"
+        />
+      ) : null}
+    </svg>
+  );
 }
 
 function collectCssOverrides(profile: ThemeProfile): Record<string, string> {
@@ -1162,6 +1220,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   const [desktopReady, setDesktopReady] = useState(false);
   const [glassPaintPass, setGlassPaintPass] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
+  const [isLocked, setIsLocked] = useState(false);
   const [activeApp, setActiveApp] = useState<DesktopIconId | null>(null);
   const [customApps, setCustomApps] = useState<InstalledCustomApp[]>([]);
   // 自定义 APP 桌面图标样式偏好（global = 忽略上传图标走全局效果）
@@ -2530,6 +2589,47 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     window.addEventListener("open-app", handler);
     return () => window.removeEventListener("open-app", handler);
   }, []);
+
+  // 灵动岛通知：后台保存的 AI 回复派发通知（通知优先于音乐，约 4 秒自动收回）
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ sessionId?: string; message?: ChatMessage }>).detail;
+      if (!detail?.sessionId || !detail.message || detail.message.role !== "assistant") return;
+      const session = findChatSessionById(detail.sessionId);
+      if (!session) return;
+      const text = String(detail.message.content ?? "").replace(/\s+/g, " ").trim();
+      if (!text) return;
+      let title = "新消息";
+      let avatar = "";
+      if (session.isGroup) {
+        title = session.groupName || title;
+      } else {
+        const character = loadCharacters().find((item) => item.id === session.contactId) ?? null;
+        title = session.alias || character?.name || title;
+        avatar = session.characterAvatarOverride || resolveChatCharacterAvatar(character);
+      }
+      publishIslandNotification({
+        sessionId: detail.sessionId,
+        title,
+        text: text.slice(0, 40),
+        avatar
+      });
+    };
+    window.addEventListener("followup-message-saved", handler);
+    return () => window.removeEventListener("followup-message-saved", handler);
+  }, []);
+
+  // 状态栏/灵动岛可见性：auto=跟平台默认（安卓壳开、网页按「隐藏顶栏」设置），on/off 为用户显式设置
+  const [isShellEnv, setIsShellEnv] = useState(false);
+  useEffect(() => {
+    setIsShellEnv(/FloatShell\//.test(navigator.userAgent));
+  }, []);
+  const statusBarVisible = draftTheme.statusBarMode === "on"
+    ? true
+    : draftTheme.statusBarMode === "off"
+      ? false
+      : (isShellEnv || !draftTheme.hideTopBar);
+  const islandVisible = statusBarVisible && draftTheme.islandMode !== "off";
 
   // Mini chat window state
   const [showMiniChat, setShowMiniChat] = useState(false);
@@ -4406,7 +4506,9 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
           ...phoneThemeStyle,
           "--status-bar-drop": `${draftTheme.statusBarDropPx ?? 0}px`
         } as React.CSSProperties}
-        data-hide-top-bar={draftTheme.hideTopBar ? "1" : "0"}
+        // 旧属性跟随 statusBarVisible 派生，避免显式 on 时仍被旧 CSS 规则隐藏
+        data-hide-top-bar={statusBarVisible ? "0" : "1"}
+        data-status-bar={statusBarVisible ? "on" : "off"}
       >
         {/* User's global custom CSS is injected via useEffect into document.head */}
         <div className="phone-case">
@@ -4433,9 +4535,17 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
             >
               <div className="phone-wallpaper" style={wallpaperStyle} />
 
-              <header className="phone-status-bar">
+              <header
+                className="phone-status-bar"
+                onDoubleClick={() => setIsLocked(true)}
+                title="双击顶部状态栏锁定"
+              >
                 <StatusClock />
-                <div className="status-island" />
+                <div className="status-island">
+                  {/* The black capsule is the phone's existing simulated Dynamic Island.
+                      MusicDynamicIsland only renders the live activity that expands from it. */}
+                  {islandVisible ? <MusicDynamicIsland /> : null}
+                </div>
                 <div className="status-right" aria-hidden>
                   <svg viewBox="0 0 72 51" className="status-signal" fill="currentColor">
                     <path d="M11.6,41.9c0,1.4,0,2.8,0,4.3c0,2.3-1.4,3.7-3.6,3.8c-1.5,0.1-3,0.1-4.4,0c-1.9-0.1-3.2-1.2-3.4-3c-0.3-3.4-0.2-6.8,0-10.1c0.1-1.8,1.5-3,3.3-3.1c1.5-0.1,3-0.1,4.4,0c2.2,0.1,3.6,1.5,3.7,3.8C11.6,39,11.6,40.5,11.6,41.9z" />
@@ -4449,15 +4559,9 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                     <path d="M131.9,27.8c5.4,0.1,9.8,2,13.6,5.5c1.1,1,1.2,2,0.1,3c-0.9,0.9-1.9,1.8-2.7,2.8c-1.1,1.4-2.1,1.3-3.4,0.2c-3.6-3-7.7-3.7-12.1-1.9c-1.3,0.5-2.4,1.3-3.4,2.2c-0.9,0.8-1.8,0.9-2.6-0.1c-1.1-1.1-2.1-2.2-3.2-3.3c-0.9-1-0.8-1.8,0.1-2.8C122.2,29.8,126.8,27.9,131.9,27.8z" />
                     <path d="M132,41.6c1.8,0,3.5,0.5,5,1.6c0.9,0.6,1.1,1.3,0.2,2.2c-1.5,1.5-2.9,2.9-4.4,4.4c-0.7,0.7-1.2,0.6-1.8,0c-1.5-1.6-2.9-3.1-4.4-4.6c-0.7-0.8-0.5-1.3,0.2-1.9C128.4,42.1,130.1,41.5,132,41.6z" />
                   </svg>
-                  <svg viewBox="0 0 26 12" className="status-battery" fill="currentColor">
-                    <rect x="0.5" y="0.5" width="22" height="11" rx="2.6" fill="none" stroke="currentColor" strokeOpacity="0.42" strokeWidth="1" />
-                    <rect x="22.7" y="4" width="1.8" height="4" rx="0.7" opacity="0.42" />
-                    <rect x="2" y="2" width="14" height="8" rx="1.5" />
-                  </svg>
+                  <StatusBattery />
                 </div>
               </header>
-
-              <MusicDynamicIsland />
 
               {notice ? (
                 <aside className="phone-shell-notice" role="status" aria-live="polite">
@@ -5410,6 +5514,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                   )}
                 </BottomSheet>
               )}
+
+              {isLocked && <PhoneLockScreen onUnlock={() => setIsLocked(false)} />}
             </div>
           </div>
         </div>

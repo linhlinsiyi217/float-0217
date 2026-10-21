@@ -1,12 +1,14 @@
-// components/music/music-dynamic-island.tsx — 音乐灵动岛（顶部黑色胶囊 + 动态波形 + 独立圆形封面/头像）
+// components/music/music-dynamic-island.tsx — 基于现有 status-island 黑条的音乐实时活动
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
-import { Pause, Play, SkipBack, SkipForward, Headphones } from "lucide-react";
+import { Pause, Play, SkipBack, SkipForward, Headphones, MessageCircle } from "lucide-react";
 import { useMusicPlayerOptional } from "@/lib/music-context";
 import { getListeningRoom, exitListeningRoom, subscribeListeningRoom } from "@/lib/listen-together";
+import { dismissIslandNotification, getIslandNotification, subscribeIslandNotification } from "@/lib/island-notify";
 import { loadCharacters } from "@/lib/character-storage";
 import { resolveChatCharacterAvatar } from "@/lib/chat-storage";
+import { FLOAT_PRESENCE_EVENT, type FloatPresenceDetail } from "@/lib/float-presence";
 
 const WAVE_BARS = 12;
 const LONG_PRESS_MS = 480;
@@ -15,6 +17,11 @@ export default function MusicDynamicIsland() {
     const player = useMusicPlayerOptional();
     const room = useSyncExternalStore(subscribeListeningRoom, getListeningRoom, () => null);
     const [expanded, setExpanded] = useState(false);
+    const [presence, setPresence] = useState<FloatPresenceDetail>(() => ({
+        state: "idle",
+        label: "刚刚活跃",
+        updatedAt: Date.now(),
+    }));
     const rootRef = useRef<HTMLDivElement>(null);
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const longPressedRef = useRef(false);
@@ -31,8 +38,27 @@ export default function MusicDynamicIsland() {
         return () => document.removeEventListener("pointerdown", onDown);
     }, [expanded]);
 
+    useEffect(() => {
+        const onPresence = (event: Event) => {
+            const detail = (event as CustomEvent<FloatPresenceDetail>).detail;
+            if (detail) setPresence(detail);
+        };
+        window.addEventListener(FLOAT_PRESENCE_EVENT, onPresence);
+        return () => window.removeEventListener(FLOAT_PRESENCE_EVENT, onPresence);
+    }, []);
+
     const listeningTogether = room?.status === "joined";
     const track = player?.currentTrack ?? null;
+
+    // 通知状态：优先于音乐 / 一起听；点击进入对应会话，超时由 store 自动收回
+    const notification = useSyncExternalStore(subscribeIslandNotification, getIslandNotification, () => null);
+
+    const handleNotifyClick = notification
+        ? () => {
+            dismissIslandNotification(notification.id);
+            window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: "chat", sessionId: notification.sessionId } }));
+        }
+        : null;
 
     // 一起听状态下，用对方头像兜底；有共同歌曲封面时优先用封面。
     const partnerAvatar = useMemo(() => {
@@ -41,11 +67,31 @@ export default function MusicDynamicIsland() {
         return resolveChatCharacterAvatar(character);
     }, [listeningTogether, room]);
 
-    if (!listeningTogether && !track) return null;
+    // 通知优先：岛短暂展开为「头像 + 标题 + 一句话」，结束后回到音乐 / 一起听
+    if (notification && handleNotifyClick) {
+        return (
+            <div className="music-dynamic-island" data-state="notify">
+                <button type="button" className="mdi-notify" onClick={handleNotifyClick}>
+                    {notification.avatar ? (
+                        <img src={notification.avatar} alt="" draggable={false} />
+                    ) : (
+                        <span className="mdi-notify-fallback"><MessageCircle size={12} strokeWidth={1.8} /></span>
+                    )}
+                    <span className="mdi-text">
+                        <b>{notification.title}</b>
+                        <small>{notification.text}</small>
+                    </span>
+                </button>
+            </div>
+        );
+    }
+
+    const hasPresence = presence.state !== "idle" || Date.now() - presence.updatedAt < 15_000;
+    if (!listeningTogether && !track && !hasPresence) return null;
 
     const coverUrl = listeningTogether ? (room?.song?.coverUrl || partnerAvatar) : track?.coverUrl;
-    const title = listeningTogether ? (room?.song?.title || "一起听") : track?.title;
-    const subtitle = listeningTogether ? "一起听" : track?.artist || "";
+    const title = listeningTogether ? (room?.song?.title || "一起听") : track?.title || (presence.state === "thinking" ? "正在思考" : "Float 在线");
+    const subtitle = listeningTogether ? "一起听" : track?.artist || presence.label;
     const isPlaying = player?.isPlaying ?? false;
     const duration = player?.duration ?? 0;
     const currentTime = player?.currentTime ?? 0;
@@ -95,10 +141,10 @@ export default function MusicDynamicIsland() {
         <div
             ref={rootRef}
             className="music-dynamic-island"
-            data-state={listeningTogether ? "listeningTogether" : "music"}
+            data-state={listeningTogether ? "listeningTogether" : track ? "music" : "presence"}
             data-expanded={expanded ? "true" : undefined}
         >
-            <div className="mdi-row">
+            <div className="mdi-row" role="group" aria-label="Float 全局实时活动">
                 <button
                     type="button"
                     className="mdi-cover"
@@ -112,13 +158,14 @@ export default function MusicDynamicIsland() {
                     {coverUrl ? (
                         <img src={coverUrl} alt="" draggable={false} />
                     ) : (
-                        <span className="mdi-cover-fallback"><Headphones size={16} strokeWidth={1.8} /></span>
+                        <span className="mdi-cover-fallback" data-presence={presence.state}><Headphones size={16} strokeWidth={1.8} /></span>
                     )}
                 </button>
 
                 <button
                     type="button"
                     className="mdi-capsule"
+                    aria-expanded={expanded}
                     aria-label={`${title}${subtitle ? " · " + subtitle : ""}`}
                     onPointerDown={startLongPress}
                     onPointerUp={clearLongPress}
@@ -139,29 +186,37 @@ export default function MusicDynamicIsland() {
             </div>
 
             {expanded && (
-                <div className="mdi-expanded">
+                <div className="mdi-expanded" role="dialog" aria-label="Float 全局实时活动">
                     <div className="mdi-expanded-head">
                         <strong>{title}</strong>
                         {subtitle ? <span>{subtitle}</span> : null}
                     </div>
-                    <div
-                        className="mdi-progress"
-                        role="slider"
-                        aria-label="播放进度"
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={Math.round(progress * 100)}
-                        onClick={handleSeek}
-                    >
-                        <span style={{ width: `${progress * 100}%` }} />
-                    </div>
-                    <div className="mdi-controls">
-                        <button type="button" onClick={() => player?.prev()} aria-label="上一首"><SkipBack size={18} strokeWidth={2} /></button>
-                        <button type="button" className="mdi-play" onClick={() => player?.togglePlay()} aria-label={isPlaying ? "暂停" : "播放"}>
-                            {isPlaying ? <Pause size={20} strokeWidth={2.2} /> : <Play size={20} strokeWidth={2.2} />}
-                        </button>
-                        <button type="button" onClick={() => player?.next()} aria-label="下一首"><SkipForward size={18} strokeWidth={2} /></button>
-                    </div>
+                    {track || listeningTogether ? (
+                        <>
+                            <div
+                                className="mdi-progress"
+                                role="slider"
+                                aria-label="播放进度"
+                                aria-valuemin={0}
+                                aria-valuemax={100}
+                                aria-valuenow={Math.round(progress * 100)}
+                                onClick={handleSeek}
+                            >
+                                <span style={{ width: `${progress * 100}%` }} />
+                            </div>
+                            <div className="mdi-controls">
+                                <button type="button" onClick={() => player?.prev()} aria-label="上一首"><SkipBack size={18} strokeWidth={2} /></button>
+                                <button type="button" className="mdi-play" onClick={() => player?.togglePlay()} aria-label={isPlaying ? "暂停" : "播放"}>
+                                    {isPlaying ? <Pause size={20} strokeWidth={2.2} /> : <Play size={20} strokeWidth={2.2} />}
+                                </button>
+                                <button type="button" onClick={() => player?.next()} aria-label="下一首"><SkipForward size={18} strokeWidth={2} /></button>
+                            </div>
+                        </>
+                    ) : (
+                        <p className="mdi-presence-copy">
+                            {presence.characterName ? `${presence.characterName} · ` : ""}{presence.label}
+                        </p>
+                    )}
                     {listeningTogether && (
                         <button type="button" className="mdi-leave" onClick={handleLeave}>
                             退出一起听
