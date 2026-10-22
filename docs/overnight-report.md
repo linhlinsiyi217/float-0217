@@ -178,3 +178,33 @@
 ## 第二轮推送记录
 
 - R1（4e739a3）推送成功；R2-1（ffaa34a，长按变暗）推送成功；R3（本报告）随后提交推送。均按同一配方自动推送（gh 账号 linhlinsiyi217 + 本地代理 7897）。无 403，无令牌写入本报告。
+
+---
+
+# 第三轮（2026-10-22）
+
+## 一、Actions 打包失败：原因与修复 —— 完成
+
+- **真正原因（以日志为准）**：`gh run view 39731673683 --log-failed` 显示败在 `:app:lintVitalRelease`——`PushService.kt` 第 100 行的 `PendingIntent.getService(..., FLAG_ONE_SHOT)` 少了 Android 12 要求的 `FLAG_IMMUTABLE` 标志（lint 检查 UnspecifiedImmutableFlag）。第 98 行（高版本分支）有这个标志，第 100 行（else 分支）漏了。这个代码是第一轮「任务3」引人的，所以任务3 之后这条分支上的 release 打包就没绿过。
+- **修复**：给第 100 行补上 `or PendingIntent.FLAG_IMMUTABLE`（提交 64a7648）。
+- **顺带发现**：main 上 PR #2 的「Android release 修复」就是别人修的同一个问题——分支从那之前分出来，没带上。已把 origin/main 合并进分支（提交 a8b8b67），冲突逐个解决：壳代码保留我这边按任务书重写的版本，工坊/弹窗/灵动岛保留 main 的改进。
+- **结果**：修复后该分支连续两次 "Build Android Shell APK" 绿色对勾（run 39737497991、39738530753）。
+
+## 二、版本号规则 —— 完成（已写进项目记忆）
+
+- 新增 **android-shell/version.properties**（versionName=1.2.0 / versionCode=10200），全项目唯一版本来源：
+  - gradle 从它读（build.gradle 不再写死）；
+  - CI 发 Release 的标签从它读（v1.2.0）；
+  - 网站 `public/app-version.json` 由新脚本 scripts/sync-app-version.mjs 在每次 build 前自动对齐 versionCode / versionName / apkUrl 三个字段，summary 和 changes 仍然手写。
+- 版本规则：大功能次版本 +1，小修复加补丁号；versionCode = 主×10000 + 次×100 + 补丁（1.2.0=10200）；Release 标签 v+版本号；版本只升不降。手机上已装的 12/1.1.0 会被 10200 覆盖安装。
+
+## 三、更新弹窗去重 —— 完成
+
+- **GPT 的网页弹窗找到了**：components/update-log/update-notice.tsx（内嵌 update-note-popup.tsx）——每次打开网页，发现「总日志里没读过的新版本」就弹一次，内容就是设置里那份更新日志，已带五类影响范围标签（应用/页面内容/全局/提示词/修复，小圆点+浅色底）。
+- **重复场景**：以前网页内容一更新，壳的 webVersion 弹窗和网页端公告会各弹一个，叠在一起。
+- **处理（按默认方案）**：安装包（APK）更新继续用安卓壳弹窗；**网页内容更新不再弹壳的原生窗**——壳发现 webVersion 变化后记下版本、清缓存刷新页面，公告由网页端弹窗统一展示（保留全部五类分类）。壳里的旧 showNewWeb 弹窗代码已删除（提交 61600b4）。
+- 长按消息变暗保持原样未动。
+
+## 第三轮推送记录
+
+- 64a7648（lint 修复）→ a8b8b67（合并 main）→ 49607e3（版本单源化）→ 61600b4（弹窗去重），全部推送成功。
