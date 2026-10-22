@@ -8,7 +8,7 @@ import {
     type LlmRequestPayload,
     type LlmToolCall,
 } from "./llm-provider-adapter";
-import { sendLLMToolStreamRequest, type LLMToolRequestResult } from "./chat-engine";
+import { getLlmRequestTimeoutMs, sendLLMToolStreamRequest, type LLMToolRequestResult } from "./chat-engine";
 import { fetchLlmPayload } from "./llm-http";
 import { pushApiLog } from "./api-log-store";
 import type { LLMContentPart } from "./llm-prompt-assembler";
@@ -100,7 +100,7 @@ async function streamQaProviderRequest(
     callbacks?: QaStreamCallbacks,
 ): Promise<{ content: string; reasoning: string }> {
     const llmAbort = new AbortController();
-    const llmTimeout = setTimeout(() => llmAbort.abort(), 1_800_000);
+    const llmTimeout = setTimeout(() => llmAbort.abort(), getLlmRequestTimeoutMs());
     const abortHandler = () => llmAbort.abort();
     if (options?.signal) {
         if (options.signal.aborted) llmAbort.abort();

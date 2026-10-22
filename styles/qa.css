@@ -102,9 +102,9 @@
   background: rgba(255, 255, 255, 0.88);
   -webkit-backdrop-filter: blur(20px) saturate(1.8);
   backdrop-filter: blur(20px) saturate(1.8);
-  border: 1px solid rgba(115, 89, 230, 0.3);
-  box-shadow: 0 4px 16px rgba(115, 89, 230, 0.18), inset 0 1px 1px #fff;
-  color: #583ec7;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), inset 0 1px 1px #fff;
+  color: #48484a;
   font-size: 12.5px;
   font-weight: 600;
   overflow: hidden;
@@ -114,7 +114,7 @@
 .qa-global-carrying-progress {
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(115, 89, 230, 0.08), rgba(115, 89, 230, 0.28), rgba(115, 89, 230, 0.08));
+  background: linear-gradient(90deg, rgba(52, 199, 89, 0.08), rgba(52, 199, 89, 0.28), rgba(52, 199, 89, 0.08));
   background-size: 200% 100%;
   animation: qa-carrying-shimmer 1.2s infinite linear;
 }
@@ -142,7 +142,7 @@
   backdrop-filter: blur(20px) saturate(1.7);
   -webkit-backdrop-filter: blur(20px) saturate(1.7);
   border: 1px solid rgba(255, 255, 255, 0.95);
-  box-shadow: 0 4px 14px rgba(40, 34, 20, 0.08), 0 0 10px rgba(115, 89, 230, 0.14), inset 0 1px 1px #ffffff;
+  box-shadow: 0 4px 14px rgba(40, 34, 20, 0.08), 0 0 10px rgba(52, 199, 89, 0.14), inset 0 1px 1px #ffffff;
 }
 .qa-outline-capsule.is-visible {
   display: inline-flex;
@@ -169,8 +169,8 @@
   width: 17px;
   height: 17px;
   border-radius: 50%;
-  background: rgba(115, 89, 230, 0.12);
-  color: #7359e6;
+  background: rgba(52, 199, 89, 0.12);
+  color: #248a3d;
 }
 .qa-outline-divider {
   width: 1px;
@@ -186,8 +186,8 @@
   height: 22px;
   border: none;
   border-radius: 50%;
-  background: rgba(115, 89, 230, 0.08);
-  color: #7359e6;
+  background: rgba(52, 199, 89, 0.1);
+  color: #248a3d;
   cursor: pointer;
 }
 .qa-outline-modal {
@@ -223,9 +223,9 @@
   display: inline-flex;
   padding: 4px 9px;
   border-radius: 7px;
-  border: 1px solid rgba(115, 89, 230, 0.28);
-  background: rgba(115, 89, 230, 0.08);
-  color: #7359e6;
+  border: 1px solid rgba(52, 199, 89, 0.32);
+  background: rgba(52, 199, 89, 0.1);
+  color: #248a3d;
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
@@ -252,7 +252,7 @@
   cursor: pointer;
 }
 .qa-outline-item.is-active {
-  background: rgba(115, 89, 230, 0.1);
+  background: rgba(52, 199, 89, 0.12);
 }
 .qa-outline-num {
   flex-shrink: 0;
@@ -269,7 +269,7 @@
   color: #6a685f;
 }
 .qa-outline-item.is-active .qa-outline-num {
-  background: #7359e6;
+  background: #34c759;
   color: #fff;
 }
 .qa-outline-text {
@@ -285,8 +285,8 @@
 }
 
 @keyframes qa-target-pulse {
-  0% { outline: 2.5px solid rgba(115, 89, 230, 0.85); background: rgba(115, 89, 230, 0.12); border-radius: 12px; }
-  50% { outline: 2.5px solid rgba(115, 89, 230, 0.35); background: rgba(115, 89, 230, 0.05); }
+  0% { outline: 2.5px solid rgba(52, 199, 89, 0.85); background: rgba(52, 199, 89, 0.12); border-radius: 12px; }
+  50% { outline: 2.5px solid rgba(52, 199, 89, 0.35); background: rgba(52, 199, 89, 0.05); }
   100% { outline: 2.5px solid transparent; background: transparent; }
 }
 .qa-highlight-anchor {
@@ -1772,7 +1772,7 @@
 .qa-drawer-item.is-carrying {
   position: relative;
   overflow: hidden;
-  background: rgba(115, 89, 230, 0.08);
+  background: rgba(52, 199, 89, 0.1);
 }
 .qa-drawer-item-progress {
   position: absolute;
@@ -1780,7 +1780,7 @@
   right: 0;
   bottom: 0;
   height: 2.5px;
-  background: linear-gradient(90deg, rgba(115, 89, 230, 0.2), #7359e6, rgba(115, 89, 230, 0.2));
+  background: linear-gradient(90deg, rgba(52, 199, 89, 0.2), #34c759, rgba(52, 199, 89, 0.2));
   background-size: 200% 100%;
   animation: qa-carrying-shimmer 1.2s infinite linear;
 }
@@ -2022,6 +2022,39 @@
   color: var(--qa-text-tertiary);
   font-size: 12px;
   line-height: 1.5;
+}
+/* 修改重发时"撤销还是保留仓库提交"的询问行 */
+.qa-edit-commit-ask {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(52, 199, 89, 0.1);
+  color: var(--qa-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.qa-edit-commit-choices {
+  display: inline-flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.qa-edit-commit-choices button {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  background: #fff;
+  color: var(--qa-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.qa-edit-commit-choices button.is-on {
+  border-color: #34c759;
+  background: #34c759;
+  color: #fff;
 }
 .qa-attach-menu button:focus-visible,
 .qa-file-chip > button:focus-visible,

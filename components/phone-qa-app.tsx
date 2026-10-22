@@ -24,6 +24,7 @@ import {
   clearQaToolHistory,
   createQaSession,
   deleteQaSession,
+  countQaEditResendAppliedCommits,
   editAndResendQaMessage,
   getQaActiveContextChars,
   getQaChatSnapshot,
@@ -52,6 +53,7 @@ import {
   type QaTextAttachment,
   type QaToolStatus,
 } from "@/lib/qa-chat-store";
+import { ensureBuiltinWorkshopOutlinePlugin } from "@/lib/chat-plugin-builtin-workshop-outline";
 import {
   getQaPageChars,
   setQaPageChars,
@@ -69,6 +71,13 @@ import {
   QA_MAX_OUTPUT_TOKENS_MIN,
   QA_MAX_OUTPUT_TOKENS_MAX,
 } from "@/lib/qa-prefs";
+import {
+  getLlmRequestTimeoutMs,
+  setLlmRequestTimeoutMs,
+  LLM_REQUEST_TIMEOUT_DEFAULT_MS,
+  LLM_REQUEST_TIMEOUT_MIN_MS,
+  LLM_REQUEST_TIMEOUT_MAX_MS,
+} from "@/lib/chat-engine";
 import { resolveQaApiConfig } from "@/lib/qa-agent-engine";
 import { resolveUserIdentity, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
 import {
@@ -673,6 +682,7 @@ function QaSettingsSheet({ onClose, onNotice }: { onClose: () => void; onNotice?
     const v = getQaMaxOutputTokens();
     return v == null ? "" : String(v);
   });
+  const [timeoutMin, setTimeoutMin] = useState(() => String(Math.round(getLlmRequestTimeoutMs() / 60_000)));
   const usedChars = getQaActiveContextChars();
   const pct = Math.round((usedChars / getQaContextBudgetChars()) * 100);
 
@@ -698,11 +708,17 @@ function QaSettingsSheet({ onClose, onNotice }: { onClose: () => void; onNotice?
       onNotice?.(`单次最大输出 token 需留空或为 ${QA_MAX_OUTPUT_TOKENS_MIN.toLocaleString()} - ${QA_MAX_OUTPUT_TOKENS_MAX.toLocaleString()} 之间的数字。`);
       return;
     }
+    const parsedTimeoutMin = Number(timeoutMin);
+    if (!Number.isFinite(parsedTimeoutMin) || parsedTimeoutMin * 60_000 < LLM_REQUEST_TIMEOUT_MIN_MS || parsedTimeoutMin * 60_000 > LLM_REQUEST_TIMEOUT_MAX_MS) {
+      onNotice?.("请求超时时间需为 1 - 60 分钟之间的数字。");
+      return;
+    }
     setQaContextBudgetChars(parsed);
     setQaPageChars(parsedPage);
     setQaMaxRounds(parsedRounds);
     // 留空 = 显式不传 max_tokens（0 哨兵），与"没设置用默认值"区分开
     setQaMaxOutputTokens(trimmedTokens ? parsedTokens : 0);
+    setLlmRequestTimeoutMs(Math.round(parsedTimeoutMin * 60_000));
     onNotice?.("已保存工坊配置。");
     onClose();
   };
@@ -716,6 +732,8 @@ function QaSettingsSheet({ onClose, onNotice }: { onClose: () => void; onNotice?
     setPageChars(String(QA_DEFAULT_PAGE_CHARS));
     setMaxRounds(String(QA_DEFAULT_MAX_ROUNDS));
     setMaxOutTokens(String(QA_DEFAULT_MAX_OUTPUT_TOKENS));
+    setTimeoutMin(String(Math.round(LLM_REQUEST_TIMEOUT_DEFAULT_MS / 60_000)));
+    setLlmRequestTimeoutMs(null);
     onNotice?.("已恢复默认配置。");
   };
 
@@ -784,6 +802,21 @@ function QaSettingsSheet({ onClose, onNotice }: { onClose: () => void; onNotice?
         </label>
         <div className="qa-settings-hint">
           输出长度护栏：每次请求带 max_tokens，克克会按该预算分段写大文件，写超被安全截断后自动续接，不再整轮报废。默认 {QA_DEFAULT_MAX_OUTPUT_TOKENS.toLocaleString()}；留空 = 不传该参数（部分模型/中转不支持 max_tokens 时请留空）。
+        </div>
+        <label className="qa-settings-field">
+          <span>请求超时时间（分钟）</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={LLM_REQUEST_TIMEOUT_MIN_MS / 60_000}
+            max={LLM_REQUEST_TIMEOUT_MAX_MS / 60_000}
+            step={1}
+            value={timeoutMin}
+            onChange={(e) => setTimeoutMin(e.target.value)}
+          />
+        </label>
+        <div className="qa-settings-hint">
+          一次请求最多等多久，超过就自动中断，不再写死 30 分钟。默认 {Math.round(LLM_REQUEST_TIMEOUT_DEFAULT_MS / 60_000)} 分钟；思考模型或慢中转可以调大，主聊天与工坊共用这一项。
         </div>
         <div className="qa-devnotice-actions is-row">
           <button type="button" className="qa-devnotice-btn" onClick={reset}>恢复默认</button>
@@ -940,6 +973,8 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
   const [editImages, setEditImages] = useState<string[]>([]);
   const [editFiles, setEditFiles] = useState<QaTextAttachment[]>([]);
   const [editAttachMenuOpen, setEditAttachMenuOpen] = useState(false);
+  // 修改重发时对"已提交到仓库的改动"的选择：撤销 / 保留（null = 还没选）
+  const [editCommitDecision, setEditCommitDecision] = useState<"revert" | "keep" | null>(null);
   const [visionEnabled, setVisionEnabled] = useState(false);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1074,12 +1109,12 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
   }, [autoGrow, closeAttachMenu, onNotice]);
 
   // ── 工坊开放插件宿主接口与生命周期广播 ──
+  // 注意：这里刻意不暴露 getMessages —— 整段对话不该交给任意插件读取（任务书安全要求 b）。
   useEffect(() => {
     const runtime = {
       version: "2.0.0",
       getContainer: () => bodyRef.current,
       getActiveSessionId: () => snapshot.activeSessionId,
-      getMessages: () => messages,
       scrollToBottom: (smooth = true) => {
         const target = bodyRef.current;
         if (!target) return;
@@ -1102,6 +1137,11 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
       delete (window as unknown as { __WORKSHOP_RUNTIME__?: typeof runtime }).__WORKSHOP_RUNTIME__;
     };
   }, [snapshot.activeSessionId, messages]);
+
+  // 内置插件（默认开启）：首次进入工坊时装进插件系统；被卸载后不自动重装
+  useEffect(() => {
+    void ensureBuiltinWorkshopOutlinePlugin();
+  }, []);
 
   const [rounds, setRounds] = useState<{ roundNum: number; title: string; id: string }[]>([]);
   const [activeRoundNum, setActiveRoundNum] = useState(1);
@@ -1283,6 +1323,7 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
     setEditImages(msg.images ?? []);
     setEditFiles(msg.files ?? []);
     setEditAttachMenuOpen(false);
+    setEditCommitDecision(null);
   }, []);
 
   const handleSaveEdit = useCallback(async (andResend: boolean) => {
@@ -1294,6 +1335,8 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
           editText,
           editImages.length ? editImages : undefined,
           editFiles.length ? editFiles : undefined,
+          // 撤销/保留由用户在编辑框里明确选择；没选时不会走到这里（按钮已禁用）
+          { commitDecision: editCommitDecision ?? undefined },
         )
       : updateQaMessageContent(
           snapshot.activeSessionId,
@@ -1307,12 +1350,18 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
       return;
     }
     setEditingMsg(null);
-    onNotice?.(andResend ? "已修改并重新发送" : "已保存消息内容");
-  }, [editingMsg, editText, editImages, editFiles, snapshot.activeSessionId, onNotice]);
+    if (andResend && editCommitDecision === "revert") onNotice?.("已撤销相关提交并重新发送");
+    else onNotice?.(andResend ? "已修改并重新发送" : "已保存消息内容");
+  }, [editingMsg, editText, editImages, editFiles, editCommitDecision, snapshot.activeSessionId, onNotice]);
 
   const editResendBlockReason = editingMsg?.role === "user" && snapshot.activeSessionId
     ? getQaEditAndResendBlockReason(snapshot.activeSessionId, editingMsg.id)
     : null;
+  // 重发会截断的回复里，有几个已提交到仓库的改动（界面据此弹"撤销还是保留"）
+  const editAppliedCommitCount = editingMsg?.role === "user" && snapshot.activeSessionId
+    ? countQaEditResendAppliedCommits(snapshot.activeSessionId, editingMsg.id)
+    : 0;
+  const editCommitAskPending = editingMsg?.role === "user" && editAppliedCommitCount > 0 && editCommitDecision == null;
   const editIsEmpty = !editText.trim() && editImages.length === 0 && editFiles.length === 0;
 
   const streamingMsgId =
@@ -1881,6 +1930,27 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
             {editingMsg.role === "user" && !editResendBlockReason && (
               <div className="qa-edit-hint">保存并发送会删除这条消息及其后续回复，再根据修改后的内容重新生成。</div>
             )}
+            {editingMsg.role === "user" && !editResendBlockReason && editAppliedCommitCount > 0 && (
+              <div className="qa-edit-commit-ask">
+                <span role="status">这条消息之后有 {editAppliedCommitCount} 个已提交到仓库的改动，要一起撤销吗？</span>
+                <span className="qa-edit-commit-choices">
+                  <button
+                    type="button"
+                    className={editCommitDecision === "revert" ? "is-on" : ""}
+                    onClick={() => setEditCommitDecision("revert")}
+                  >
+                    撤销
+                  </button>
+                  <button
+                    type="button"
+                    className={editCommitDecision === "keep" ? "is-on" : ""}
+                    onClick={() => setEditCommitDecision("keep")}
+                  >
+                    保留
+                  </button>
+                </span>
+              </div>
+            )}
             <div className="qa-edit-actions">
               <button type="button" className="qa-devnotice-btn" onClick={() => setEditingMsg(null)}>
                 取消
@@ -1898,7 +1968,7 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
                   type="button"
                   className="qa-devnotice-btn is-primary"
                   onClick={() => handleSaveEdit(true)}
-                  disabled={editIsEmpty || Boolean(editResendBlockReason) || snapshot.isGenerating || snapshot.isCompacting}
+                  disabled={editIsEmpty || Boolean(editResendBlockReason) || editCommitAskPending || snapshot.isGenerating || snapshot.isCompacting}
                 >
                   保存并发送
                 </button>

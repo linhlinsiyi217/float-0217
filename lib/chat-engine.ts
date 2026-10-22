@@ -806,6 +806,39 @@ async function readSseStream(
     return { content, rawResponse };
 }
 
+// ── 请求总超时（可配置）──
+// 单次大模型请求的总时长上限，超时中断。默认 30 分钟（兼顾思考模型与慢中转），
+// 可在工坊设置里改；存 localStorage，主聊天与工坊共用一处配置。
+const REQUEST_TIMEOUT_KEY = "ai_phone_llm_request_timeout_ms";
+export const LLM_REQUEST_TIMEOUT_DEFAULT_MS = 1_800_000;
+export const LLM_REQUEST_TIMEOUT_MIN_MS = 60_000;
+export const LLM_REQUEST_TIMEOUT_MAX_MS = 3_600_000;
+
+export function getLlmRequestTimeoutMs(): number {
+    try {
+        const raw = Number(localStorage.getItem(REQUEST_TIMEOUT_KEY));
+        if (Number.isFinite(raw) && raw >= LLM_REQUEST_TIMEOUT_MIN_MS && raw <= LLM_REQUEST_TIMEOUT_MAX_MS) {
+            return Math.floor(raw);
+        }
+    } catch {
+        // ignore
+    }
+    return LLM_REQUEST_TIMEOUT_DEFAULT_MS;
+}
+
+/** 设置请求超时（毫秒）；null = 恢复默认 30 分钟 */
+export function setLlmRequestTimeoutMs(ms: number | null): void {
+    try {
+        if (ms == null) localStorage.removeItem(REQUEST_TIMEOUT_KEY);
+        else {
+            const clamped = Math.min(LLM_REQUEST_TIMEOUT_MAX_MS, Math.max(LLM_REQUEST_TIMEOUT_MIN_MS, Math.floor(ms)));
+            localStorage.setItem(REQUEST_TIMEOUT_KEY, String(clamped));
+        }
+    } catch {
+        // ignore
+    }
+}
+
 export async function sendLLMStreamRequest(
     config: ApiConfig,
     preset: PresetConfig | null,
@@ -840,7 +873,7 @@ export async function sendLLMStreamRequest(
     const request = buildProviderRequest(config, effectivePreset, requestMessages, { stream: true });
     publishDebugPromptSnapshot({ request, config, preset: effectivePreset, meta, options, requestKind: "completion" });
     const llmAbort = new AbortController();
-    const llmTimeout = setTimeout(() => llmAbort.abort(), 1_800_000);
+    const llmTimeout = setTimeout(() => llmAbort.abort(), getLlmRequestTimeoutMs());
     const detachExternalAbort = attachExternalAbort(llmAbort, options?.signal);
 
     try {
@@ -962,7 +995,7 @@ export async function sendLLMRequest(
     console.log("[ChatEngine] Request:", requestDebugInfo);
 
     const llmAbort = new AbortController();
-    const llmTimeout = setTimeout(() => llmAbort.abort(), 1_800_000);
+    const llmTimeout = setTimeout(() => llmAbort.abort(), getLlmRequestTimeoutMs());
     const detachExternalAbort = attachExternalAbort(llmAbort, options?.signal);
 
     try {
