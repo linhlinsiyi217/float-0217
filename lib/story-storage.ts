@@ -432,6 +432,14 @@ export type StorySession = {
   branchId?: string;
   branchName?: string;
   branchOrder?: number;
+  /** 由自定义 APP 管理的开场候选集；用于在剧情主线与开场存档之间安全切换。 */
+  openingSetId?: string;
+  /** 当前会话对应的开场候选项。 */
+  openingId?: string;
+  /** 开场切换时自动保存的隐藏存档，不直接展示在剧情分线目录。 */
+  openingArchive?: boolean;
+  /** 隐藏于剧情分线目录；转为正式分线后会被清除。 */
+  hiddenFromBranchList?: boolean;
   createdAt?: string;
   /** 新分线是否允许读取创建前的最近记忆；开启后由 UI 锁定，避免反复改变语义。 */
   inheritRecentMemory?: boolean;
@@ -783,7 +791,10 @@ export function getStorySessionOwnerKey(session: Pick<StorySession, "characterId
 
 export function loadStorySessionsForOwner(ownerType: StoryOwnerType, ownerId: string): StorySession[] {
   return loadStorySessions()
-    .filter((session) => getStorySessionOwnerKey(session) === `${ownerType}:${ownerId}`)
+    .filter((session) => (
+      getStorySessionOwnerKey(session) === `${ownerType}:${ownerId}`
+      && session.hiddenFromBranchList !== true
+    ))
     .sort((a, b) => (a.branchOrder ?? 0) - (b.branchOrder ?? 0) || (a.createdAt || "").localeCompare(b.createdAt || ""));
 }
 

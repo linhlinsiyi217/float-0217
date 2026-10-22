@@ -10,7 +10,7 @@ import {
 } from "./custom-app-storage";
 import { buildCustomAppChatTags } from "./custom-app-tags";
 import { hydrateKvDb } from "./kv-db";
-import { loadCharacters } from "./character-storage";
+import { createCharacter, loadCharacters, saveCharacters } from "./character-storage";
 import {
   addChatContact,
   createOrGetSession,
@@ -49,8 +49,10 @@ import type { MemoryEntry } from "./memory-types";
 import { prepareShortTermContext } from "./short-term-assembler";
 import {
   createWorldBook,
+  createRegexGroup,
   loadApiConfigs,
   loadBindingConfig,
+  loadRegexes,
   loadUserIdentities,
   loadVoiceConfigs,
   loadWorldBooks,
@@ -59,9 +61,16 @@ import {
   resolveUserIdentity,
   ensureSettingsStorageHydrated,
   saveVoiceConfigs,
+  saveBindingConfig,
+  saveRegexes,
   saveWorldBooks,
 } from "./settings-storage";
-import type { ApiConfig, VoiceApiConfig, WorldBookConfig, WorldBookEntry } from "./settings-types";
+import {
+  getCharacterWorldGroupId,
+  loadCharacterWorldGroups,
+  moveCharacterToWorld,
+} from "./character-world-storage";
+import type { ApiConfig, BindingSlot, RegexConfig, RegexRule, VoiceApiConfig, WorldBookConfig, WorldBookEntry } from "./settings-types";
 import { createSTTSession } from "./stt-service";
 import { generateImageFromConfiguredApi } from "./image-generation-service";
 import { getThemeAssetDataUrl, saveThemeAssetFromBlob } from "./theme-storage";
@@ -187,6 +196,20 @@ function emitHostStateUpdated(): void {
 
 function cleanText(value: unknown, maxLength: number): string {
   return String(value ?? "").replace(/\u0000/g, "").trim().slice(0, maxLength);
+}
+
+function cleanAvatar(value: unknown): string | null {
+  const text = cleanText(value, 8_000_000);
+  if (!text) return null;
+  return text.startsWith("data:") || text.startsWith("https://") || text.startsWith("http://") ? text : null;
+}
+
+function cleanStringList(value: unknown, maxItems = 100, maxLength = 160): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value
+    .slice(0, maxItems)
+    .map(item => cleanText(item, maxLength))
+    .filter(Boolean)));
 }
 
 function cleanUnboundedText(value: unknown): string {
@@ -1221,6 +1244,199 @@ export function writeCustomAppCalendar(record: Record<string, unknown>): Record<
   const itemRecord = asRecord(record.item);
   const item = normalizeCalendarItem(Object.keys(itemRecord).length > 0 ? itemRecord : record);
   return { ok: true, plan: upsertCalendarScheduleItem(ownerType, ownerId, weekStart, item) };
+}
+
+export function writeCustomAppCharacter(app: InstalledCustomApp, record: Record<string, unknown>): Record<string, unknown> {
+  const operation = cleanText(record.operation ?? record.action, 40) || (record.id ? "update" : "create");
+  const characters = loadCharacters();
+  const id = cleanText(record.id ?? record.characterId, 160);
+  const existing = id ? characters.find(character => character.id === id) : undefined;
+  if (operation === "update" && !existing) throw new Error("characters.update 未找到角色。");
+  const name = cleanText(record.name, 120) || existing?.name || `${app.name} 角色`;
+  if (!name) throw new Error("characters.create 需要 name。");
+  if (!existing) {
+    const character = createCharacter({
+      name,
+      avatar: cleanAvatar(record.avatar),
+      persona: cleanText(record.persona ?? record.description, 200_000),
+      personality: cleanText(record.personality, 100_000) || undefined,
+      briefPersona: cleanText(record.briefPersona, 20_000) || undefined,
+      tags: cleanStringList(record.tags, 100, 80),
+      timeZone: cleanText(record.timeZone, 120) || undefined,
+      wechatID: cleanText(record.wechatID, 80) || undefined,
+    });
+    saveCharacters([character, ...characters]);
+    return { ok: true, created: true, character };
+  }
+  const has = (key: string) => Object.prototype.hasOwnProperty.call(record, key);
+  const next = {
+    ...existing,
+    name,
+    persona: has("persona") || has("description")
+      ? cleanText(record.persona ?? record.description, 200_000)
+      : existing.persona,
+    avatar: has("avatar") ? cleanAvatar(record.avatar) : existing.avatar,
+    personality: has("personality") ? cleanText(record.personality, 100_000) || undefined : existing.personality,
+    briefPersona: has("briefPersona") ? cleanText(record.briefPersona, 20_000) || undefined : existing.briefPersona,
+    tags: has("tags") ? cleanStringList(record.tags, 100, 80) : existing.tags,
+    timeZone: has("timeZone") ? cleanText(record.timeZone, 120) || undefined : existing.timeZone,
+    wechatID: has("wechatID") ? cleanText(record.wechatID, 80) || existing.wechatID : existing.wechatID,
+    updatedAt: new Date().toISOString(),
+  };
+  saveCharacters(characters.map(character => character.id === existing.id ? next : character));
+  return { ok: true, created: false, character: next };
+}
+
+export function readCustomAppUserIdentities(): Record<string, unknown> {
+  return {
+    identities: loadUserIdentities().map(identity => ({
+      id: identity.id,
+      name: identity.name,
+      avatarUrl: identity.avatarUrl,
+      bio: identity.bio,
+      gender: identity.gender,
+      age: identity.age,
+      occupation: identity.occupation,
+      customSettings: identity.customSettings,
+    })),
+  };
+}
+
+export function readCustomAppCharacterWorlds(record: Record<string, unknown>): Record<string, unknown> {
+  const characterId = cleanText(record.characterId, 160);
+  if (characterId && !loadCharacters().some(character => character.id === characterId)) {
+    throw new Error("characters.listWorlds 需要有效的 characterId。");
+  }
+  const currentWorldId = characterId ? getCharacterWorldGroupId(characterId) : null;
+  return {
+    currentWorldId,
+    worlds: loadCharacterWorldGroups().map(world => ({
+      id: world.id,
+      name: world.name,
+      description: world.description,
+      memberCount: world.memberIds.length,
+      selected: world.id === currentWorldId,
+    })),
+  };
+}
+
+export function writeCustomAppCharacterWorld(record: Record<string, unknown>): Record<string, unknown> {
+  const characterId = cleanText(record.characterId, 160);
+  const worldId = cleanText(record.worldId, 160);
+  if (!loadCharacters().some(character => character.id === characterId)) {
+    throw new Error("characters.assignWorld 需要有效的 characterId。");
+  }
+  if (!loadCharacterWorldGroups().some(world => world.id === worldId)) {
+    throw new Error("characters.assignWorld 需要有效的 worldId。");
+  }
+  moveCharacterToWorld(characterId, worldId);
+  return { ok: true, characterId, worldId };
+}
+
+function normalizeCustomAppRegexRule(raw: unknown, index: number): RegexRule {
+  const record = asRecord(raw);
+  const placement = Array.isArray(record.placement)
+    ? record.placement.map(Number).filter(value => [1, 2, 3, 5, 6].includes(value))
+    : [2];
+  return {
+    id: cleanText(record.id, 120) || `regex_rule_${Date.now()}_${index}`,
+    scriptName: cleanText(record.scriptName ?? record.name, 160) || `规则 ${index + 1}`,
+    findRegex: cleanText(record.findRegex ?? record.pattern, 100_000),
+    replaceString: cleanText(record.replaceString ?? record.replacement, 200_000),
+    tags: cleanStringList(record.tags, 30, 80),
+    trimStrings: cleanStringList(record.trimStrings, 100, 500),
+    disabled: record.disabled === true,
+    placement: placement.length ? placement : [2],
+    markdownOnly: record.markdownOnly === true,
+    promptOnly: record.promptOnly === true,
+    runOnEdit: record.runOnEdit === true,
+    historyOnly: record.historyOnly === true,
+    substituteRegex: Number.isFinite(Number(record.substituteRegex)) ? Number(record.substituteRegex) : 0,
+    minDepth: Number.isFinite(Number(record.minDepth)) ? Number(record.minDepth) : undefined,
+    maxDepth: Number.isFinite(Number(record.maxDepth)) ? Number(record.maxDepth) : undefined,
+  };
+}
+
+export function readCustomAppRegex(record: Record<string, unknown>): Record<string, unknown> {
+  const regexes = loadRegexes();
+  const id = cleanText(record.id ?? record.regexId, 160);
+  if (id) return { regex: regexes.find(item => item.id === id || item.name === id) ?? null };
+  const query = cleanText(record.query, 120).toLowerCase();
+  return {
+    regexes: (query
+      ? regexes.filter(item => item.name.toLowerCase().includes(query) || (item.description ?? "").toLowerCase().includes(query))
+      : regexes),
+  };
+}
+
+export function writeCustomAppRegex(app: InstalledCustomApp, record: Record<string, unknown>): Record<string, unknown> {
+  const operation = cleanText(record.operation ?? record.action, 40) || "upsert";
+  const regexes = loadRegexes();
+  const id = cleanText(record.id ?? record.regexId, 160);
+  const existing = id ? regexes.find(item => item.id === id || item.name === id) : undefined;
+  if (operation === "delete") {
+    if (!id) throw new Error("regex.delete 需要 id。");
+    const next = regexes.filter(item => item.id !== id);
+    saveRegexes(next);
+    return { ok: true, deleted: next.length !== regexes.length };
+  }
+  const group: RegexConfig = existing ? { ...existing } : createRegexGroup(cleanText(record.name, 120) || `${app.name} 正则`);
+  group.name = cleanText(record.name, 120) || group.name;
+  group.description = cleanText(record.description, 2000) || group.description;
+  if (Array.isArray(record.rules)) {
+    group.rules = record.rules.slice(0, 300).map(normalizeCustomAppRegexRule);
+  } else if (record.rule && typeof record.rule === "object") {
+    const rule = normalizeCustomAppRegexRule(record.rule, group.rules.length);
+    group.rules = [...group.rules.filter(item => item.id !== rule.id), rule];
+  }
+  group.updatedAt = Date.now();
+  const next = existing ? regexes.map(item => item.id === existing.id ? group : item) : [group, ...regexes];
+  saveRegexes(next);
+  return { ok: true, regex: group };
+}
+
+export function readCustomAppStoryBinding(record: Record<string, unknown>): Record<string, unknown> {
+  const characterId = cleanText(record.characterId, 160);
+  if (!loadCharacters().some(character => character.id === characterId)) throw new Error("story.bindings.get 需要有效的 characterId。");
+  const config = loadBindingConfig();
+  const characterBinding = config.characterBindings.find(item => item.characterId === characterId);
+  return {
+    characterId,
+    binding: characterBinding?.appOverrides?.story ?? {},
+    resolved: resolveBinding(config, characterId, "story"),
+  };
+}
+
+export function writeCustomAppStoryBinding(record: Record<string, unknown>): Record<string, unknown> {
+  const characterId = cleanText(record.characterId, 160);
+  if (!loadCharacters().some(character => character.id === characterId)) throw new Error("story.bindings.update 需要有效的 characterId。");
+  const config = loadBindingConfig();
+  const books = new Set(loadWorldBooks().map(item => item.id));
+  const regexes = new Set(loadRegexes().map(item => item.id));
+  const current = config.characterBindings.find(item => item.characterId === characterId) || {
+    characterId,
+    defaults: {},
+    appOverrides: {},
+  };
+  const story = { ...(current.appOverrides.story ?? {}) } as BindingSlot;
+  if (Object.prototype.hasOwnProperty.call(record, "worldBookIds")) {
+    story.worldBookIds = cleanStringList(record.worldBookIds, 100, 160).filter(id => books.has(id));
+  }
+  if (Object.prototype.hasOwnProperty.call(record, "regexIds")) {
+    story.regexIds = cleanStringList(record.regexIds, 100, 160).filter(id => regexes.has(id));
+  }
+  if (Object.prototype.hasOwnProperty.call(record, "userIdentityId")) {
+    const userIdentityId = cleanText(record.userIdentityId, 160);
+    story.userIdentityId = loadUserIdentities().some(identity => identity.id === userIdentityId)
+      ? userIdentityId
+      : undefined;
+  }
+  const nextBinding = { ...current, appOverrides: { ...current.appOverrides, story } };
+  const characterBindings = config.characterBindings.some(item => item.characterId === characterId)
+    ? config.characterBindings.map(item => item.characterId === characterId ? nextBinding : item)
+    : [...config.characterBindings, nextBinding];
+  saveBindingConfig({ ...config, characterBindings });
+  return { ok: true, characterId, binding: story };
 }
 
 export function readCustomAppWorld(record: Record<string, unknown>): Record<string, unknown> {

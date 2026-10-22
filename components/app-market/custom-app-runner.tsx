@@ -53,14 +53,18 @@ import {
   readCustomAppChatHistory,
   readCustomAppCharacterRelations,
   readCustomAppCharacterState,
+  readCustomAppCharacterWorlds,
   readCustomAppCoreMemory,
   readCustomAppLongTermMemory,
   readCustomAppShortTermMemory,
   readCustomAppUserPersona,
+  readCustomAppUserIdentities,
   readCustomAppUserPreferences,
   readCustomAppUserProfile,
   readCustomAppVoiceProfiles,
   readCustomAppWorld,
+  readCustomAppRegex,
+  readCustomAppStoryBinding,
   recognizeCustomAppSpeech,
   recordCustomAppSpeech,
   stopCustomAppRecording,
@@ -80,10 +84,22 @@ import {
   synthesizeCustomAppSpeech,
   updateCustomAppCard,
   writeCustomAppCalendar,
+  writeCustomAppCharacter,
   writeCustomAppHistoryMessage,
   writeCustomAppCharacterState,
+  writeCustomAppCharacterWorld,
+  writeCustomAppRegex,
+  writeCustomAppStoryBinding,
   writeCustomAppWorld,
 } from "@/lib/custom-app-host-api";
+import {
+  deleteStoryOpeningArchive,
+  listStoryOpeningSets,
+  promoteStoryOpeningArchive,
+  selectStoryOpening,
+  upsertStoryOpeningSet,
+} from "@/lib/story-opening-storage";
+import { createOrGetStorySession, hydrateStoryStorage, saveStoryLaunchTarget } from "@/lib/story-storage";
 import { REALITY_BRIDGE_APP_EVENT_NAME, REALITY_BRIDGE_DATA_EVENT } from "@/lib/reality-bridge/types";
 import { OnlineRoomConnection, onlineCloudApi } from "@/lib/online-room-client";
 import { submitContentReport } from "@/lib/moderation-client";
@@ -368,7 +384,8 @@ html, body { min-height: 100%; }
     user: {
       getProfile: function(payload){ return request('user.getProfile', payload || {}); },
       getPersona: function(payload){ return request('user.getPersona', payload || {}); },
-      getPreferences: function(payload){ return request('user.getPreferences', payload || {}); }
+      getPreferences: function(payload){ return request('user.getPreferences', payload || {}); },
+      listIdentities: function(){ return request('user.listIdentities', {}); }
     },
     network: {
       fetch: function(payload){ return request('network.fetch', payload || {}); }
@@ -457,9 +474,31 @@ html, body { min-height: 100%; }
     characters: {
       list: function(){ return request('characters.list'); },
       get: function(id){ return request('characters.get', { id: id }); },
+      open: function(payload){ return request('characters.open', payload || {}); },
+      create: function(payload){ return request('characters.write', Object.assign({}, payload || {}, { operation: 'create' })); },
+      update: function(payload){ return request('characters.write', Object.assign({}, payload || {}, { operation: 'update' })); },
+      listWorlds: function(payload){ return request('characters.worlds.read', payload || {}); },
+      assignWorld: function(payload){ return request('characters.worlds.write', payload || {}); },
       readState: function(payload){ return request('characters.state.read', payload || {}); },
       writeState: function(payload){ return request('characters.state.write', payload || {}); },
       readRelations: function(payload){ return request('characters.relations.read', payload || {}); }
+    },
+    regex: {
+      list: function(payload){ return request('regex.read', payload || {}); },
+      get: function(id){ return request('regex.read', { id: id }); },
+      create: function(payload){ return request('regex.write', Object.assign({}, payload || {}, { operation: 'create' })); },
+      update: function(payload){ return request('regex.write', Object.assign({}, payload || {}, { operation: 'upsert' })); },
+      delete: function(id){ return request('regex.write', { id: id, operation: 'delete' }); }
+    },
+    story: {
+      listOpeningSets: function(payload){ return request('story.openings.list', payload || {}); },
+      saveOpeningSet: function(payload){ return request('story.openings.write', payload || {}); },
+      selectOpening: function(payload){ return request('story.openings.select', payload || {}); },
+      promoteOpeningArchive: function(payload){ return request('story.openings.promote', payload || {}); },
+      deleteOpeningArchive: function(payload){ return request('story.openings.deleteArchive', payload || {}); },
+      getBindings: function(payload){ return request('story.bindings.get', payload || {}); },
+      updateBindings: function(payload){ return request('story.bindings.update', payload || {}); },
+      open: function(payload){ return request('story.open', payload || {}); }
     },
     ui: {
       toast: function(message){ return request('ui.toast', { message: message }); },
@@ -647,7 +686,9 @@ function bridgeActionNeedsChatStorage(action: string): boolean {
 
 function bridgeActionNeedsSettingsStorage(action: string): boolean {
   return action === "ai.generate"
-    || action.startsWith("world.");
+    || action.startsWith("world.")
+    || action.startsWith("regex.")
+    || action.startsWith("story.bindings.");
 }
 
 function bridgeActionNeedsKvStorage(action: string): boolean {
@@ -659,11 +700,15 @@ function bridgeActionNeedsKvStorage(action: string): boolean {
     || action.startsWith("memory.")
     || action.startsWith("calendar.")
     || action.startsWith("world.")
+    || action.startsWith("regex.")
+    || action.startsWith("story.")
+    || action.startsWith("characters.")
     || action.startsWith("voice.")
     || action.startsWith("ai.")
     || action === "user.getProfile"
     || action === "user.getPersona"
     || action === "user.getPreferences"
+    || action === "user.listIdentities"
     || action === "chat.sendMessage"
     || action === "chat.history"
     || action === "chat.writeHistory"
@@ -1080,13 +1125,15 @@ export function CustomAppRunner({
         sdk: {
           app: ["getManifest", "getCapabilities", "getLaunchContext", "getAssetUrl", "close"],
           ai: ["generate", "chat", "embed", "classify"],
-          user: ["getProfile", "getPersona", "getPreferences"],
+          user: ["getProfile", "getPersona", "getPreferences", "listIdentities"],
           network: ["fetch"],
           voice: ["readProfiles", "tts", "stt", "record", "stopRecord", "clone", "play", "stopPlayback", "pausePlayback", "resumePlayback"],
           calendar: ["read", "list", "write", "create", "update", "delete", "replaceWeek"],
           world: ["read", "list", "get", "write", "create", "update", "delete", "activate"],
           media: ["pick", "save", "put", "get", "revoke", "delete"],
-          characters: ["list", "get", "readState", "writeState", "readRelations"],
+          characters: ["list", "get", "open", "create", "update", "listWorlds", "assignWorld", "readState", "writeState", "readRelations"],
+          regex: ["list", "get", "create", "update", "delete"],
+          story: ["listOpeningSets", "saveOpeningSet", "selectOpening", "promoteOpeningArchive", "deleteOpeningArchive", "getBindings", "updateBindings", "open"],
           chat: ["getCurrentSession", "readHistory", "sendMessage", "sendCard", "updateCard", "writeHistory", "requestReply", "openConversation", "setContactState"],
           memory: ["readCore", "readLongTerm", "readShortTerm", "search", "add", "addTimeline", "deleteTimeline", "removeTimeline", "suggest"],
           notifications: ["create", "list", "markRead", "markAllRead", "getBadge", "setBadge", "incrementBadge", "clearBadge"],
@@ -1626,6 +1673,19 @@ export function CustomAppRunner({
       requirePermission("characters.read");
       return loadCharacters().find(character => character.id === String(record.id ?? "")) ?? null;
     }
+    if (action === "characters.open") {
+      requirePermission("characters.read");
+      const characterId = String(record.characterId ?? "").trim();
+      if (characterId && !loadCharacters().some(character => character.id === characterId)) {
+        throw new Error("characters.open 需要有效的 characterId。");
+      }
+      window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: "characters", characterId } }));
+      return { ok: true, characterId: characterId || undefined };
+    }
+    if (action === "characters.write") {
+      requirePermission("characters.write");
+      return writeCustomAppCharacter(app, record);
+    }
     if (action === "characters.state.read") {
       requirePermission("characters.state.read");
       return readCustomAppCharacterState(record);
@@ -1637,6 +1697,69 @@ export function CustomAppRunner({
     if (action === "characters.relations.read") {
       requirePermission("characters.relations.read");
       return readCustomAppCharacterRelations(record);
+    }
+    if (action === "characters.worlds.read") {
+      requirePermission("characters.read");
+      return readCustomAppCharacterWorlds(record);
+    }
+    if (action === "characters.worlds.write") {
+      requirePermission("characters.write");
+      return writeCustomAppCharacterWorld(record);
+    }
+
+    if (action === "user.listIdentities") {
+      requirePermission("user.persona.read");
+      return readCustomAppUserIdentities();
+    }
+
+    if (action === "regex.read") {
+      requirePermission("regex.read");
+      return readCustomAppRegex(record);
+    }
+    if (action === "regex.write") {
+      requirePermission("regex.write");
+      return writeCustomAppRegex(app, record);
+    }
+
+    if (action === "story.openings.list") {
+      requirePermission("story.read");
+      return listStoryOpeningSets(app.id, String(record.characterId ?? "").trim() || undefined);
+    }
+    if (action === "story.openings.write") {
+      requirePermission("story.write");
+      return upsertStoryOpeningSet(app.id, record);
+    }
+    if (action === "story.openings.select") {
+      requirePermission("story.write");
+      return selectStoryOpening(app.id, record);
+    }
+    if (action === "story.openings.promote") {
+      requirePermission("story.write");
+      return promoteStoryOpeningArchive(app.id, record);
+    }
+    if (action === "story.openings.deleteArchive") {
+      requirePermission("story.write");
+      return deleteStoryOpeningArchive(app.id, record);
+    }
+    if (action === "story.bindings.get") {
+      requirePermission("story.read");
+      return readCustomAppStoryBinding(record);
+    }
+    if (action === "story.bindings.update") {
+      requirePermission("story.write");
+      return writeCustomAppStoryBinding(record);
+    }
+    if (action === "story.open") {
+      requirePermission("story.write");
+      const characterId = String(record.characterId ?? "").trim();
+      if (!characterId || !loadCharacters().some(character => character.id === characterId)) {
+        throw new Error("story.open 需要有效的 characterId。");
+      }
+      await hydrateStoryStorage();
+      const session = createOrGetStorySession(characterId, { ownerType: "single", ownerId: characterId, branchId: "main" });
+      saveStoryLaunchTarget(session);
+      window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: "story", characterId, sessionId: session.id } }));
+      return { ok: true, sessionId: session.id };
     }
 
     if (action === "chat.getCurrentSession") {
