@@ -153,7 +153,11 @@ object UpdateManager {
                         // 第一次安装：不弹窗，只记录
                         sp(a).edit().putString("web_version", i.webVersion).apply()
                     } else if (saved != i.webVersion) {
-                        showNewWeb(a, i, webView)
+                        // 网页内容更新：不弹原生窗——网页端有自己的更新公告弹窗，
+                        // 两边都弹会叠窗。记下版本后直接刷新页面，公告随新页面一起出来
+                        sp(a).edit().putString("web_version", i.webVersion).apply()
+                        webView.clearCache(true)
+                        webView.post { webView.reload() }
                     }
                 }
             }
@@ -321,30 +325,9 @@ object UpdateManager {
         }
     }
 
-    // ========== 5. 网页内容更新（不用重装；只显示不是 app 类的条目）==========
-    private fun showNewWeb(a: Activity, i: Info, w: WebView) {
-        val webChanges = i.changes.filter { it.type != "app" }
-        val s = Sheet(a).handle()
-            .label("NEW CONTENT")
-            .title("页面内容有更新")
-            .summary(i.summary.ifBlank { DEFAULT_SUMMARY })
-            .note(installHint(false))
-            .changes(changesOrDefault(webChanges))
-            .primary("立即更新") {
-                w.clearCache(true)
-                sp(a).edit().putString("web_version", i.webVersion).apply()
-                val r = Sheet(a).handle()
-                    .label("UPDATE READY")
-                    .title("页面已经\n更新好了")
-                    .progress(100)
-                    .hints("下载完成", "刷新后生效")
-                    .primary("立即刷新") { w.reload(); closeCurrent() }
-                    .ghost("下次打开再说") { closeCurrent() }
-                open(r)
-            }
-            .secondary("稍后再说") { closeCurrent() }
-        open(s)
-    }
+    // ========== 5. 网页内容更新 ==========
+    // （原 showNewWeb 原生弹窗已移除：网页内容更新由网页端的更新公告弹窗统一展示，
+    //   壳只负责发现 webVersion 变化后清缓存刷新，避免两个弹窗叠着弹。）
 
     // ========== 6. 新版本第一次打开：更新日志（onCreate 里调用）==========
     fun showChangelogIfNeeded(a: Activity) {
