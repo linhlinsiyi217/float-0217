@@ -97,7 +97,7 @@ class PushService : Service() {
             val pi = if (Build.VERSION.SDK_INT >= 26)
                 PendingIntent.getForegroundService(this, 1, i, PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE)
             else
-                PendingIntent.getService(this, 1, i, PendingIntent.FLAG_ONE_SHOT)
+                PendingIntent.getService(this, 1, i, PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE)
             val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
             am.set(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime() + 3000, pi)
         } catch (_: Exception) {}
