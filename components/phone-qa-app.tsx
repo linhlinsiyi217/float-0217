@@ -94,6 +94,37 @@ function formatRelativeTime(ts: number): string {
   return `${Math.floor(diff / 86_400_000)} 天前`;
 }
 
+type WorkshopMenuItem = {
+  label: string;
+  hint?: string;
+  insert: string;
+  dot?: boolean;
+};
+
+const WORKSHOP_CONTEXT_ITEMS: WorkshopMenuItem[] = [
+  { label: "线上美化", hint: "引用已保存的线上美化文件", insert: "请引用本机内容中的「线上美化」来完成下面的任务。" },
+  { label: "线下美化", hint: "引用已保存的线下美化文件", insert: "请引用本机内容中的「线下美化」来完成下面的任务。" },
+  { label: "心声", hint: "引用我的心声设定", insert: "请引用本机内容中的「心声」来完成下面的任务。" },
+  { label: "角色卡", hint: "引用当前角色卡", insert: "请引用本机内容中的「角色卡」来完成下面的任务。" },
+  { label: "世界书", hint: "引用当前世界书", insert: "请引用本机内容中的「世界书」来完成下面的任务。" },
+  { label: "聊天片段", hint: "引用已保存的聊天片段", insert: "请引用本机内容中的「聊天片段」来完成下面的任务。", dot: true },
+  { label: "仓库帖子", hint: "引用已保存的仓库帖子", insert: "请引用本机内容中的「仓库帖子」来完成下面的任务。", dot: true },
+];
+
+const WORKSHOP_SKILL_ITEMS: WorkshopMenuItem[] = [
+  { label: "线上美化", insert: "请使用工坊技能「线上美化」处理下面的内容。" },
+  { label: "线下美化", insert: "请使用工坊技能「线下美化」处理下面的内容。" },
+  { label: "心声", insert: "请使用工坊技能「心声」处理下面的内容。" },
+  { label: "角色卡", insert: "请使用工坊技能「角色卡」处理下面的内容。" },
+  { label: "世界书", insert: "请使用工坊技能「世界书」处理下面的内容。" },
+  { label: "看图取色", insert: "请使用工坊技能「看图取色」处理下面的内容。", dot: true },
+  { label: "检查报错", insert: "请使用工坊技能「检查报错」处理下面的内容。", dot: true },
+  { label: "润色人设", insert: "请使用工坊技能「润色人设」处理下面的内容。", dot: true },
+  { label: "出夜间版", insert: "请使用工坊技能「出夜间版」处理下面的内容。", dot: true },
+  { label: "拆成世界书", insert: "请使用工坊技能「拆成世界书」处理下面的内容。", dot: true },
+  { label: "翻译", insert: "请使用工坊技能「翻译」处理下面的内容。", dot: true },
+];
+
 // ── 代码块（语言标签 + 一键复制）─────────────────────
 
 function QaCodeBlock({ className, children }: { className?: string; children?: React.ReactNode }) {
@@ -879,6 +910,8 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [pendingFiles, setPendingFiles] = useState<QaTextAttachment[]>([]);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const [attachMenuView, setAttachMenuView] = useState<"root" | "context" | "skills">("root");
+  const [workshopSelection, setWorkshopSelection] = useState<string | null>(null);
   const [viewerImage, setViewerImage] = useState<string | null>(null);
   const [editingMsg, setEditingMsg] = useState<QaMsg | null>(null);
   const [editText, setEditText] = useState("");
@@ -980,12 +1013,16 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
       if (apiLogOpen) { setApiLogOpen(false); return; }
       if (clearToolsOpen) { setClearToolsOpen(false); return; }
       if (outlineOpen) { setOutlineOpen(false); return; }
-      if (attachMenuOpen) { setAttachMenuOpen(false); return; }
+      if (attachMenuOpen) {
+        if (attachMenuView !== "root") setAttachMenuView("root");
+        else setAttachMenuOpen(false);
+        return;
+      }
       if (drawerOpen) setDrawerOpen(false);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [viewerImage, editingMsg, previewOpen, repoSheetOpen, settingsOpen, apiLogOpen, clearToolsOpen, outlineOpen, attachMenuOpen, drawerOpen]);
+  }, [viewerImage, editingMsg, previewOpen, repoSheetOpen, settingsOpen, apiLogOpen, clearToolsOpen, outlineOpen, attachMenuOpen, attachMenuView, drawerOpen]);
 
   useEffect(() => {
     const el = bodyRef.current;
@@ -1000,6 +1037,19 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, []);
+
+  const closeAttachMenu = useCallback(() => {
+    setAttachMenuOpen(false);
+    setAttachMenuView("root");
+  }, []);
+
+  const chooseWorkshopItem = useCallback((item: WorkshopMenuItem, kind: "context" | "skill") => {
+    setWorkshopSelection(item.label);
+    setInput((current) => current.trim() ? `${current.trim()}\n\n${item.insert}` : item.insert);
+    closeAttachMenu();
+    onNotice?.(`${kind === "context" ? "已引用" : "已加入技能"}：${item.label}`);
+    requestAnimationFrame(autoGrow);
+  }, [autoGrow, closeAttachMenu, onNotice]);
 
   // ── 工坊开放插件宿主接口与生命周期广播 ──
   useEffect(() => {
@@ -1136,6 +1186,7 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
     setPendingImages([]);
     setPendingFiles([]);
     setAttachMenuOpen(false);
+    setAttachMenuView("root");
     stickToBottomRef.current = true;
     requestAnimationFrame(autoGrow);
     void sendQaMessage(text, images.length ? images : undefined, files.length ? files : undefined);
@@ -1383,6 +1434,18 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
               <Github size={13} strokeWidth={1.8} />
               {repoConnected ? repoLabel : "连接仓库"}
             </button>
+            {workshopSelection && (
+              <button
+                type="button"
+                className="qa-context-pill qa-context-pill-workshop"
+                onClick={() => setWorkshopSelection(null)}
+                title="清除当前工坊入口"
+              >
+                <Sparkles size={12} strokeWidth={1.9} />
+                {workshopSelection}
+                <X size={11} strokeWidth={2} aria-hidden />
+              </button>
+            )}
           </div>
           <textarea
             ref={textareaRef}
@@ -1424,28 +1487,81 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
               <button
                 type="button"
                 className="qa-circle-btn qa-attach-btn"
-                onClick={() => setAttachMenuOpen((open) => !open)}
+                onClick={() => {
+                  setAttachMenuOpen((open) => !open);
+                  setAttachMenuView("root");
+                }}
                 aria-label="添加附件或图片"
                 aria-expanded={attachMenuOpen}
               >
                 <Plus size={17} strokeWidth={2.2} />
               </button>
               {attachMenuOpen && (
-                <div className="qa-attach-menu">
-                  <button type="button" onClick={() => { fileInputRef.current?.click(); setAttachMenuOpen(false); }}>
-                    <Paperclip size={15} />
-                    上传附件
-                  </button>
-                  {visionEnabled && (
-                    <button type="button" onClick={() => { imageInputRef.current?.click(); setAttachMenuOpen(false); }}>
-                      <ImageIcon size={15} />
-                      添加图片
-                    </button>
+                <div className={`qa-attach-menu ${attachMenuView !== "root" ? "is-submenu" : ""}`}>
+                  {attachMenuView === "root" ? (
+                    <>
+                      <button type="button" onClick={() => { fileInputRef.current?.click(); closeAttachMenu(); }}>
+                        <Paperclip size={15} />
+                        上传附件
+                      </button>
+                      {visionEnabled && (
+                        <button type="button" onClick={() => { imageInputRef.current?.click(); closeAttachMenu(); }}>
+                          <ImageIcon size={15} />
+                          添加图片
+                        </button>
+                      )}
+                      <div className="qa-attach-divider" />
+                      <button type="button" className="qa-attach-nav" onClick={() => setAttachMenuView("context")}>
+                        <FileText size={15} />
+                        <span>引用本机内容</span>
+                        <span className="qa-attach-count">{WORKSHOP_CONTEXT_ITEMS.length}</span>
+                        <ChevronRight size={14} className="qa-attach-chevron" aria-hidden />
+                      </button>
+                      <button type="button" className="qa-attach-nav" onClick={() => setAttachMenuView("skills")}>
+                        <Sparkles size={15} />
+                        <span>技能</span>
+                        <span className="qa-attach-count">{WORKSHOP_SKILL_ITEMS.length}</span>
+                        <ChevronRight size={14} className="qa-attach-chevron" aria-hidden />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" className="qa-attach-back" onClick={() => setAttachMenuView("root")}>
+                        <ChevronLeft size={15} />
+                        {attachMenuView === "context" ? "引用本机内容" : "技能"}
+                      </button>
+                      {(attachMenuView === "context" ? WORKSHOP_CONTEXT_ITEMS : WORKSHOP_SKILL_ITEMS).map((item) => (
+                        <button
+                          type="button"
+                          className="qa-workshop-item"
+                          key={`${attachMenuView}-${item.label}`}
+                          onClick={() => chooseWorkshopItem(item, attachMenuView === "context" ? "context" : "skill")}
+                        >
+                          <span className="qa-workshop-item-icon" aria-hidden>
+                            {attachMenuView === "context" ? <FileText size={14} /> : <Sparkles size={14} />}
+                          </span>
+                          <span className="qa-workshop-item-copy">
+                            <span>{item.label}</span>
+                            {item.hint && <small>{item.hint}</small>}
+                          </span>
+                          {item.dot && <i className="qa-workshop-item-dot" aria-label="新" />}
+                        </button>
+                      ))}
+                    </>
                   )}
                 </div>
               )}
             </div>
-            {modelName && <span className="qa-model-pill">{modelName}</span>}
+            {modelName && (
+              <button
+                type="button"
+                className="qa-model-pill"
+                title="当前模型（模型配置请在工坊配置中修改）"
+                onClick={() => setSettingsOpen(true)}
+              >
+                {modelName}
+              </button>
+            )}
 
             {repoWritable && (
               <button type="button" className="qa-mode-pill" onClick={toggleWriteMode}>

@@ -10,6 +10,40 @@ import type { Release } from "./types";
 
 export const SYSTEM_RELEASES: Release[] = [
   {
+    version: "0.6.13",
+    releaseId: "system-2026-10-22-v0613",
+    date: "2026-10-22",
+    name: "工坊入口与更新公告调整",
+    summary: "工坊原有附件入口继续保留，本机内容与技能收进同一个加号菜单；更新公告恢复紧凑列表和原有分类颜色。",
+    entries: [
+      {
+        id: "sys-0613-workshop-menu",
+        category: "feat",
+        app: "工坊 · 加号菜单",
+        scope: "content",
+        title: "本机内容与技能归入现有附件入口",
+        items: [
+          "上传附件、添加图片、本机内容和技能按原有位置分层展示",
+          "选择入口后同步到当前消息，并可从输入栏清除当前工坊上下文",
+        ],
+      },
+      {
+        id: "sys-0613-update-popup",
+        category: "fix",
+        app: "设置 · 更新公告",
+        scope: "content",
+        title: "恢复原有紧凑更新弹窗",
+        items: [
+          "移除摘要框和大卡片，只保留分类色点、标签、标题与查看全部",
+          "保留稍后查看、我知道了和查看完整日志的原有行为",
+        ],
+      },
+    ],
+    pending: [
+      "已通过 TypeScript、更新日志核对和生产构建检查，建议在真机窄屏上确认菜单滚动与弹窗高度。",
+    ],
+  },
+  {
     version: "0.6.12",
     releaseId: "system-2026-10-21-v0612",
     date: "2026-10-21",
