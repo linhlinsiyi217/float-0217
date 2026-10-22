@@ -121,17 +121,17 @@ const WORKSHOP_CONTEXT_ITEMS: WorkshopMenuItem[] = [
 ];
 
 const WORKSHOP_SKILL_ITEMS: WorkshopMenuItem[] = [
-  { label: "线上美化", insert: "请使用工坊技能「线上美化」处理下面的内容。" },
-  { label: "线下美化", insert: "请使用工坊技能「线下美化」处理下面的内容。" },
-  { label: "心声", insert: "请使用工坊技能「心声」处理下面的内容。" },
-  { label: "角色卡", insert: "请使用工坊技能「角色卡」处理下面的内容。" },
-  { label: "世界书", insert: "请使用工坊技能「世界书」处理下面的内容。" },
-  { label: "看图取色", insert: "请使用工坊技能「看图取色」处理下面的内容。", dot: true },
-  { label: "检查报错", insert: "请使用工坊技能「检查报错」处理下面的内容。", dot: true },
-  { label: "润色人设", insert: "请使用工坊技能「润色人设」处理下面的内容。", dot: true },
-  { label: "出夜间版", insert: "请使用工坊技能「出夜间版」处理下面的内容。", dot: true },
-  { label: "拆成世界书", insert: "请使用工坊技能「拆成世界书」处理下面的内容。", dot: true },
-  { label: "翻译", insert: "请使用工坊技能「翻译」处理下面的内容。", dot: true },
+  { label: "线上美化", insert: "请使用 Claude 技能「线上美化」处理下面的内容。" },
+  { label: "线下美化", insert: "请使用 Claude 技能「线下美化」处理下面的内容。" },
+  { label: "心声", insert: "请使用 Claude 技能「心声」处理下面的内容。" },
+  { label: "角色卡", insert: "请使用 Claude 技能「角色卡」处理下面的内容。" },
+  { label: "世界书", insert: "请使用 Claude 技能「世界书」处理下面的内容。" },
+  { label: "看图取色", insert: "请使用 Claude 技能「看图取色」处理下面的内容。", dot: true },
+  { label: "检查报错", insert: "请使用 Claude 技能「检查报错」处理下面的内容。", dot: true },
+  { label: "润色人设", insert: "请使用 Claude 技能「润色人设」处理下面的内容。", dot: true },
+  { label: "出夜间版", insert: "请使用 Claude 技能「出夜间版」处理下面的内容。", dot: true },
+  { label: "拆成世界书", insert: "请使用 Claude 技能「拆成世界书」处理下面的内容。", dot: true },
+  { label: "翻译", insert: "请使用 Claude 技能「翻译」处理下面的内容。", dot: true },
 ];
 
 // ── 代码块（语言标签 + 一键复制）─────────────────────
@@ -554,7 +554,7 @@ function QaSessionDrawer({
   return (
     <aside className="qa-drawer">
       <div className="qa-drawer-head">
-        <span className="qa-drawer-title">工坊空间</span>
+        <span className="qa-drawer-title">Claude 空间</span>
       </div>
       <div
         className="qa-drawer-list hide-scrollbar"
@@ -653,7 +653,7 @@ function QaSessionDrawer({
       <div className="qa-drawer-foot">
         <button type="button" className="qa-drawer-new qa-drawer-settings" onClick={onOpenSettings}>
           <Wrench size={15} strokeWidth={2} />
-          <span>工坊配置</span>
+          <span>Claude 配置</span>
         </button>
         <button type="button" className="qa-drawer-new" onClick={onOpenApiLog}>
           <FileCode2 size={15} strokeWidth={2} />
@@ -719,7 +719,7 @@ function QaSettingsSheet({ onClose, onNotice }: { onClose: () => void; onNotice?
     // 留空 = 显式不传 max_tokens（0 哨兵），与"没设置用默认值"区分开
     setQaMaxOutputTokens(trimmedTokens ? parsedTokens : 0);
     setLlmRequestTimeoutMs(Math.round(parsedTimeoutMin * 60_000));
-    onNotice?.("已保存工坊配置。");
+    onNotice?.("已保存 Claude 配置。");
     onClose();
   };
 
@@ -739,8 +739,8 @@ function QaSettingsSheet({ onClose, onNotice }: { onClose: () => void; onNotice?
 
   return (
     <div className="qa-devnotice-backdrop" onClick={onClose}>
-      <div className="qa-devnotice" role="dialog" aria-label="工坊配置" onClick={(e) => e.stopPropagation()}>
-        <div className="qa-devnotice-title">工坊配置</div>
+      <div className="qa-devnotice" role="dialog" aria-label="Claude 配置" onClick={(e) => e.stopPropagation()}>
+        <div className="qa-devnotice-title">Claude 配置</div>
         <label className="qa-settings-field">
           <span>上下文预算（字符）</span>
           <input
@@ -816,7 +816,7 @@ function QaSettingsSheet({ onClose, onNotice }: { onClose: () => void; onNotice?
           />
         </label>
         <div className="qa-settings-hint">
-          一次请求最多等多久，超过就自动中断，不再写死 30 分钟。默认 {Math.round(LLM_REQUEST_TIMEOUT_DEFAULT_MS / 60_000)} 分钟；思考模型或慢中转可以调大，主聊天与工坊共用这一项。
+          一次请求最多等多久，超过就自动中断，不再写死 30 分钟。默认 {Math.round(LLM_REQUEST_TIMEOUT_DEFAULT_MS / 60_000)} 分钟；思考模型或慢中转可以调大，主聊天与 Claude 共用这一项。
         </div>
         <div className="qa-devnotice-actions is-row">
           <button type="button" className="qa-devnotice-btn" onClick={reset}>恢复默认</button>
@@ -885,7 +885,7 @@ function QaRepoSheet({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
         </div>
         <div className="qa-sheet-body hide-scrollbar">
           <p className="qa-sheet-note">
-            连接后可以让工坊查阅这个仓库的代码来回答问题。配置只保存在你的浏览器本地，不会上传。公开仓库可不填 PAT。
+            连接后可以让 Claude 查阅这个仓库的代码来回答问题。配置只保存在你的浏览器本地，不会上传。公开仓库可不填 PAT。
           </p>
           <label className="qa-field">
             <span className="qa-field-label">Owner（用户名 / 组织）</span>
@@ -903,7 +903,7 @@ function QaRepoSheet({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
             <span className="qa-field-label">Fine-grained PAT（私有仓库或搜索代码需要）</span>
             <input className="qa-input" type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="github_pat_…" autoCapitalize="none" autoCorrect="off" spellCheck={false} />
             <span className="qa-field-hint">
-              GitHub → Settings → Menu 按钮 → Developer settings → Personal access tokens → Fine-grained tokens。创建时 Repository access 记得勾选目标仓库；Permissions 里：Contents——只查代码选 Read-only，要让工坊改代码选 Read and write；要用「创建PR」再加 Pull requests 的 Read and write（Metadata 会自动带上，其余权限都不用勾）。
+              GitHub → Settings → Menu 按钮 → Developer settings → Personal access tokens → Fine-grained tokens。创建时 Repository access 记得勾选目标仓库；Permissions 里：Contents——只查代码选 Read-only，要让 Claude 改代码选 Read and write；要用「创建PR」再加 Pull requests 的 Read and write（Metadata 会自动带上，其余权限都不用勾）。
             </span>
           </label>
           <div className="qa-field">
@@ -918,8 +918,8 @@ function QaRepoSheet({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
             </div>
             <span className="qa-field-hint">
               {writeMode === "confirm"
-                ? "工坊改代码前会先展示改动，你点「应用」才真正提交。推荐。"
-                : "工坊说完直接提交推送，不再逐次确认。仍可事后一键撤销。仅在信任后开启。"}
+                ? "Claude 改代码前会先展示改动，你点「应用」才真正提交。推荐。"
+                : "Claude 说完直接提交推送，不再逐次确认。仍可事后一键撤销。仅在信任后开启。"}
             </span>
           </div>
           {result && (
@@ -1417,12 +1417,12 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
             <ChevronLeft size={22} strokeWidth={1.75} />
           </button>
           <span className="qa-header-divider" aria-hidden />
-          <button type="button" className="qa-icon-btn" onClick={() => setDrawerOpen((v) => !v)} aria-label="打开工坊侧栏">
+          <button type="button" className="qa-icon-btn" onClick={() => setDrawerOpen((v) => !v)} aria-label="打开 Claude 侧栏">
             <Menu size={18} strokeWidth={1.85} />
           </button>
         </div>
         <div className="qa-header-center">
-          <span className="qa-header-title">工坊</span>
+          <span className="qa-header-title">Claude</span>
           <span className="qa-header-sub">{modelName || "AI 工作台"}</span>
         </div>
         <div className="qa-header-right qa-header-control-group">
@@ -1508,7 +1508,7 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
                 type="button"
                 className="qa-context-pill qa-context-pill-workshop"
                 onClick={() => setWorkshopSelection(null)}
-                title="清除当前工坊入口"
+                title="清除当前 Claude 入口"
               >
                 <Sparkles size={12} strokeWidth={1.9} />
                 {workshopSelection}
@@ -1625,7 +1625,7 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
               <button
                 type="button"
                 className="qa-model-pill"
-                title="当前模型（模型配置请在工坊配置中修改）"
+                title="当前模型（模型配置请在 Claude 配置中修改）"
                 onClick={() => setSettingsOpen(true)}
               >
                 {modelName}
@@ -1707,7 +1707,7 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
           {outlineOpen && (
             <div className="qa-outline-modal">
               <div className="qa-outline-header">
-                <span>工坊对话大纲</span>
+                <span>Claude 对话大纲</span>
                 <button 
                   type="button" 
                   className={`qa-outline-carry ${carryingSessionId ? "is-loading" : ""}`}
@@ -2071,7 +2071,7 @@ function QaApiLogSheet({ onClose, onNotice }: { onClose: () => void; onNotice?: 
   const handleClear = () => {
     clearQaApiLogs();
     setLogs([]);
-    onNotice?.("已清空工坊调用记录");
+    onNotice?.("已清空 Claude 调用记录");
   };
 
   const formatTime = (ts: string) => {
@@ -2100,12 +2100,12 @@ function QaApiLogSheet({ onClose, onNotice }: { onClose: () => void; onNotice?: 
         <div className="qa-sheet-body hide-scrollbar qa-log-body">
           {logs.length === 0 ? (
             <p className="qa-sheet-note">
-              还没有工坊的 AI 调用记录。调用过模型后，这里会显示每次请求的 Prompt 与 AI 原始回复（含思维链），供排查用。
+              还没有 Claude 的 AI 调用记录。调用过模型后，这里会显示每次请求的 Prompt 与 AI 原始回复（含思维链），供排查用。
             </p>
           ) : (
             <>
               <p className="qa-sheet-note">
-                工坊每次调用大模型的记录，与聊天页「底层调用大模型日志」互相独立，互不混入。
+                Claude 每次调用大模型的记录，与聊天页「底层调用大模型日志」互相独立，互不混入。
               </p>
               <div className="qa-log-list">
                 {logs.map((log) => {

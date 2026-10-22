@@ -44,7 +44,7 @@ export function WorkshopSettings() {
                             使用教程
                         </span>
                         <span className="menu-desc">
-                            工坊是什么、每个工具干什么用、出错了怎么撤销，看这一篇就够。
+                            Claude 是什么、每个工具干什么用、出错了怎么撤销，看这一篇就够。
                         </span>
                     </span>
                     <ChevronRight size={16} strokeWidth={2} className="shrink-0 text-gray-400" />
@@ -74,7 +74,7 @@ export function WorkshopSettings() {
                     </div>
                 </div>
                 <p className="menu-desc">
-                    连上仓库或角色电脑后，工坊能用的工具会自动变多。仓库和参数配置在工坊应用内（「仓库」按钮和设置面板）。
+                    连上仓库或角色电脑后，Claude 能用的工具会自动变多。仓库和参数配置在 Claude 应用内（「仓库」按钮和设置面板）。
                 </p>
             </div>
 

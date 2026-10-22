@@ -70,6 +70,6 @@ export function formatQaFeedbackMarkdown(ticket: QaFeedbackTicket): string {
         ticket.environment,
         "",
         "---",
-        "_由工坊自动整理提交_",
+        "_由 Claude 自动整理提交_",
     ].join("\n");
 }

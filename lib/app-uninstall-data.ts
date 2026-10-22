@@ -156,7 +156,7 @@ export const APP_DATA_SPEC: Record<string, AppDataSpec> = {
     ],
     kvPrefixes: ["ai_phone_black_market_theater_events_"],
     dataLabel: "购物记录、黑市状态与黑市剧场事件",
-    note: "余额（钱包）为全局数据，保留；黑市创作草稿与工坊共用，保留",
+    note: "余额（钱包）为全局数据，保留；黑市创作草稿与 Claude 共用，保留",
   },
 
   calendar: {
@@ -249,7 +249,7 @@ export const APP_DATA_SPEC: Record<string, AppDataSpec> = {
       "ai_phone_qa_stream_idle_ms",
     ],
     databases: ["AiPhoneQaDB"],
-    dataLabel: "工坊会话、暂存、偏好、反馈与 GitHub 配置",
+    dataLabel: "Claude 会话、暂存、偏好、反馈与 GitHub 配置",
   },
 
   mixology: {

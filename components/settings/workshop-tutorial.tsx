@@ -24,10 +24,10 @@ import {
  */
 
 const QUICK_STEPS = [
-    "打开工坊（桌面里的「工坊」应用），在输入框直接用大白话说你想要什么。",
+    "打开 Claude（桌面里的「Claude」应用），在输入框直接用大白话说你想要什么。",
     "想做 APP / 小游戏 / 剧场：直接描述，比如「做一个贪吃蛇」。克克会自己读创作指南、写文件、发布安装，你回桌面就能看到。",
     "想修东西：说明哪里不对，比如「XX 应用打开是白的」。克克会先读源码找原因，再改，改完让你确认。",
-    "想连 GitHub 仓库：点工坊里的「仓库」按钮，填 owner / repo（改代码需要 PAT）。之后克克能查代码、改代码、提 PR。",
+    "想连 GitHub 仓库：点 Claude 里的「仓库」按钮，填 owner / repo（改代码需要 PAT）。之后克克能查代码、改代码、提 PR。",
     "聊久了觉得它开始「忘事」：点「结转新会话」，把记忆浓缩着带到新对话里继续。",
 ];
 
@@ -40,12 +40,12 @@ const FAQ_ITEMS = [
     {
         icon: RotateCcw,
         q: "怎么撤销一次提交",
-        a: "工坊里每一次提交都有记录，可以在会话里找到那次提交的「撤销」按钮一键回退；确认模式下没点「应用」的提案根本不会提交，直接忽略就行。",
+        a: "Claude 里每一次提交都有记录，可以在会话里找到那次提交的「撤销」按钮一键回退；确认模式下没点「应用」的提案根本不会提交，直接忽略就行。",
     },
     {
         icon: Timer,
         q: "超时怎么办",
-        a: "一次请求默认最多等 30 分钟，超过会自动中断。慢模型可以到 设置 → 工坊 → 请求超时时间 调大；中断后点「回复继续」能接着来，已经写到一半的内容不会丢。",
+        a: "一次请求默认最多等 30 分钟，超过会自动中断。慢模型可以到 设置 → Claude → 请求超时时间 调大；中断后点「回复继续」能接着来，已经写到一半的内容不会丢。",
     },
 ];
 
@@ -98,13 +98,13 @@ export function WorkshopTutorialPage({ onClose }: { onClose: () => void }) {
     };
 
     return (
-        <div className={`identity-editor-page${closing ? " is-closing" : ""}`} role="dialog" aria-modal="true" aria-label="工坊使用教程">
+        <div className={`identity-editor-page${closing ? " is-closing" : ""}`} role="dialog" aria-modal="true" aria-label="Claude 使用教程">
             <header className="identity-editor-header">
                 <button type="button" onClick={startClose} className="identity-editor-back" aria-label="返回">
                     <ChevronLeft size={20} strokeWidth={2} />
                 </button>
                 <div className="identity-editor-titles">
-                    <span className="identity-editor-title">工坊使用教程</span>
+                    <span className="identity-editor-title">Claude 使用教程</span>
                     <span className="identity-editor-subtitle">WORKSHOP GUIDE</span>
                 </div>
                 <span className="identity-editor-header-spacer" aria-hidden="true" />
@@ -113,10 +113,10 @@ export function WorkshopTutorialPage({ onClose }: { onClose: () => void }) {
             <div className="identity-editor-body workshop-tut-body">
                 {/* 总结 */}
                 <section className="workshop-tut-section">
-                    <p className="workshop-tut-section-title">工坊是什么</p>
+                    <p className="workshop-tut-section-title">Claude 是什么</p>
                     <div className="workshop-tut-prose">
                         <p>
-                            工坊是住在手机里的「克克」——一个能动手干活的助手。你用大白话说需求，
+                            Claude 是住在手机里的「克克」——一个能动手干活的助手。你用大白话说需求，
                             它自己调用工具去读、写、查、修：能做单文件的小 APP、小游戏、剧场并直接装进手机；
                             能排查报错和存储问题；连上 GitHub 仓库后还能帮你查代码、改代码、提 PR。
                         </p>
@@ -183,7 +183,7 @@ export function WorkshopTutorialPage({ onClose }: { onClose: () => void }) {
                             点开能看到整场对话的大纲，点某一轮直接跳过去，找之前聊过的东西不用一直划。
                         </p>
                         <p>
-                            <strong>结转新会话</strong>：工坊一次能记住的内容有限（上下文满了会提示）。
+                            <strong>结转新会话</strong>：Claude 一次能记住的内容有限（上下文满了会提示）。
                             点「结转新会话」，克克把这场对话的重点浓缩成一份记忆带进新对话，
                             聊天窗口清爽了，它还记得之前的事。干活聊久了推荐用这个，比硬撑着继续省力。
                         </p>

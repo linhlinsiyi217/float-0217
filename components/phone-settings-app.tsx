@@ -106,7 +106,7 @@ const SETTINGS_MENU = [
     { id: "identity", icon: UserCircle, label: "用户身份", desc: "个人信息", iconColor: BINDING_ACCENTS.identity , glass: "identity" },
     { id: "notifications", icon: Bell, label: "系统通知", desc: "推送、站内横幅与提示音", iconColor: BINDING_ACCENTS.voice , glass: "" },
     { id: "statusbar", icon: PanelTop, label: "状态栏", desc: "开关与自定义样式", iconColor: BINDING_ACCENTS.api , glass: "" },
-    { id: "workshop", icon: Bot, label: "工坊", desc: "使用教程与工具说明", iconColor: BINDING_ACCENTS.memory , glass: "" },
+    { id: "workshop", icon: Bot, label: "Claude", desc: "使用教程与工具说明", iconColor: BINDING_ACCENTS.memory , glass: "" },
     { id: "about", icon: Info, label: "更新日志", desc: "版本与更新内容", iconColor: BINDING_ACCENTS.memory , glass: "about" },
 ] as const;
 

@@ -19,11 +19,11 @@ export const WORKSHOP_OUTLINE_PLUGIN_CODE = `
 export default {
   manifest: {
     id: "workshop-outline-memory-capsule",
-    name: "工坊对话大纲与原生吸附胶囊",
+    name: "Claude 对话大纲与原生吸附胶囊",
     apiVersion: 1,
     version: "7.4.1",
     author: "小坊 / 阿念",
-    description: "工坊专属补充：结转进行中防三点菜单残留；点大纲弹窗外部自动收起。胶囊与大纲由工坊原生提供。",
+    description: "Claude 专属补充：结转进行中防三点菜单残留；点大纲弹窗外部自动收起。胶囊与大纲由原生提供。",
   },
 
   setup(ctx) {

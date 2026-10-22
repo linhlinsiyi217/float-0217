@@ -60,7 +60,7 @@ async function ghPublic(path: string, token?: string): Promise<Record<string, un
     });
     if (!res.ok) {
         if (res.status === 403) throw new Error("GitHub 接口触发临时频率限制，请一小时后再试");
-        if (res.status === 404) throw new Error("仓库或分支不存在（fork 地址对吗？私有 fork 需先在工坊「连接仓库」里连接它）");
+        if (res.status === 404) throw new Error("仓库或分支不存在（fork 地址对吗？私有 fork 需先在 Claude「连接仓库」里连接它）");
         throw new Error(`GitHub 接口错误 ${res.status}`);
     }
     return await res.json() as Record<string, unknown>;

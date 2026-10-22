@@ -336,7 +336,7 @@ async function requestQaCompletion(
     // 工坊调用记录：与角色聊天/记忆等底层日志隔离，只进工坊右上角「调用记录」
     const logQaCall = (entry: { model: string; messages: { role: string; content: string | LLMContentPart[]; marker?: string }[]; rawResponse: string; reasoning?: string }) => {
         pushApiLog({
-            characterName: "工坊",
+            characterName: "Claude",
             source: "qa",
             channel: "qa",
             model: entry.model,
@@ -410,7 +410,7 @@ export type QaAgentCallbacks = {
 // 轮数用尽/输出截断时给用户的可见提示——否则未执行的指令被流过滤器隐藏，
 // 表现为"话说到一半突然断了"。截断本身会自动续接，提示只在轮数预算也用完时出现。
 const QA_ROUNDS_EXHAUSTED_NOTICE = "\n\n（这轮的工具调用次数用完了，还有操作没执行——回复「继续」我会接着完成。）";
-const QA_TRUNCATED_NOTICE = "\n\n（回复被输出长度上限截断，且本轮的自动续写次数也用完了——回复「继续」我会接着写；经常出现的话，建议在工坊配置里调大「单轮工具调用上限」。）";
+const QA_TRUNCATED_NOTICE = "\n\n（回复被输出长度上限截断，且本轮的自动续写次数也用完了——回复「继续」我会接着写；经常出现的话，建议在 Claude 配置里调大「单轮工具调用上限」。）";
 
 // 截断/CONTINUE 尾标后的自动接力提示（作为用户不可见的系统消息喂回给模型）
 const QA_AUTO_CONTINUE_TRUNCATED =
@@ -714,7 +714,7 @@ async function callQaAgentNative(apiConfig: ApiConfig, history: QaEngineMessage[
                 messages,
                 tools,
                 [],
-                { characterName: "工坊", userName: "用户" },
+                { characterName: "Claude", userName: "用户" },
                 { appId: "qa", signal: options?.signal, maxTokens: getQaMaxOutputTokens() ?? undefined },
                 {
                     async onDelta(delta) {
@@ -745,7 +745,7 @@ async function callQaAgentNative(apiConfig: ApiConfig, history: QaEngineMessage[
             // 由聊天引擎按 appId 分流落日志，这条 fallback 是本文件自己发的请求，不补就漏一条，
             // 而恰恰是刚出过流式故障、最需要排障记录的场景。
             pushApiLog({
-                characterName: "工坊",
+                characterName: "Claude",
                 source: "qa",
                 channel: "qa",
                 model: apiConfig.defaultModel,

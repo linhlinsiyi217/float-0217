@@ -170,7 +170,7 @@ export const QA_TOOL_GROUP_DEFS: QaToolGroupDef[] = [
     {
         id: "repo-read",
         title: "仓库查阅",
-        subtitle: "需要先在工坊里连接 GitHub 仓库",
+        subtitle: "需要先在 Claude 里连接 GitHub 仓库",
         members: ["仓库查询", "搜索仓库代码"],
     },
     {
