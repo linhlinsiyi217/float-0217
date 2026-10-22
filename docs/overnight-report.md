@@ -205,6 +205,17 @@
 - **处理（按默认方案）**：安装包（APK）更新继续用安卓壳弹窗；**网页内容更新不再弹壳的原生窗**——壳发现 webVersion 变化后记下版本、清缓存刷新页面，公告由网页端弹窗统一展示（保留全部五类分类）。壳里的旧 showNewWeb 弹窗代码已删除（提交 61600b4）。
 - 长按消息变暗保持原样未动。
 
+## 四、合并 —— 完成
+
+- 合并前检查三项全过：分支最新打包绿色；npx tsc --noEmit 和 npm run build 都通过；和 main 没有冲突（origin/main 已完整包含在分支里）。
+- 用 gh pr create 建了拉取请求 **PR #7**（中文标题，说明里列了主要改动），用 gh pr merge --merge 合并（保留历史，没有用 --admin，没有 force push，没有删分支）。
+- 合并后检查三项全过：
+  1. main 上自动触发的 "Build Android Shell APK" 绿色对勾（run 39740066204，2分18秒，含 Publish release 步骤）；
+  2. Releases 里有了 **v1.2.0**，里面有 app-release.apk：https://github.com/linhlinsiyi217/float-0217/releases/tag/v1.2.0
+  3. 线上 https://float-0217.vercel.app/app-version.json 已经是 1.2.0 的内容（versionName=1.2.0、versionCode=10200、apkUrl 指向 v1.2.0 的 app-release.apk）。
+- 手机上直接下载上面 Release 里的 app-release.apk 安装即可覆盖旧版（10200 > 手机里的 12）。
+
 ## 第三轮推送记录
 
-- 64a7648（lint 修复）→ a8b8b67（合并 main）→ 49607e3（版本单源化）→ 61600b4（弹窗去重），全部推送成功。
+- 64a7648（lint 修复）→ a8b8b67（合并 main）→ 49607e3（版本单源化）→ 61600b4（弹窗去重）→ eea1581（package.json BOM 修复 + 报告），全部推送成功。
+- PR #7 已合并进 main（合并提交 b143162），main 打包绿色，v1.2.0 已发布。
