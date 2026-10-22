@@ -2,6 +2,7 @@
 
 import { Camera, Check, Link, User, X } from "lucide-react";
 import { Input } from "@/components/ui/form";
+import { useSheetDragClose } from "@/lib/use-sheet-drag-close";
 
 export type UserIdentity = {
     id: string;
@@ -66,10 +67,11 @@ export function UserIdentityEditorSheet({
     onCancel: () => void;
     onConfirm: () => void;
 }) {
+    const { sheetRef, dragHandlers } = useSheetDragClose(onCancel);
     return (
         <div className="modal-overlay modal-overlay-bottom">
-            <div className="modal-sheet" data-ui="modal-sheet">
-                <div className="modal-header" data-ui="modal-header">
+            <div ref={sheetRef} className="modal-sheet" data-ui="modal-sheet">
+                <div className="modal-header" data-ui="modal-header" {...dragHandlers} style={{ touchAction: "none" }}>
                     <button type="button" onClick={onCancel} className="modal-header-btn modal-header-btn-muted" aria-label="取消">
                         <X size={18} />
                     </button>

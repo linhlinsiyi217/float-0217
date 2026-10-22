@@ -10,6 +10,7 @@ import { ConfirmDialog } from "@/components/ui/modal";
 import { Toggle, Input } from "@/components/ui/form";
 import { Alert } from "@/components/ui/feedback";
 import { determineBaseUrl, simpleLLMCall } from "@/lib/api-helpers";
+import { useSheetDragClose } from "@/lib/use-sheet-drag-close";
 
 const DEFAULT_CONFIGS: ApiConfig[] = [
     {
@@ -38,6 +39,7 @@ export function ApiSettings() {
     const [isNewConfig, setIsNewConfig] = useState(false);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
+    const editSheet = useSheetDragClose(() => { setIsNewConfig(false); setEditingId(null); });
 
     // Testing and Fetching states
     const [isFetching, setIsFetching] = useState<Record<string, boolean>>({});
@@ -283,8 +285,8 @@ export function ApiSettings() {
 
             {editingId && (
                 <div className="modal-overlay modal-overlay-bottom">
-                    <div className="modal-sheet" data-ui="modal-sheet">
-                        <div className="modal-header" data-ui="modal-header">
+                    <div ref={editSheet.sheetRef} className="modal-sheet" data-ui="modal-sheet">
+                        <div className="modal-header" data-ui="modal-header" {...editSheet.dragHandlers} style={{ touchAction: "none" }}>
                             <button onClick={() => { if (isNewConfig && editingId) removeConfig(editingId); setIsNewConfig(false); setEditingId(null); }} className="modal-header-btn modal-header-btn-muted"><X size={18} /></button>
                             <span className="modal-header-title">{isNewConfig ? "添加配置" : "编辑配置"}</span>
                             <button onClick={() => { setIsNewConfig(false); setEditingId(null); }} className="modal-header-btn modal-header-btn-action"><Check size={18} /></button>

@@ -2771,9 +2771,14 @@
   background: transparent;
   cursor: pointer;
   text-align: left;
-  transition: background-color 120ms ease;
+  transition: background-color 120ms ease, transform 120ms ease;
   position: relative;
   width: 100%;
+}
+/* 列表行按下：轻微变深 + 轻微缩放，给到"按到了"的手感 */
+.menu-item:not(:disabled):active {
+  background-color: color-mix(in srgb, var(--c-text-title) 6%, transparent);
+  transform: scale(0.994);
 }
 .menu-item:not(:last-child)::after {
   content: "";
@@ -4286,8 +4291,10 @@
   border-radius: 999px;
   background: var(--c-page-body-bg);
   border: none;
-  transition: background 0.25s;
+  /* 状态变化 120ms 内给到颜色反馈 */
+  transition: background 120ms ease;
   padding: 0;
+  -webkit-tap-highlight-color: transparent;
 }
 .ui-toggle[data-checked] {
   background: var(--c-success);
@@ -4301,11 +4308,18 @@
   border-radius: 999px;
   background: white;
   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-  transition: transform 0.25s;
+  /* 弹簧回弹：位移用 overshoot 曲线，宽度变化让按压时有一点"拉伸" */
+  transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1), width 160ms ease;
   pointer-events: none;
 }
 .ui-toggle[data-checked] .ui-toggle-knob {
   transform: translateX(16px);
+}
+.ui-toggle:not(:disabled):active .ui-toggle-knob {
+  width: 24px;
+}
+.ui-toggle[data-checked]:not(:disabled):active .ui-toggle-knob {
+  transform: translateX(14px);
 }
 
 /* ── Empty state ── */
@@ -6632,4 +6646,30 @@
   .workshop-tut-section-body { animation: none; }
   .workshop-tut-chevron,
   .workshop-tut-section-head { transition: none; }
+}
+
+/* ══════════════════════════════════════════
+   统一页面转场 (.ui-page-enter)
+   ══════════════════════════════════════════ */
+/* 设置里的主菜单和子页进入/返回共用同一套：轻微下滑 + 淡入 + 一丝缩放（视差感），
+   340ms 弹簧曲线。只动 transform / opacity（走合成层，不触发重排）。 */
+.ui-page-enter {
+  animation: ui-page-enter 340ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+@keyframes ui-page-enter {
+  from { opacity: 0; transform: translate3d(0, 12px, 0) scale(0.996); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-page-enter { animation: none; }
+  .ui-toggle, .ui-toggle-knob { transition: none; }
+  .menu-item { transition: none; }
+  .menu-item:not(:disabled):active { transform: none; }
+}
+
+/* 低端机（CPU 核数/内存偏低）直接关掉整页转场，流畅优先 */
+html[data-motion="lite"] .ui-page-enter,
+html[data-motion="lite"] .identity-editor-page {
+  animation: none;
 }

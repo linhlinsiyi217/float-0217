@@ -33,6 +33,8 @@ import { StatusbarSettings } from "./settings/statusbar-settings";
 import { WorkshopSettings } from "./settings/workshop-settings";
 import { fetchIsAdmin } from "@/lib/moderation-client";
 import { PageShell } from "./ui/page-shell";
+import { useSheetDragClose } from "@/lib/use-sheet-drag-close";
+import { applyMotionPreference } from "@/lib/ui-motion";
 import { CardGrid, FeaturedCard, type CardItem, type FeaturedCardItem } from "./ui/card-grid";
 import { GlassIcon } from "./ui/glass-icon";
 import { Toggle } from "./ui/form";
@@ -181,6 +183,16 @@ export function PhoneSettingsApp({ onClose, onNotice, initialPage }: SettingsPag
         setConfirmPwd("");
         setPwdError("");
     };
+
+    // 设置里的三个底部抽屉都支持从标题栏下拉关闭
+    const floatingDockSheet = useSheetDragClose(() => setFloatingDockSheetOpen(false));
+    const accountSheet = useSheetDragClose(() => setAccountSheetOpen(false));
+    const pwdSheet = useSheetDragClose(closePwdModal);
+
+    // 低端机（核数/内存偏低）自动关掉整页转场，优先流畅
+    useEffect(() => {
+        applyMotionPreference();
+    }, []);
 
     const handleChangePassword = async () => {
         if (pwdBusy) return;
@@ -505,7 +517,7 @@ export function PhoneSettingsApp({ onClose, onNotice, initialPage }: SettingsPag
         <SettingsContext.Provider value={{ setSubpageTitle, setOverrideBack, setSubpageRightAction }}>
             <PageShell title={title} onBack={handleBack} rightAction={currentPage !== "main" ? subpageRightActions[currentPage] : undefined} bodyRef={pageBodyRef}>
                 {currentPage === "main" && (
-                    <div className="page-menu settings-main-menu">
+                    <div className="page-menu settings-main-menu ui-page-enter">
                         {!selfHostedMode && (
                             <button type="button" className="settings-account-card" onClick={() => setAccountSheetOpen(true)}>
                                 <span className="settings-account-avatar"><GlassIcon name="account" /></span>
@@ -649,8 +661,8 @@ export function PhoneSettingsApp({ onClose, onNotice, initialPage }: SettingsPag
                         />
                         {floatingDockSheetOpen && (
                             <div className="modal-overlay modal-overlay-bottom" data-ui="modal" onClick={() => setFloatingDockSheetOpen(false)}>
-                                <div className="modal-sheet" data-ui="modal-sheet" onClick={event => event.stopPropagation()}>
-                                    <div className="modal-header" data-ui="modal-header">
+                                <div ref={floatingDockSheet.sheetRef} className="modal-sheet" data-ui="modal-sheet" onClick={event => event.stopPropagation()}>
+                                    <div className="modal-header" data-ui="modal-header" {...floatingDockSheet.dragHandlers} style={{ touchAction: "none" }}>
                                         <span style={{ width: 44 }} />
                                         <h3 className="modal-title">悬浮球设置</h3>
                                         <button className="modal-header-btn modal-header-btn-muted" onClick={() => setFloatingDockSheetOpen(false)} aria-label="关闭"><X size={18} /></button>
@@ -675,8 +687,8 @@ export function PhoneSettingsApp({ onClose, onNotice, initialPage }: SettingsPag
                         )}
                         {accountSheetOpen && (
                             <div className="modal-overlay modal-overlay-bottom" data-ui="modal" onClick={() => setAccountSheetOpen(false)}>
-                                <div className="modal-sheet" data-ui="modal-sheet" onClick={event => event.stopPropagation()}>
-                                    <div className="modal-header" data-ui="modal-header">
+                                <div ref={accountSheet.sheetRef} className="modal-sheet" data-ui="modal-sheet" onClick={event => event.stopPropagation()}>
+                                    <div className="modal-header" data-ui="modal-header" {...accountSheet.dragHandlers} style={{ touchAction: "none" }}>
                                         <button className="modal-header-btn modal-header-btn-muted" onClick={() => setAccountSheetOpen(false)}><X size={18} /></button>
                                         <h3 className="modal-title">账号</h3>
                                         <span style={{ width: 44 }} />
@@ -723,8 +735,8 @@ export function PhoneSettingsApp({ onClose, onNotice, initialPage }: SettingsPag
 
                         {pwdModalOpen && (
                             <div className="modal-overlay modal-overlay-bottom" data-ui="modal" onClick={closePwdModal}>
-                                <div className="modal-sheet" data-ui="modal-sheet" onClick={event => event.stopPropagation()}>
-                                    <div className="modal-header" data-ui="modal-header">
+                                <div ref={pwdSheet.sheetRef} className="modal-sheet" data-ui="modal-sheet" onClick={event => event.stopPropagation()}>
+                                    <div className="modal-header" data-ui="modal-header" {...pwdSheet.dragHandlers} style={{ touchAction: "none" }}>
                                         <button className="modal-header-btn modal-header-btn-muted" onClick={closePwdModal} disabled={pwdBusy}><X size={18} /></button>
                                         <h3 className="modal-title">修改密码</h3>
                                         <button className="modal-header-btn modal-header-btn-action" onClick={() => void handleChangePassword()} disabled={pwdBusy}>
@@ -764,7 +776,7 @@ export function PhoneSettingsApp({ onClose, onNotice, initialPage }: SettingsPag
                     // shrink-0：page-body 是 flex 容器，包裹层默认可压缩——内容超一屏时会被压到
                     // 恰好一屏高、卡片从中溢出，底部 padding 落不到内容末尾，最后一张卡贴死滚动边界
                     //（iOS 底部工具栏/安全区一盖就"没放下又滚不动"）。尾部留白 = 原 pb-8 + 安全区。
-                    <div className="block min-h-full shrink-0 p-4 box-border" style={{ paddingBottom: "calc(32px + env(safe-area-inset-bottom, 0px))" }}>
+                    <div key={currentPage} className="ui-page-enter block min-h-full shrink-0 p-4 box-border" style={{ paddingBottom: "calc(32px + env(safe-area-inset-bottom, 0px))" }}>
                         {renderSubPage()}
                     </div>
                 )}

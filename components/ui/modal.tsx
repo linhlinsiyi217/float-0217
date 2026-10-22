@@ -3,6 +3,8 @@
 import type { ReactNode } from "react";
 import { useState, useEffect } from "react";
 import { type LucideIcon, X, Check } from "lucide-react";
+import { hapticTap } from "@/lib/haptic";
+import { useSheetDragClose } from "@/lib/use-sheet-drag-close";
 
 /* ── Confirm Dialog (center) ── */
 export type ConfirmDialogProps = {
@@ -40,7 +42,7 @@ export function ConfirmDialog({
         {message && <div className="modal-body" data-ui="modal-body"><p>{message}</p></div>}
         <div className="modal-footer" data-ui="modal-footer">
           {cancelLabel && <button className="ui-btn ui-btn-ghost" onClick={onCancel}>{cancelLabel}</button>}
-          <button className={`ui-btn ui-btn-${variant === "default" ? "primary" : variant}`} onClick={onConfirm}>{confirmLabel}</button>
+          <button className={`ui-btn ui-btn-${variant === "default" ? "primary" : variant}`} onClick={() => { hapticTap(12); onConfirm(); }}>{confirmLabel}</button>
         </div>
       </div>
     </div>
@@ -100,10 +102,12 @@ export function BottomSheet({
   // modal-overlay 默认垂直居中（那是给 modal-dialog 用的）；底部抽屉必须叠加
   // modal-overlay-bottom 贴到底，否则 .modal-sheet 那套「只有上圆角 + 向上滑入」
   // 的样式会浮在屏幕中间、下沿方角悬空，看着就像坏了。
+  // 标题栏同时是「下拉关闭」把手：向下拖动带阻尼，拖过阈值松手就关。
+  const { sheetRef, dragHandlers } = useSheetDragClose(onClose);
   return (
     <div className="modal-overlay modal-overlay-bottom" data-ui="modal" onClick={onClose}>
-      <div className="modal-sheet" data-ui="modal-sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header" data-ui="modal-header">
+      <div ref={sheetRef} className="modal-sheet" data-ui="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header" data-ui="modal-header" {...dragHandlers} style={{ touchAction: "none" }}>
           <button className="modal-header-btn modal-header-btn-muted" onClick={onClose}><X size={18} /></button>
           <h3 className="modal-title">{title}</h3>
           {onDone ? (

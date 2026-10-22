@@ -1,6 +1,7 @@
 "use client";
 
 import type { InputHTMLAttributes, TextareaHTMLAttributes, SelectHTMLAttributes, ReactNode } from "react";
+import { hapticTap } from "@/lib/haptic";
 
 /* ── Input ── */
 type InputProps = InputHTMLAttributes<HTMLInputElement> & {
@@ -55,7 +56,10 @@ export function Toggle({
       data-ui="toggle"
       data-checked={checked ? "" : undefined}
       disabled={disabled}
-      onClick={() => onChange(!checked)}
+      onClick={() => {
+        hapticTap(8);
+        onChange(!checked);
+      }}
     >
       <span className="ui-toggle-knob" />
     </button>
