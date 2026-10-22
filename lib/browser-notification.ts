@@ -62,8 +62,10 @@ function constructNotification(title: string, payload: NotificationOptions): voi
 }
 
 /**
- * Send a browser notification if enabled and page is hidden.
- * Does nothing if page is visible, permission denied, or setting is off.
+ * Send a browser notification. By default only when enabled + page hidden.
+ * opts.force skips the app-settings switch and the hidden-page check — the
+ * caller (notification settings page / desktop-shell prefs routing) owns the
+ * decision then; permission must already be granted.
  *
  * Android Chrome/Edge does NOT support the `new Notification()` constructor in
  * pages (throws Illegal constructor) — notifications there must go through the
@@ -73,13 +75,18 @@ function constructNotification(title: string, payload: NotificationOptions): voi
 export function sendBrowserNotification(
     title: string,
     options?: { body?: string; icon?: string },
+    opts?: { force?: boolean },
 ): void {
     // 壳环境直接返回：系统通知统一由原生桥发（见 lib/shell-notify.ts）。
     // 这里必须显式挡住——Android WebView 里 Notification 与 Service Worker 都可能
     // 存在，万一权限被判定为 granted，同一条消息就会被「原生桥 + SW」弹两次。
     if (isShellEnvironment()) return;
-    if (!isNotificationEnabled()) return;
-    if (!document.hidden) return;
+    if (!opts?.force) {
+        if (!isNotificationEnabled()) return;
+        if (!document.hidden) return;
+    } else if (typeof Notification === "undefined" || Notification.permission !== "granted") {
+        return;
+    }
 
     const payload: NotificationOptions = {
         body: options?.body,
