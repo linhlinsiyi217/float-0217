@@ -5195,26 +5195,55 @@
   flex-direction: column;
   gap: 12px;
   pointer-events: auto;
-  animation: mdi-expand-in 0.22s cubic-bezier(0.22, 0.9, 0.32, 1) both;
+  animation: mdi-expand-in 0.34s cubic-bezier(0.34, 1.3, 0.4, 1) both;
 }
 @keyframes mdi-expand-in {
-  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
-  to { opacity: 1; transform: none; }
+  from { opacity: 0; transform: translateY(-6px) scale(0.94); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: blur(0); }
+}
+/* 展开内容错开入场：淡入 + 轻微缩放 + 模糊→清晰 */
+.music-dynamic-island .mdi-expanded-head,
+.music-dynamic-island .mdi-progress,
+.music-dynamic-island .mdi-controls,
+.music-dynamic-island .mdi-leave,
+.music-dynamic-island .mdi-presence-copy {
+  animation: mdi-content-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.music-dynamic-island .mdi-progress { animation-delay: 45ms; }
+.music-dynamic-island .mdi-controls { animation-delay: 85ms; }
+.music-dynamic-island .mdi-leave,
+.music-dynamic-island .mdi-presence-copy { animation-delay: 115ms; }
+@keyframes mdi-content-in {
+  from { opacity: 0; transform: scale(0.94); filter: blur(3px); }
+  to { opacity: 1; transform: none; filter: blur(0); }
 }
 .music-dynamic-island .mdi-expanded-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .music-dynamic-island .mdi-expanded-head strong { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .music-dynamic-island .mdi-expanded-head span { font-size: 11.5px; color: rgba(255, 255, 255, 0.55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .music-dynamic-island .mdi-progress {
   position: relative;
+  /* 视觉 4px，命中区垫高到 18px，好按 */
+  height: 18px;
+  border-radius: 2px;
+  background: none;
+  cursor: pointer;
+  overflow: visible;
+}
+.music-dynamic-island .mdi-progress::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 7px;
   height: 4px;
   border-radius: 2px;
   background: rgba(255, 255, 255, 0.16);
-  cursor: pointer;
-  overflow: hidden;
 }
 .music-dynamic-island .mdi-progress span {
   position: absolute;
-  inset: 0 auto 0 0;
+  left: 0;
+  top: 7px;
+  height: 4px;
   width: 0;
   border-radius: 2px;
   background: #fff;
@@ -5230,7 +5259,9 @@
   background: transparent;
   color: #fff;
   cursor: pointer;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.4, 1), background-color 0.2s ease;
 }
+.music-dynamic-island .mdi-controls button:active { transform: scale(0.84); }
 .music-dynamic-island .mdi-controls button.mdi-play { background: rgba(255, 255, 255, 0.12); }
 .music-dynamic-island .mdi-leave {
   align-self: center;
@@ -5243,7 +5274,43 @@
   border-radius: 999px;
   cursor: pointer;
 }
+/* 一起听：岛旁边分出的一颗小圆（对方头像）。
+   出现 = 从岛里“拉伸分裂”弹出；展开 = 弹性缩回岛里消失。 */
+.music-dynamic-island .mdi-bub {
+  position: absolute;
+  top: 18px;
+  right: -21px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  background: #1c1c1e;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  z-index: 41;
+  pointer-events: none;
+  animation: mdi-bub-split 0.5s cubic-bezier(0.34, 1.56, 0.4, 1) both;
+}
+.music-dynamic-island .mdi-bub img { width: 100%; height: 100%; object-fit: cover; display: block; }
+@keyframes mdi-bub-split {
+  from { opacity: 0; transform: translate(-14px, -50%) scale(0.3); }
+  to { opacity: 1; transform: translate(0, -50%) scale(1); }
+}
+.music-dynamic-island .mdi-bub[data-merged="true"] {
+  animation: mdi-bub-merge 0.45s cubic-bezier(0.34, 1.56, 0.4, 1) both;
+}
+@keyframes mdi-bub-merge {
+  from { opacity: 1; transform: translate(0, -50%) scale(1); }
+  to { opacity: 0; transform: translate(-38px, -50%) scale(0.4); }
+}
 @media (prefers-reduced-motion: reduce) {
   .music-dynamic-island .mdi-waveform i { animation: none; }
   .music-dynamic-island .mdi-expanded { animation: none; }
+  .music-dynamic-island .mdi-expanded-head,
+  .music-dynamic-island .mdi-progress,
+  .music-dynamic-island .mdi-controls,
+  .music-dynamic-island .mdi-leave,
+  .music-dynamic-island .mdi-presence-copy { animation: none; }
+  .music-dynamic-island .mdi-bub { animation: none; }
+  .music-dynamic-island .mdi-bub[data-merged="true"] { opacity: 0; }
 }

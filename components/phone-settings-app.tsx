@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, createContext, type CSSProperties, type ReactNode } from "react";
-import { Activity, Bell, CalendarDays, Camera, Check, ChevronRight, Clock, Database, FileText, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Laptop, Layers, LayoutTemplate, Link2, Loader2, Lock, LogOut, MessageSquare, Mic, PhoneCall, SlidersHorizontal, UserCircle, Wrench, X, CloudUpload, Zap } from "lucide-react";
+import { Activity, Bell, CalendarDays, Camera, Check, ChevronRight, Clock, Database, FileText, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Laptop, Layers, LayoutTemplate, Link2, Loader2, Lock, LogOut, MessageSquare, Mic, PanelTop, PhoneCall, SlidersHorizontal, UserCircle, Wrench, X, CloudUpload, Zap } from "lucide-react";
 import { ConfirmDialog } from "./ui/modal";
 import { useAccount } from "@/lib/account-context";
 import { isSelfHostedModeEnabled } from "@/lib/self-hosting";
@@ -29,6 +29,7 @@ import { ScreenshotSettings } from "./screenshot/screenshot-settings";
 import { WidgetSettings } from "./widget/widget-settings";
 import { LockScreenSettings } from "./settings/lockscreen-settings";
 import { NotificationSettings } from "./settings/notification-settings";
+import { StatusbarSettings } from "./settings/statusbar-settings";
 import { fetchIsAdmin } from "@/lib/moderation-client";
 import { PageShell } from "./ui/page-shell";
 import { CardGrid, FeaturedCard, type CardItem, type FeaturedCardItem } from "./ui/card-grid";
@@ -65,6 +66,7 @@ type SubPage =
     | "binding"
     | "identity"
     | "notifications"
+    | "statusbar"
     | "cloud"
     | "weixin"
     | "toolbox"
@@ -101,6 +103,7 @@ const SETTINGS_MENU = [
     { id: "agentComputer", icon: Laptop, label: "角色电脑", desc: "云端小电脑（自部署）", iconColor: BINDING_ACCENTS.memory , glass: "agent-computer" },
     { id: "identity", icon: UserCircle, label: "用户身份", desc: "个人信息", iconColor: BINDING_ACCENTS.identity , glass: "identity" },
     { id: "notifications", icon: Bell, label: "系统通知", desc: "推送、站内横幅与提示音", iconColor: BINDING_ACCENTS.voice , glass: "" },
+    { id: "statusbar", icon: PanelTop, label: "状态栏", desc: "开关与自定义样式", iconColor: BINDING_ACCENTS.api , glass: "" },
     { id: "about", icon: Info, label: "更新日志", desc: "版本与更新内容", iconColor: BINDING_ACCENTS.memory , glass: "about" },
 ] as const;
 
@@ -370,6 +373,8 @@ export function PhoneSettingsApp({ onClose, onNotice, initialPage }: SettingsPag
                 return <UserIdentitySettings />;
             case "notifications":
                 return <NotificationSettings onNotice={onNotice} />;
+            case "statusbar":
+                return <StatusbarSettings onNotice={onNotice} />;
             case "about":
                 return <UpdateLogPage />;
             default:

@@ -133,6 +133,7 @@ import { QuickActionFloat } from "@/components/quick-action-float";
 import { CHAT_MESSAGE_PUSHED_EVENT, CHAT_REQUEST_REPLY_EVENT, findChatSessionById, hydrateChatStorage, loadChatSessions, loadChatMessages, pushChatMessage, resolveChatCharacterAvatar, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { publishIslandNotification } from "@/lib/island-notify";
 import { loadNotificationPrefs } from "@/lib/notification-prefs";
+import { loadStatusbarCss, STATUSBAR_CSS_EVENT } from "@/lib/statusbar-css";
 import { playBannerSound, armAudioUnlock } from "@/lib/banner-sound";
 import { ensureGlobalBindingDefaults, resolveUserIdentity } from "@/lib/settings-storage";
 import { loadCharacters } from "@/lib/character-storage";
@@ -1289,6 +1290,34 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   useEffect(() => {
     activeAppRef.current = activeApp;
   }, [activeApp]);
+  // 状态栏自定义样式（任务 5）：统一写进独立的 <style>，设置页改动即时生效
+  useEffect(() => {
+    const styleId = "float-statusbar-custom-css";
+    const apply = () => {
+      let tag = document.getElementById(styleId) as HTMLStyleElement | null;
+      if (!tag) {
+        tag = document.createElement("style");
+        tag.id = styleId;
+        document.head.appendChild(tag);
+      }
+      const css = loadStatusbarCss();
+      if (tag.textContent !== css) tag.textContent = css;
+    };
+    apply();
+    window.addEventListener(STATUSBAR_CSS_EVENT, apply);
+    return () => window.removeEventListener(STATUSBAR_CSS_EVENT, apply);
+  }, []);
+
+  // 状态栏设置页直接改主题档里的 statusBarMode / islandMode，这里同步回壳
+  useEffect(() => {
+    const onStatusbarSettings = () => {
+      const fresh = readThemeProfile();
+      setDraftTheme(prev => ({ ...prev, statusBarMode: fresh.statusBarMode, islandMode: fresh.islandMode }));
+    };
+    window.addEventListener("statusbar-settings-updated", onStatusbarSettings);
+    return () => window.removeEventListener("statusbar-settings-updated", onStatusbarSettings);
+  }, []);
+
   // Listen for theme CSS updates from 小卷
   useEffect(() => {
     const onThemeUpdate = () => {
