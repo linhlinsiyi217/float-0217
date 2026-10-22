@@ -10,6 +10,17 @@ def ksFile = System.getenv("SHELL_KEYSTORE_FILE")
 // override this with SHELL_SITE_URL for a staging/self-hosted deployment.
 def siteUrl = (System.getenv("SHELL_SITE_URL") ?: "https://float-0217.vercel.app").replaceAll('/+$', '')
 
+// 版本号唯一来源：android-shell/version.properties（CI 的 Release 标签和网站的
+// app-version.json 也从这份文件取值，见 .github/workflows/android-shell.yml 和
+// scripts/sync-app-version.mjs）。改版本只改那一个文件。
+def versionProps = new Properties()
+def versionPropsFile = rootProject.file("version.properties")
+if (versionPropsFile.canRead()) {
+    versionPropsFile.withInputStream { versionProps.load(it) }
+}
+def appVersionCode = (versionProps['versionCode'] ?: '0').toString().toInteger()
+def appVersionName = (versionProps['versionName'] ?: '0.0.0').toString()
+
 android {
     namespace 'app.floatphone.shell'
     // compileSdk 36：Health Connect 1.1.0 的硬性要求（它的 AAR 元数据要求
@@ -30,8 +41,9 @@ android {
         // 1.0.12：截屏可选收件人；位置感知；睡眠（Health Connect）。
         // 1.1.0：后台保活四层 + 应用内更新弹窗（含网页内容更新检测）。
         // 1.2.0：更新弹窗重做（分类分组、去限制）；没打开时定时检查发「有新版本」通知。
-        versionCode 13
-        versionName "1.2.0"
+        // 版本历史记录继续写在这里做备忘，实际数值以 version.properties 为准。
+        versionCode appVersionCode
+        versionName appVersionName
         buildConfigField "String", "SITE_URL", "\"${siteUrl}\""
     }
 
