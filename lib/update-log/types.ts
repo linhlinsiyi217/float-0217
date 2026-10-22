@@ -101,19 +101,20 @@ export const SCOPE_LABEL: Record<UpdateScope, string> = {
 export const SCOPE_ORDER: UpdateScope[] = ["app", "content", "global", "prompt", "fix"];
 
 export const SCOPE_COLOR: Record<UpdateScope, string> = {
-  app: "#2563EB",
-  content: "#0F9D58",
-  global: "#F59E0B",
-  prompt: "#7C3AED",
-  fix: "#F04438",
+  app: "#2F6BFF",
+  content: "#111111",
+  global: "#FF9500",
+  prompt: "#9A9AA0",
+  fix: "#FF3B30",
 };
 
+/** 分类标签的浅色底（与 SCOPE_COLOR 同色系的浅版，用于日志页与弹窗的标签底色） */
 export const SCOPE_TINT: Record<UpdateScope, string> = {
   app: "#EEF4FF",
-  content: "#E7FFF4",
-  global: "#FFF7E2",
-  prompt: "#F3EEFF",
-  fix: "#FFF0EE",
+  content: "#F2F2F2",
+  global: "#FFF4E5",
+  prompt: "#F5F5F7",
+  fix: "#FFEEED",
 };
 
 /** 老数据没有 scope 字段时当作「页面内容」 */

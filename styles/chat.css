@@ -760,224 +760,484 @@
   transform: translateX(-50%);
 }
 
-.chat-offline-body {
-  width: min(100%, 720px);
+/* ── 书页式线下正文（cof-*）──
+   线下页不是聊天：没有气泡、没有已读、没有连发分组，正文一段一段铺开像一本书。
+   本页一张弹窗都没有：段落四件事在段首图标上就地做完，编辑原地展开一个框；
+   不可逆操作（删段/删记录）不弹确认，原地按两次——is-armed 变色说一句，
+   ARM_MS 过期自己复原。台词荧光带只压说出口的那句话，引号本身不划。 */
+.cof-page-body {
+  width: min(100%, 680px);
   margin: 0 auto;
-  padding: 16px 8px 24px;
+  padding: 18px 18px 28px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
 }
 
-.chat-offline-empty {
-  align-self: center;
-  margin-top: 28vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  color: var(--c-icon);
-  font-size: calc(12px*var(--app-text-scale,1));
-  line-height: 1.5;
-  opacity: 0.55;
-}
-
-.chat-offline-time {
-  align-self: center;
-  padding: 2px 0;
-  font-size: calc(11px*var(--app-text-scale,1));
-  color: var(--c-icon);
-  opacity: 0.5;
-}
-
-.chat-offline-turn {
-  display: flex;
-  flex-direction: column;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--c-card) 56%, transparent);
-  border: 1px solid color-mix(in srgb, var(--c-card-border) 30%, transparent);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  overflow: hidden;
-}
-
-.chat-offline-entry {
+.cof-p {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 10px 14px 10px 18px;
-  position: relative;
+  margin-top: 18px;
 }
 
-.chat-offline-entry + .chat-offline-entry {
-  border-top: 1px solid color-mix(in srgb, var(--c-card-border) 22%, transparent);
+.cof-p-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 22px;
 }
 
-.chat-offline-entry::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 10px;
-  bottom: 10px;
-  width: 3px;
-  border-radius: 0 2px 2px 0;
-}
-
-.chat-offline-entry[data-role="user"]::before {
-  background: color-mix(in srgb, var(--c-icon) 50%, transparent);
-}
-
-.chat-offline-entry[data-role="assistant"]::before {
-  background: color-mix(in srgb, var(--c-text-title) 38%, transparent);
-}
-
-.chat-offline-label {
-  display: inline-flex;
-  align-self: flex-start;
-  padding: 0 7px;
-  border-radius: 4px;
+.cof-p-who {
   font-size: calc(11px*var(--app-text-scale,1));
-  line-height: 1.6;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--c-text-title);
+  opacity: 0.72;
 }
 
-.chat-offline-label-row {
+.cof-p-time {
+  font-size: calc(10px*var(--app-text-scale,1));
+  color: var(--c-icon);
+  opacity: 0.7;
+}
+
+/* 我写的那些段名字靠右，图标跟着挪到行的另一端——整组镜像，版心不跳 */
+.cof-p.is-me .cof-p-head {
+  flex-direction: row-reverse;
+}
+
+.cof-p.is-me .cof-p-who,
+.cof-p.is-me .cof-p-time {
+  color: var(--c-icon);
+  opacity: 0.9;
+}
+
+.cof-p-acts {
   display: inline-flex;
   align-items: center;
-  align-self: flex-start;
-  gap: 6px;
+  gap: 2px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.16s ease;
 }
 
-.chat-offline-entry[data-role="user"] .chat-offline-label {
-  color: var(--c-icon);
-  background: color-mix(in srgb, var(--c-icon) 10%, transparent);
+.cof-p.is-me .cof-p-acts {
+  margin-left: 0;
+  margin-right: auto;
 }
 
-.chat-offline-entry[data-role="assistant"] .chat-offline-label {
-  color: var(--c-text-title);
-  background: color-mix(in srgb, var(--c-text-title) 7%, transparent);
+.cof-p:hover .cof-p-acts,
+.cof-p.is-edit .cof-p-acts {
+  opacity: 1;
 }
 
-.chat-offline-text {
-  position: relative;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: var(--c-text);
-  font-size: calc(14.5px*var(--app-text-scale,1));
-  line-height: 1.85;
-  cursor: pointer;
-  user-select: none;
-  border-radius: 6px;
-  padding: 2px 4px;
-  margin: -2px -4px;
-  transition: background-color 0.16s ease;
-}
-
-.chat-offline-text[data-active] {
-  background: color-mix(in srgb, var(--c-icon) 8%, transparent);
-}
-
-.chat-offline-entry[data-role="assistant"] .chat-offline-text {
-  color: var(--c-text-title);
-}
-
-.chat-offline-entry[data-role="user"] .chat-offline-text {
-  color: var(--c-text);
-}
-
-.chat-offline-menu-trigger {
-  width: 24px;
-  height: 20px;
+.cof-act {
+  width: 26px;
+  height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: 0;
-  border-radius: 4px;
+  border-radius: 5px;
   background: transparent;
-  color: color-mix(in srgb, var(--c-text-title) 72%, transparent);
+  color: var(--c-icon);
   cursor: pointer;
   touch-action: manipulation;
   padding: 0;
 }
 
-.chat-offline-menu-trigger:active {
-  transform: scale(0.96);
+.cof-act:active {
+  transform: scale(0.94);
 }
 
-.chat-offline-paragraph + .chat-offline-paragraph {
-  margin-top: 0.85em;
+.cof-act.is-on {
+  color: #D9A514;
 }
 
-.chat-offline-summary-fold {
+.cof-act.is-armed {
+  color: #D64545;
+  background: rgba(214, 69, 69, 0.10);
+  animation: cof-armed-in 0.2s ease;
+}
+
+@keyframes cof-armed-in {
+  from { transform: scale(0.9); }
+  to { transform: scale(1); }
+}
+
+.cof-text {
+  color: var(--c-text);
+  font-size: calc(15px*var(--app-text-scale,1));
+  line-height: 2;
+  letter-spacing: 0.01em;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.cof-p.is-ta .cof-text {
+  color: var(--c-text-title);
+}
+
+.cof-text .cof-line {
+  margin: 0 0 0.85em;
+}
+
+.cof-text .cof-line:last-child {
+  margin-bottom: 0;
+}
+
+/* **动作**：弱色粗体，从叙述里让开半步 */
+.cof-text .cof-em {
+  font-weight: 600;
+  color: var(--c-text);
+  opacity: 0.62;
+}
+
+/* “台词”整段：加重的主色，把说出口的话从叙述里挑出来 */
+.cof-text .cof-say {
+  font-weight: 600;
+  color: var(--c-text-title);
+}
+
+/* 荧光笔色带：只压内容，引号留在带子外面；浅灰约 45%，压在字的下半段 */
+.cof-text .cof-hl {
+  background-image: linear-gradient(to top, rgba(26, 26, 26, 0.13) 40%, transparent 40%);
+  padding: 0 1px;
+  margin: 0 -1px;
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* > 独白：左侧带竖线的缩进块 */
+.cof-text .cof-quote {
+  margin: 0.6em 0;
+  padding: 0.15em 0 0.15em 12px;
+  border-left: 2px solid color-mix(in srgb, var(--c-icon) 55%, transparent);
+}
+
+.cof-text .cof-quote .cof-line {
+  color: var(--c-text);
+  opacity: 0.72;
+  margin: 0 0 0.4em;
+}
+
+.cof-text .cof-quote .cof-line:last-child {
+  margin-bottom: 0;
+}
+
+/* (译：…) 的译文：原文后面浅一档的小字，括号与「译：」不露 */
+.cof-text .cof-tr {
+  font-size: 0.82em;
+  color: var(--c-icon);
+  font-weight: 400;
+}
+
+/* 前端卡片：默认关；开了才放进无 allow-same-origin 的沙箱 iframe */
+.cof-html-card {
+  width: 100%;
+  min-height: 240px;
+  border: 1px solid color-mix(in srgb, var(--c-card-border) 40%, transparent);
+  border-radius: 12px;
+  background: #fff;
+}
+
+/* 原地展开的编辑框：接着段首往下长，不盖住页面 */
+.cof-editbox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cof-edit-input {
+  width: 100%;
+  min-height: 96px;
+  max-height: 320px;
+  resize: vertical;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--c-card-border) 55%, transparent);
+  background: color-mix(in srgb, var(--c-input) 72%, transparent);
+  color: var(--c-text-title);
+  font-family: var(--app-font-family);
+  font-size: calc(14px*var(--app-text-scale,1));
+  line-height: 1.85;
+  outline: none;
+}
+
+.cof-edit-input:focus {
+  border-color: color-mix(in srgb, #174BFF 45%, transparent);
+}
+
+.cof-edit-tip {
+  font-size: calc(10.5px*var(--app-text-scale,1));
+  color: var(--c-icon);
+  opacity: 0.75;
+}
+
+/* 候选切换：点箭头或手指横扫，在候选里原地换正文 */
+.cof-sw {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   margin-top: 6px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--c-page-body-bg) 50%, transparent);
-  overflow: hidden;
+  padding: 4px 0 0;
+  touch-action: pan-y;
 }
 
-.chat-offline-summary-fold > summary {
-  list-style: none;
+.cof-sw-btn {
+  width: 26px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c-icon) 8%, transparent);
+  color: var(--c-text-title);
   cursor: pointer;
-  user-select: none;
-  padding: 8px 10px;
+  padding: 0;
+}
+
+.cof-sw-btn:active {
+  transform: scale(0.94);
+}
+
+.cof-sw-count {
+  min-width: 34px;
+  text-align: center;
+  font-size: calc(11px*var(--app-text-scale,1));
+  color: var(--c-icon);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 空态与开场白 */
+.cof-empty {
+  margin-top: 22vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.cof-empty-tip {
   color: var(--c-icon);
   font-size: calc(12px*var(--app-text-scale,1));
-  line-height: 1.5;
-  font-weight: 600;
+  line-height: 1.6;
+  opacity: 0.6;
+}
+
+.cof-openers {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(100%, 420px);
+  margin-top: 6px;
+}
+
+.cof-openers-title {
+  font-size: calc(11px*var(--app-text-scale,1));
+  font-weight: 700;
+  color: var(--c-text-title);
+  opacity: 0.6;
+  letter-spacing: 0.04em;
+}
+
+.cof-opener {
+  border: 1px solid color-mix(in srgb, var(--c-card-border) 50%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--c-card) 62%, transparent);
+  color: var(--c-text);
+  font-size: calc(13px*var(--app-text-scale,1));
+  line-height: 1.7;
+  text-align: left;
+  padding: 10px 14px;
+  cursor: pointer;
+  word-break: break-word;
+}
+
+.cof-opener:active {
+  transform: scale(0.99);
+}
+
+.cof-more {
+  align-self: center;
+  margin-top: 14px;
+  border: 0;
+  background: transparent;
+  color: var(--c-icon);
+  font-size: calc(12px*var(--app-text-scale,1));
+  cursor: pointer;
+  padding: 6px 10px;
+}
+
+/* 正在写：三颗点，全站一种「AI 在忙」的样子 */
+.cof-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+  color: var(--c-icon);
+  font-size: calc(12px*var(--app-text-scale,1));
+}
+
+.cof-typing-who {
+  font-weight: 600;
+}
+
+.cof-typing-dots {
+  display: inline-flex;
   align-items: center;
   gap: 3px;
 }
 
-.chat-offline-summary-fold > summary::-webkit-details-marker {
-  display: none;
-}
-
-.chat-offline-summary-fold > summary::before {
-  content: "›";
-  display: inline-block;
-  font-size: calc(14px*var(--app-text-scale,1));
-  line-height: 1;
-  transition: transform 0.16s ease;
-}
-
-.chat-offline-summary-fold[open] > summary::before {
-  transform: rotate(90deg);
-}
-
-.chat-offline-summary-content {
-  padding: 2px 10px 10px;
-  color: var(--c-icon);
-  font-size: calc(13px*var(--app-text-scale,1));
-  line-height: 1.8;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.chat-offline-generating {
-  padding: 10px 14px 12px 18px;
-  border-top: 1px solid color-mix(in srgb, var(--c-card-border) 22%, transparent);
-  color: var(--c-icon);
-  font-size: calc(13px*var(--app-text-scale,1));
-  line-height: 1.6;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.chat-offline-generating::before {
-  content: "";
+.cof-typing-dots i {
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background: var(--c-icon);
-  animation: offline-gen-pulse 1.4s ease-in-out infinite;
+  animation: cof-typing-pulse 1.4s ease-in-out infinite;
 }
 
-@keyframes offline-gen-pulse {
+.cof-typing-dots i:nth-child(2) { animation-delay: 0.18s; }
+.cof-typing-dots i:nth-child(3) { animation-delay: 0.36s; }
+
+@keyframes cof-typing-pulse {
   0%, 100% { opacity: 0.25; transform: scale(0.85); }
   50% { opacity: 0.9; transform: scale(1.1); }
+}
+
+/* 过去的约会：结束一场后记录在这里，只读回看 */
+.cof-logs {
+  margin-top: 40px;
+  border-top: 1px dashed color-mix(in srgb, var(--c-card-border) 70%, transparent);
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cof-logs-title {
+  font-size: calc(11px*var(--app-text-scale,1));
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--c-icon);
+}
+
+.cof-log {
+  border: 1px solid color-mix(in srgb, var(--c-card-border) 45%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--c-card) 50%, transparent);
+  overflow: hidden;
+}
+
+.cof-log-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  padding: 10px 14px;
+  font-size: calc(12px*var(--app-text-scale,1));
+  color: var(--c-text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.cof-log-toggle {
+  color: var(--c-icon);
+  font-size: calc(11px*var(--app-text-scale,1));
+}
+
+.cof-log-body {
+  padding: 4px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--c-card-border) 30%, transparent);
+}
+
+.cof-log-seg {
+  font-size: calc(13.5px*var(--app-text-scale,1));
+  line-height: 1.9;
+  color: var(--c-text-title);
+  word-break: break-word;
+}
+
+.cof-log-seg.is-me {
+  color: var(--c-text);
+  opacity: 0.85;
+}
+
+.cof-log-drop {
+  align-self: flex-start;
+  margin-top: 2px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--c-icon);
+  font-size: calc(11px*var(--app-text-scale,1));
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.cof-log-drop.is-armed {
+  color: #D64545;
+  background: rgba(214, 69, 69, 0.10);
+}
+
+/* 底栏整场菜单：从「整场」那颗键升起的一张就地菜单，不是弹窗 */
+.cof-acts-menu {
+  position: absolute;
+  right: 14px;
+  bottom: calc(100% + 10px);
+  min-width: 168px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--c-card) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c-card-border) 55%, transparent);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.14);
+  z-index: 30;
+}
+
+.cof-acts-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--c-text-title);
+  font-size: calc(13px*var(--app-text-scale,1));
+  padding: 9px 10px;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.cof-acts-item:active {
+  background: color-mix(in srgb, var(--c-icon) 8%, transparent);
+}
+
+.cof-acts-item.is-danger {
+  color: #D64545;
+}
+
+.cof-acts-item.is-armed {
+  background: rgba(214, 69, 69, 0.10);
+  font-weight: 700;
+}
+
+.cof-acts-item:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .chat-toast-overlay {
@@ -1293,6 +1553,18 @@
 .chat-msg-wrapper[data-role="system"],
 .chat-msg-wrapper[data-role="poke"] { justify-content: center; }
 .chat-msg-wrapper[data-active] { z-index: 45; }
+/* 长按菜单开着时：被长按的那条保持清晰，其余消息轻微退后（克制的变暗，不是全黑遮罩） */
+.chat-scroll-anchored[data-dimming] .chat-msg-wrapper,
+.chat-scroll-anchored[data-dimming] .chat-sys-msg {
+  opacity: 0.38;
+  filter: saturate(0.6);
+  transition: opacity 0.18s ease, filter 0.18s ease;
+}
+.chat-scroll-anchored[data-dimming] .chat-msg-wrapper[data-active],
+.chat-scroll-anchored[data-dimming] .chat-sys-msg[data-active] {
+  opacity: 1;
+  filter: none;
+}
 .chat-msg-wrapper[data-highlight] {
   outline: 2px solid var(--c-icon-active);
   outline-offset: 4px;
@@ -7191,29 +7463,13 @@
    消息渲染时会自动把引号内对话包进 <q>（见 message-bubble.tsx 的 wrapQuotedDialogue）。
    这里关掉浏览器默认附加的引号，保证默认无视觉变化；
    用户可在自定义 CSS 里用 q { ... } 单独给台词上样式。 */
-.chat-markdown q,
-.chat-offline-text q {
+.chat-markdown q {
   quotes: none;
   font-style: inherit;
 }
 .chat-markdown q::before,
-.chat-markdown q::after,
-.chat-offline-text q::before,
-.chat-offline-text q::after {
+.chat-markdown q::after {
   content: none;
-}
-
-/* ── 线下模式头像占位 ──
-   每条 .chat-offline-entry 的第一个子元素，默认隐藏、零布局占用。
-   自定义 CSS 里写 .chat-offline-avatar { display: block; ... } 即可显示。 */
-.chat-offline-avatar {
-  display: none;
-}
-.chat-offline-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
 }
 
 /* ── 流式生成预览 ──
@@ -7255,29 +7511,4 @@
 @keyframes chat-stream-cursor-blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
-}
-
-/* 线下模式生成中的实时正文预览：比普通文案稍浅，区分「未落库」 */
-.chat-offline-stream-preview {
-  margin-top: 8px;
-  max-height: 40vh;
-  overflow-y: auto;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: var(--c-input, rgba(0, 0, 0, 0.04));
-  color: var(--c-text, inherit);
-  text-align: left;
-  line-height: 1.6;
-  word-break: break-word;
-}
-
-.chat-offline-stream-preview .chat-stream-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 1em;
-  margin-left: 2px;
-  vertical-align: -0.15em;
-  border-radius: 1px;
-  background: currentColor;
-  animation: chat-stream-cursor-blink 1s steps(2, start) infinite;
 }

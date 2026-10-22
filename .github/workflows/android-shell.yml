@@ -67,7 +67,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION_NAME=$(grep -oP 'versionName\s+"\K[^"]+' android-shell/app/build.gradle)
+          # 版本号唯一来源：android-shell/version.properties（与 build.gradle、网站 app-version.json 一致）
+          VERSION_NAME=$(grep -oP '^versionName=\K.+' android-shell/version.properties | tr -d '\r')
           echo "versionName = $VERSION_NAME"
           # 有签名时输出 app-release.apk；没配签名时是 app-release-unsigned.apk
           APK=android-shell/app/build/outputs/apk/release/app-release.apk

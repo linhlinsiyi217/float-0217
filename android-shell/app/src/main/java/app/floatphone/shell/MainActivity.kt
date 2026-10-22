@@ -57,7 +57,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         val SITE_URL: String = BuildConfig.SITE_URL
-        const val VERSION: String = BuildConfig.VERSION_NAME
+        const val VERSION = "1.0.10"
         /** 来电接听等场景的站内深链（必须以 SITE_URL 开头，否则忽略） */
         const val EXTRA_OPEN_URL = "open_url"
         /** 外部 App（如桌宠）唤起本壳用的自定义 scheme：floatshell://open?url=<站内地址> */
@@ -415,7 +415,6 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         UpdateManager.check(this, webView)
     }
-
 
     /** singleTask：App 已在运行时（如全屏来电页接听）通过 onNewIntent 送达深链 */
     override fun onNewIntent(intent: Intent) {

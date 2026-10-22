@@ -1310,28 +1310,6 @@
   .phone-shell-wrap .phone-frame::after {
     display: none;
   }
-
-  .app-root.splash-root {
-    width: 100vw;
-    height: 100lvh;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    align-items: flex-start;
-    justify-content: flex-start;
-    overflow: hidden;
-    background: var(--c-page-body-bg);
-  }
-
-  .splash-shell-wrap {
-    width: var(--phone-screen-width);
-    transform-origin: top left;
-  }
-
-  .splash-shell-wrap .phone-case,
-  .splash-shell-wrap .phone-frame {
-    width: var(--phone-screen-width);
-  }
 }
 
 .settings-main-menu,

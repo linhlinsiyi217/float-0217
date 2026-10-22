@@ -1,18 +1,75 @@
 {
-  "versionCode": 12,
-  "versionName": "1.1.0",
-  "apkUrl": "https://github.com/linhlinsiyi217/float-0217/releases/download/v1.1.0/app-release.apk",
+  "versionCode": 10200,
+  "versionName": "1.2.0",
+  "apkUrl": "https://github.com/linhlinsiyi217/float-0217/releases/download/v1.2.0/app-release.apk",
   "force": false,
-  "webVersion": "2026-10-22-3",
-  "summary": "工坊精修为更纯粹的对话工作台；更新公告采用五色高饱和分类与紧凑摘要弹窗。",
+  "webVersion": "2026-10-22-4",
+  "summary": "这次重做了安卓壳的更新弹窗，没打开应用时也会提醒新版本；线下模式改成书页式正文，补全灵动岛、开屏锁屏和心声弹窗；工坊精修为更纯粹的对话工作台，更新公告采用分类标签与紧凑摘要弹窗。",
   "changes": [
-    { "type": "app", "title": "应用内更新", "detail": "新版本先弹窗，下载后拉起系统安装页，装完弹一次更新日志" },
-    { "type": "app", "title": "后台保活", "detail": "被划掉后自动拉起，首次打开引导设置" },
-    { "type": "app", "title": "自动打包", "detail": "推到 main 后 Actions 自动构建并发布 APK 到 Releases" },
-    { "type": "content", "title": "工坊工作台", "detail": "重排顶部控制组、工坊空间侧栏、文档流消息和底部输入栏，原有工坊能力继续可用" },
-    { "type": "content", "title": "思考过程", "detail": "生成时显示展开状态、动态点和计时，完成后收起为可回看的摘要" },
-    { "type": "content", "title": "工坊入口", "detail": "本机内容、技能、附件和仓库引用保留在输入栏的分层入口中" },
-    { "type": "content", "title": "更新分类", "detail": "更新日志同时显示影响范围与改动性质，使用五种高饱和颜色和对应浅色底" },
-    { "type": "content", "title": "更新弹窗", "detail": "默认只显示三条摘要，卡片限制高度并保留完整日志入口" }
+    {
+      "type": "app",
+      "title": "更新弹窗重做",
+      "detail": "白底按分类分组展示，去掉条数和字数限制"
+    },
+    {
+      "type": "app",
+      "title": "新版本通知",
+      "detail": "没打开应用时也定时检查，发「有新版本」系统通知"
+    },
+    {
+      "type": "content",
+      "title": "线下书页",
+      "detail": "线下正文像一本书：荧光带台词、就地编辑、重写候选、约会记录"
+    },
+    {
+      "type": "content",
+      "title": "心声弹窗",
+      "detail": "点 AI 头像弹出 TA 此刻的心声，读完即散"
+    },
+    {
+      "type": "content",
+      "title": "小弹窗只验证",
+      "detail": "聊天室各类小弹窗统一改为验证式交互，减少误触"
+    },
+    {
+      "type": "content",
+      "title": "工坊工作台",
+      "detail": "重排顶部控制组、工坊空间侧栏、文档流消息和底部输入栏，原有工坊能力继续可用"
+    },
+    {
+      "type": "content",
+      "title": "思考过程",
+      "detail": "生成时显示展开状态、动态点和计时，完成后收起为可回看的摘要"
+    },
+    {
+      "type": "content",
+      "title": "工坊入口",
+      "detail": "本机内容、技能、附件和仓库引用保留在输入栏的分层入口中"
+    },
+    {
+      "type": "content",
+      "title": "更新分类",
+      "detail": "更新日志同时显示影响范围与改动性质，小圆点配色与安卓壳弹窗一致"
+    },
+    {
+      "type": "content",
+      "title": "更新弹窗",
+      "detail": "默认只显示三条摘要，卡片限制高度并保留完整日志入口"
+    },
+    {
+      "type": "global",
+      "title": "灵动岛补全",
+      "detail": "真电量、分钟时钟、通知状态显示与开关"
+    },
+    {
+      "type": "global",
+      "title": "开屏与锁屏",
+      "detail": "开屏改为真实加载进度；新增模拟锁屏界面"
+    },
+    {
+      "type": "prompt",
+      "title": "线下写作参数",
+      "detail": "可为线下书页单独定文风、氛围与视角"
+    }
   ]
 }

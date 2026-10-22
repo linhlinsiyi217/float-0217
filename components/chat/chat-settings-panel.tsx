@@ -54,7 +54,7 @@ import { getSchemes, saveScheme, deleteScheme, type CSSScheme } from "@/lib/css-
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 import { KeyboardAutoSendDebounceItem } from "@/components/chat/keyboard-auto-send-debounce-item";
 import { SessionChatSoundsSection } from "@/components/chat/session-chat-sounds";
-import { ChevronRight, Image as ImageIcon, Video, Mic, UserMinus, UserPlus, Users, Pin, Ban, MessageSquare, Search, AlertCircle, Code, Laptop, Trash2, Smile, Sparkles, X, Play, Upload, Download, Save, FolderOpen, Camera, RefreshCw, Heart, type LucideIcon } from "lucide-react";
+import { ChevronRight, Image as ImageIcon, Video, Mic, UserMinus, UserPlus, Users, Pin, Ban, MessageSquare, Search, AlertCircle, Code, Laptop, Trash2, Smile, Sparkles, X, Play, Upload, Download, Save, FolderOpen, Camera, RefreshCw, Heart, BookOpen, type LucideIcon } from "lucide-react";
 import { BINDING_ACCENTS, CONTENT_APP_ACCENTS } from "@/lib/ui-accent-colors";
 import CSSSchemeBar from "@/components/ui/css-scheme-picker";
 import { ConfirmDialog } from "@/components/ui/modal";
@@ -455,6 +455,15 @@ export function ChatSettingsPanel({
         const sessions = loadChatSessions();
         const latest = sessions.find(s => s.id === session.id);
         return (latest as Record<string, unknown>)?.customCSS as string || session.customCSS || "";
+    });
+    // 线下（书页）专属：写作参数（文风/氛围/视角）与正文 CSS，分开存
+    const [editingOfflineStyle, setEditingOfflineStyle] = useState(false);
+    const [offlineStyleDraft, setOfflineStyleDraft] = useState({ style: "", mood: "", pov: "" });
+    const [offlineHtmlCard, setOfflineHtmlCard] = useState(session.offlineHtmlCardEnabled === true);
+    const [editingOfflineCSS, setEditingOfflineCSS] = useState(false);
+    const [offlineCSSDraft, setOfflineCSSDraft] = useState(() => {
+        const latest = loadChatSessions().find(s => s.id === session.id);
+        return latest?.offlineCustomCSS || "";
     });
 
     const [showConfirmClear, setShowConfirmClear] = useState(false);
@@ -890,6 +899,29 @@ export function ChatSettingsPanel({
         onOfflineHistoryCleared?.();
         setShowConfirmClearOffline(false);
     };
+
+    // 线下写作参数 / 正文 CSS 的编辑入口：打开时从存储里取最新值（防面板旧数据）
+    const openOfflineStyleEditor = () => {
+        const latest = loadChatSessions().find(s => s.id === session.id);
+        setOfflineStyleDraft({
+            style: latest?.offlineStyle?.style || "",
+            mood: latest?.offlineStyle?.mood || "",
+            pov: latest?.offlineStyle?.pov || "",
+        });
+        setEditingOfflineStyle(true);
+    };
+
+    const openOfflineCSSEditor = () => {
+        const latest = loadChatSessions().find(s => s.id === session.id);
+        setOfflineCSSDraft(latest?.offlineCustomCSS || "");
+        setEditingOfflineCSS(true);
+    };
+
+    const offlineStyleSummary = [
+        offlineStyleDraft.style.trim() ? `文风：${offlineStyleDraft.style.trim()}` : "",
+        offlineStyleDraft.mood.trim() ? `氛围：${offlineStyleDraft.mood.trim()}` : "",
+        offlineStyleDraft.pov.trim() ? `视角：${offlineStyleDraft.pov.trim()}` : "",
+    ].filter(Boolean).join(" · ");
 
     const handleClearToolHistory = () => {
         clearChatSessionToolHistory(session.id);
@@ -1504,6 +1536,43 @@ export function ChatSettingsPanel({
                                 />
                             </div>
                         </div>
+                        <button className="menu-item" onClick={openOfflineStyleEditor}>
+                            <ChatInfoIcon icon={BookOpen} color={BINDING_ACCENTS.preset} />
+                            <div className="menu-label-group">
+                                <span className="menu-label">线下写作参数</span>
+                                <span className="menu-desc">{offlineStyleSummary || "文风 / 氛围 / 视角，只影响线下书页"}</span>
+                            </div>
+                            <div className="menu-right">
+                                <ChevronRight size={16} />
+                            </div>
+                        </button>
+                        <div className="menu-item">
+                            <ChatInfoIcon icon={Sparkles} color={BINDING_ACCENTS.preset} />
+                            <div className="menu-label-group">
+                                <span className="menu-label">线下前端卡片</span>
+                                <span className="menu-desc">AI 输出整页 HTML 时渲染成卡片；默认关，开了走无脚本沙箱</span>
+                            </div>
+                            <div className="menu-right">
+                                <Toggle
+                                    checked={offlineHtmlCard}
+                                    onChange={c => {
+                                        setOfflineHtmlCard(c);
+                                        updateSession({ offlineHtmlCardEnabled: c });
+                                    }}
+                                />
+                            </div>
+                        </div>
+                        <button className="menu-item" onClick={openOfflineCSSEditor}>
+                            <ChatInfoIcon icon={Code} color={BINDING_ACCENTS.preset} />
+                            <div className="menu-label-group">
+                                <span className="menu-label">线下正文 CSS</span>
+                                <span className="menu-desc">只作用于线下书页，自动加作用域</span>
+                            </div>
+                            <div className="menu-right">
+                                {offlineCSSDraft && <span className="menu-desc mr-1">已设置</span>}
+                                <ChevronRight size={16} />
+                            </div>
+                        </button>
                         <button className="menu-item" onClick={() => setShowScreenEffects(true)}>
                             <ChatInfoIcon icon={Sparkles} color={BINDING_ACCENTS.preset} />
                             <div className="menu-label-group">
@@ -2063,6 +2132,94 @@ export function ChatSettingsPanel({
                                 <button type="button" className="ui-btn ui-btn-outline flex-1" onClick={() => setCustomCSS(CHAT_SESSION_CSS_EXAMPLE)}>示例</button>
                                 <button type="button" className="ui-btn ui-btn-outline flex-1" onClick={() => setCustomCSS("")}>清除</button>
                                 <button type="button" className="ui-btn ui-btn-soft-action flex-1" onClick={() => { updateSession({ customCSS }); window.dispatchEvent(new CustomEvent("chat-session-css-updated", { detail: { sessionId: session.id, css: customCSS } })); setEditingCSS(false); }}>应用</button>
+                            </div>
+                        </div>
+                    </PageShell>
+                </div>
+                </div>
+            )}
+
+            {/* Sub-page: 线下写作参数 */}
+            {editingOfflineStyle && (
+                <div style={{ position: "absolute", inset: 0, zIndex: 9999, background: "#ffffff" }}>
+                <div style={{ position: "absolute", inset: 0, background: "var(--c-page-body-bg)" }}>
+                    <PageShell title="线下写作参数" onBack={() => setEditingOfflineStyle(false)}>
+                        <div className="theme-section-page flex flex-col gap-4">
+                            <p className="ts-13 text-[var(--c-text)] leading-relaxed">
+                                只影响线下（书页）模式，写作时作为附加要求发给模型。全部留空表示不加。
+                            </p>
+                            <label className="flex flex-col gap-1">
+                                <span className="ts-13 text-[var(--c-text)]">文风</span>
+                                <input
+                                    className="ui-input"
+                                    value={offlineStyleDraft.style}
+                                    placeholder="例：细腻文艺，重氛围与五感"
+                                    onChange={e => setOfflineStyleDraft(d => ({ ...d, style: e.target.value }))}
+                                />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                                <span className="ts-13 text-[var(--c-text)]">氛围</span>
+                                <input
+                                    className="ui-input"
+                                    value={offlineStyleDraft.mood}
+                                    placeholder="例：暧昧拉扯，节奏慢"
+                                    onChange={e => setOfflineStyleDraft(d => ({ ...d, mood: e.target.value }))}
+                                />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                                <span className="ts-13 text-[var(--c-text)]">视角</span>
+                                <input
+                                    className="ui-input"
+                                    value={offlineStyleDraft.pov}
+                                    placeholder="例：第三人称；或第一人称「我」"
+                                    onChange={e => setOfflineStyleDraft(d => ({ ...d, pov: e.target.value }))}
+                                />
+                            </label>
+                            <div className="flex gap-2 mt-1">
+                                <button type="button" className="ui-btn ui-btn-outline flex-1" onClick={() => setOfflineStyleDraft({ style: "", mood: "", pov: "" })}>清空</button>
+                                <button
+                                    type="button"
+                                    className="ui-btn ui-btn-soft-action flex-1"
+                                    onClick={() => {
+                                        updateSession({ offlineStyle: {
+                                            style: offlineStyleDraft.style.trim() || undefined,
+                                            mood: offlineStyleDraft.mood.trim() || undefined,
+                                            pov: offlineStyleDraft.pov.trim() || undefined,
+                                        } });
+                                        setEditingOfflineStyle(false);
+                                    }}
+                                >保存</button>
+                            </div>
+                        </div>
+                    </PageShell>
+                </div>
+                </div>
+            )}
+
+            {/* Sub-page: 线下正文 CSS（与线上自定义 CSS 分开存，只作用于线下书页） */}
+            {editingOfflineCSS && (
+                <div style={{ position: "absolute", inset: 0, zIndex: 9999, background: "#ffffff" }}>
+                <div style={{ position: "absolute", inset: 0, background: "var(--c-page-body-bg)" }}>
+                    <PageShell title="线下正文 CSS" onBack={() => setEditingOfflineCSS(false)}>
+                        <div className="theme-section-page">
+                            <p className="ts-13 text-[var(--c-text)] mb-3 leading-relaxed">
+                                只作用于线下书页，应用时会自动套上线下页作用域，不会影响线上聊天。
+                            </p>
+                            <textarea
+                                className="ui-textarea font-mono ts-13 leading-relaxed flex-1"
+                                style={{ minHeight: 280, resize: "none", scrollbarWidth: "none" }}
+                                placeholder={".cof-text {\n  font-size: 16px;\n}\n\n.cof-hl {\n  background: rgba(217,165,20,.22);\n}"}
+                                value={offlineCSSDraft}
+                                onChange={e => setOfflineCSSDraft(e.target.value)}
+                                spellCheck={false}
+                            />
+                            <div className="flex gap-2 mt-3">
+                                <button type="button" className="ui-btn ui-btn-outline flex-1" onClick={() => setOfflineCSSDraft("")}>清除</button>
+                                <button
+                                    type="button"
+                                    className="ui-btn ui-btn-soft-action flex-1"
+                                    onClick={() => { updateSession({ offlineCustomCSS: offlineCSSDraft }); setEditingOfflineCSS(false); }}
+                                >应用</button>
                             </div>
                         </div>
                     </PageShell>

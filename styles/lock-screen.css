@@ -1,0 +1,274 @@
+/* ===== 模拟锁屏 ===== */
+/* 两处共用：layout 内联脚本注入的静态首帧 DOM（跳过开屏动画时锁屏就是第一帧）
+   与 React 的锁屏层。类名与结构保持一致，接班时才不会闪。 */
+
+.lock-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: hidden;
+  color: #1a1a1a;
+  background:
+    radial-gradient(120% 90% at 50% 0%, #f6f7fa 0%, #edeff5 52%, #e2e6f0 100%);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  transition: transform 0.36s cubic-bezier(0.32, 0.72, 0.24, 1), opacity 0.36s ease;
+  will-change: transform;
+}
+
+.lock-layer.is-gone {
+  transform: translate3d(0, -100%, 0);
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.lock-wall {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+.lock-layer.has-wall {
+  color: #ffffff;
+}
+
+.lock-layer.has-wall .lock-wall {
+  opacity: 1;
+}
+
+/* 壁纸上压一层柔和暗部，保证白字读得清；没有壁纸时这层不出现 */
+.lock-layer.has-wall::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(10, 14, 28, 0.34) 0%, rgba(10, 14, 28, 0.06) 34%, rgba(10, 14, 28, 0.02) 62%, rgba(10, 14, 28, 0.3) 100%);
+  pointer-events: none;
+}
+
+.lock-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  margin-top: max(13vh, 84px);
+  transition: transform 0.26s cubic-bezier(0.32, 0.72, 0.24, 1), opacity 0.26s ease;
+}
+
+/* 键盘顶起：时钟让位往上走，键盘从底下补位 —— 同一个方向，才不突兀 */
+.lock-layer.is-pad .lock-body {
+  transform: translate3d(0, -72px, 0);
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+/* 跟手期间关过渡，不然每一步都被过渡拖慢；松手撤掉类，弹回才顺滑 */
+.lock-layer.is-dragging,
+.lock-layer.is-dragging .lock-body {
+  transition: none;
+}
+
+.lock-time {
+  font-family: "Instrument Serif", Georgia, "Times New Roman", serif;
+  font-weight: 400;
+  font-size: clamp(72px, 21vw, 108px);
+  line-height: 1;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.lock-date {
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  opacity: 0.72;
+}
+
+.lock-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: max(calc(30px + env(safe-area-inset-bottom, 0px)), 34px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
+  opacity: 0.62;
+  pointer-events: none;
+}
+
+.lock-hint svg {
+  width: 16px;
+  height: 16px;
+  animation: lock-hint-float 2.4s ease-in-out infinite;
+}
+
+@keyframes lock-hint-float {
+  0%, 100% { transform: translateY(2px); opacity: 0.55; }
+  50% { transform: translateY(-2px); opacity: 1; }
+}
+
+/* ===== 数字键盘 ===== */
+
+.lock-pad {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  padding: 22px 26px calc(26px + env(safe-area-inset-bottom, 0px));
+  border-radius: 28px 28px 0 0;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 -18px 44px rgba(20, 27, 52, 0.16);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  opacity: 0;
+  transform: translate3d(0, 26px, 0);
+  transition: opacity 0.24s ease, transform 0.24s cubic-bezier(0.32, 0.72, 0.24, 1);
+}
+
+.lock-layer.has-wall .lock-pad {
+  background: rgba(22, 26, 38, 0.5);
+  color: #fff;
+}
+
+.lock-pad.is-in {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.lock-pad-head {
+  text-align: center;
+  transition: opacity 0.15s ease;
+}
+
+.lock-pad-title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.lock-pad-sub {
+  margin-top: 3px;
+  font-size: 12px;
+  opacity: 0.62;
+}
+
+.lock-dots {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 16px 0 18px;
+}
+
+.lock-dots i {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  opacity: 0.42;
+  transition: background 0.15s ease, opacity 0.15s ease, transform 0.15s ease;
+}
+
+.lock-dots i.is-on {
+  background: currentColor;
+  opacity: 0.92;
+  transform: scale(1.12);
+}
+
+.lock-dots.is-bad {
+  animation: lock-shake 0.46s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+@keyframes lock-shake {
+  0%, 100% { transform: translateX(0); }
+  16% { transform: translateX(-11px); }
+  34% { transform: translateX(9px); }
+  52% { transform: translateX(-6px); }
+  70% { transform: translateX(5px); }
+  86% { transform: translateX(-3px); }
+}
+
+.lock-keys {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  max-width: 320px;
+  margin: 0 auto;
+}
+
+.lock-key,
+.lock-key-fn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 62px;
+  padding: 0;
+  border: none;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.86);
+  color: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(20, 27, 52, 0.07);
+  transition: transform 0.12s ease, background 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.lock-layer.has-wall .lock-key,
+.lock-layer.has-wall .lock-key-fn {
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: none;
+}
+
+.lock-key:active,
+.lock-key-fn:active {
+  transform: scale(0.94);
+  background: rgba(23, 75, 255, 0.1);
+}
+
+.lock-key b {
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.lock-key s {
+  margin-top: 3px;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-decoration: none;
+  opacity: 0.5;
+}
+
+.lock-key-fn {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  background: transparent;
+  box-shadow: none;
+  opacity: 0.78;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lock-layer,
+  .lock-body,
+  .lock-pad {
+    transition-duration: 0.01ms;
+  }
+  .lock-hint svg {
+    animation: none;
+  }
+}

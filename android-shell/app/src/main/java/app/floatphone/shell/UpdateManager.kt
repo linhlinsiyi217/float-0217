@@ -1,6 +1,9 @@
 package app.floatphone.shell
 
 import android.app.Activity
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -10,6 +13,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.webkit.WebView
 import android.widget.Toast
+import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import org.json.JSONArray
 import org.json.JSONObject
@@ -22,16 +26,14 @@ object UpdateManager {
     // 版本信息文件地址（网站 public 文件夹里的 app-version.json）
     const val VERSION_URL = "https://float-0217.vercel.app/app-version.json"
     private const val SP = "float_update"
-    private const val LOG_MAX_LINES = 4      // 更新内容最多几条（旧 changelog 兜底用）
-    private const val LOG_MAX_CHANGES = 8    // 分类条目最多几条
-    private const val TITLE_MAX_CHARS = 20   // 条目小标题最多几个字
-    private const val DETAIL_MAX_CHARS = 36  // 条目说明最多几个字
+    private const val DEFAULT_SUMMARY = "修复了一些问题，体验更稳定"
+    // 「有新版本」系统通知用的渠道与通知 id
+    private const val CH_UPDATE = "update_notify"
+    private const val NOTIFY_ID = 2001
 
     @Volatile private var busy = false
     private var current: Sheet? = null
     private val main = Handler(Looper.getMainLooper())
-
-    data class Change(val type: String, val title: String, val detail: String)
 
     data class Info(
         val code: Int,
@@ -57,75 +59,57 @@ object UpdateManager {
 
     private fun apkFile(c: Context) = File(File(c.cacheDir, "updates"), "update.apk")
 
-    // 把一条文字压短
-    private fun shorten(s: String, max: Int): String {
-        val t = s.trim()
-        return if (t.length > max) t.take(max) + "…" else t
-    }
+    // ---------- 更新内容的读取与保存（内容不删减，没有条数和字数限制） ----------
 
-    // 解析 changes 数组（新格式：带分类）；没有就用旧 changelog 数组，全归为页面内容
+    // 解析 changes 数组（带分类）；没有就用旧 changelog 数组，全当作页面内容类。
+    // type 只认 app / content / global / prompt / fix，其他值显示成「其他」。
     private fun parseChanges(j: JSONObject): List<Change> {
+        val out = ArrayList<Change>()
         val arr = j.optJSONArray("changes")
         if (arr != null) {
-            return (0 until minOf(arr.length(), LOG_MAX_CHANGES)).mapNotNull { k ->
-                val o = arr.optJSONObject(k) ?: return@mapNotNull null
-                val title = shorten(o.optString("title"), TITLE_MAX_CHARS)
-                if (title.isEmpty()) return@mapNotNull null
-                Change(
-                    ChangeTypes.normalize(o.optString("type", ChangeTypes.CONTENT)),
-                    title,
-                    shorten(o.optString("detail"), DETAIL_MAX_CHARS),
-                )
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                out.add(Change(o.optString("type", "content"), o.optString("title"), o.optString("detail")))
             }
+        } else {
+            // 兼容旧写法："changelog": ["…", "…"]，当作"页面内容"类
+            val old = j.optJSONArray("changelog")
+            if (old != null) for (i in 0 until old.length()) out.add(Change("content", old.optString(i), ""))
         }
-        val old = j.optJSONArray("changelog") ?: return emptyList()
-        return (0 until minOf(old.length(), LOG_MAX_LINES))
-            .map { Change(ChangeTypes.CONTENT, shorten(old.getString(it), TITLE_MAX_CHARS), "") }
-            .filter { it.title.isNotEmpty() }
+        return out.filter { it.title.isNotBlank() }
     }
 
-    // 把平铺的分类条目按 ChangeTypes 顺序分组成
-    private fun groupChanges(changes: List<Change>): List<ChangeGroup> =
-        ChangeTypes.ORDER.mapNotNull { type ->
-            val items = changes.filter { it.type == type }
-                .map { ChangeItem(it.title, it.detail) }
-            if (items.isEmpty()) null else ChangeGroup(type, items)
-        }
+    private fun changesToJson(l: List<Change>): String {
+        val arr = JSONArray()
+        for (c in l) arr.put(JSONObject().put("type", c.type).put("title", c.title).put("detail", c.detail))
+        return arr.toString()
+    }
+
+    private fun changesFromJson(s: String?): List<Change> {
+        if (s.isNullOrBlank()) return emptyList()
+        return try {
+            val arr = JSONArray(s)
+            (0 until arr.length()).mapNotNull { idx ->
+                val o = arr.optJSONObject(idx) ?: return@mapNotNull null
+                Change(o.optString("type", "content"), o.optString("title"), o.optString("detail"))
+            }
+        } catch (_: Exception) { emptyList() }
+    }
 
     // 有没有「应用」类条目：有就得装新 APK，不是刷新页面能解决的
-    private fun hasAppChange(changes: List<Change>) =
-        changes.any { it.type == ChangeTypes.APP }
+    private fun hasAppChange(changes: List<Change>) = changes.any { it.type == "app" }
 
     private fun installHint(hasApp: Boolean) =
-        if (hasApp) "包含应用更新，需要安装新版本"
+        if (hasApp) "包含应用更新，需要安装"
         else "页面更新，无需安装，刷新即可"
 
     private fun changesOrDefault(changes: List<Change>): List<Change> =
         if (changes.isEmpty())
-            listOf(Change(ChangeTypes.CONTENT, "修复了一些问题，体验更稳定", ""))
+            listOf(Change("content", "修复了一些问题，体验更稳定", ""))
         else changes
 
-    private fun changesToJson(changes: List<Change>): JSONArray {
-        val arr = JSONArray()
-        for (c in changes) {
-            arr.put(JSONObject().put("type", c.type).put("title", c.title).put("detail", c.detail))
-        }
-        return arr
-    }
+    // ---------- 弹窗统一管理：同一时间只显示一个 ----------
 
-    private fun changesFromJson(s: String): List<Change> = try {
-        val arr = JSONArray(s)
-        (0 until arr.length()).mapNotNull { k ->
-            val o = arr.optJSONObject(k) ?: return@mapNotNull null
-            Change(
-                ChangeTypes.normalize(o.optString("type", ChangeTypes.CONTENT)),
-                o.optString("title"),
-                o.optString("detail"),
-            )
-        }
-    } catch (_: Exception) { emptyList() }
-
-    // 统一入口：同一时间只显示一个弹窗
     fun open(s: Sheet) {
         current?.dismiss()
         current = s
@@ -169,23 +153,73 @@ object UpdateManager {
                         // 第一次安装：不弹窗，只记录
                         sp(a).edit().putString("web_version", i.webVersion).apply()
                     } else if (saved != i.webVersion) {
-                        showNewWeb(a, i, webView)
+                        // 网页内容更新：不弹原生窗——网页端有自己的更新公告弹窗，
+                        // 两边都弹会叠窗。记下版本后直接刷新页面，公告随新页面一起出来
+                        sp(a).edit().putString("web_version", i.webVersion).apply()
+                        webView.clearCache(true)
+                        webView.post { webView.reload() }
                     }
                 }
             }
         }
     }
 
-    // ========== 2. 发现新安装包 ==========
+    // ========== 1b. 后台检查（App 没打开时）：发现新版本发系统通知 ==========
+    // 由每 15 分钟的 KeepAliveJobService 调用。点击通知打开应用，
+    // onResume 里的 check() 会自动弹出更新窗。通知失败（如安卓 13 未授权）静默忽略。
+    fun checkInBackground(c: Context) {
+        thread {
+            var code = 0
+            var name = ""
+            try {
+                val conn = URL("$VERSION_URL?t=${System.currentTimeMillis()}")
+                    .openConnection() as HttpURLConnection
+                conn.connectTimeout = 8000
+                conn.readTimeout = 8000
+                val j = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+                code = j.getInt("versionCode")
+                name = j.optString("versionName")
+            } catch (_: Exception) { return@thread }
+            if (code <= installedCode(c)) return@thread
+            // 同一个版本只提醒一次
+            val p = sp(c)
+            if (p.getInt("notified_code", 0) >= code) return@thread
+            p.edit().putInt("notified_code", code).apply()
+            try {
+                val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                if (Build.VERSION.SDK_INT >= 26) {
+                    nm.createNotificationChannel(
+                        NotificationChannel(CH_UPDATE, "新版本提醒", NotificationManager.IMPORTANCE_DEFAULT)
+                    )
+                }
+                val open = c.packageManager.getLaunchIntentForPackage(c.packageName) ?: return@thread
+                val n = NotificationCompat.Builder(c, CH_UPDATE)
+                    .setSmallIcon(R.drawable.ic_stat)
+                    .setContentTitle(if (name.isNotEmpty()) "新版本 $name" else "发现新版本")
+                    .setContentText("点击进入应用查看并更新")
+                    .setAutoCancel(true)
+                    .setContentIntent(
+                        PendingIntent.getActivity(
+                            c, NOTIFY_ID, open,
+                            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                        )
+                    )
+                    .build()
+                nm.notify(NOTIFY_ID, n)
+            } catch (_: Exception) {}
+        }
+    }
+
+    // ========== 2. 发现新安装包（显示全部分类）==========
     private fun showNewApk(a: Activity, i: Info) {
         val title = if (i.name.isNotEmpty()) "新版本 ${i.name}" else "发现新版本"
         val changes = changesOrDefault(i.changes)
         val s = Sheet(a).handle()
             .label("NEW VERSION")
             .title(title)
-            .text(i.summary)
+            .summary(i.summary.ifBlank { DEFAULT_SUMMARY })
             .note(installHint(hasAppChange(changes)))
-            .changes(groupChanges(changes))
+            .changes(changes)
             .primary("立即更新") { startApk(a, i) }
         if (i.force) s.cancelable(false) else s.secondary("稍后再说") { closeCurrent() }
         open(s)
@@ -202,7 +236,7 @@ object UpdateManager {
         sp(a).edit()
             .putInt("pending_code", i.code)
             .putString("pending_summary", i.summary)
-            .putString("pending_changes", changesToJson(changesOrDefault(i.changes)).toString())
+            .putString("pending_changes", changesToJson(changesOrDefault(i.changes)))
             .apply()
 
         val s = Sheet(a).handle()
@@ -291,30 +325,9 @@ object UpdateManager {
         }
     }
 
-    // ========== 5. 网页内容更新（不用重装：只显示非 app 类条目）==========
-    private fun showNewWeb(a: Activity, i: Info, w: WebView) {
-        val webChanges = i.changes.filter { it.type != ChangeTypes.APP }
-        val s = Sheet(a).handle()
-            .label("NEW CONTENT")
-            .title("页面内容有更新")
-            .text(i.summary)
-            .note(installHint(false))
-            .changes(groupChanges(changesOrDefault(webChanges)))
-            .primary("立即更新") {
-                w.clearCache(true)
-                sp(a).edit().putString("web_version", i.webVersion).apply()
-                val r = Sheet(a).handle()
-                    .label("UPDATE READY")
-                    .title("页面已经\n更新好了")
-                    .progress(100)
-                    .hints("下载完成", "刷新后生效")
-                    .primary("立即刷新") { w.reload(); closeCurrent() }
-                    .ghost("下次打开再说") { closeCurrent() }
-                open(r)
-            }
-            .secondary("稍后再说") { closeCurrent() }
-        open(s)
-    }
+    // ========== 5. 网页内容更新 ==========
+    // （原 showNewWeb 原生弹窗已移除：网页内容更新由网页端的更新公告弹窗统一展示，
+    //   壳只负责发现 webVersion 变化后清缓存刷新，避免两个弹窗叠着弹。）
 
     // ========== 6. 新版本第一次打开：更新日志（onCreate 里调用）==========
     fun showChangelogIfNeeded(a: Activity) {
@@ -327,20 +340,16 @@ object UpdateManager {
             return
         }
         if (now > last) {
-            val pendingCode = p.getInt("pending_code", 0)
-            val saved = if (pendingCode == now)
-                changesFromJson(p.getString("pending_changes", "") ?: "")
-            else emptyList()
-            val savedSummary = if (pendingCode == now) p.getString("pending_summary", "") ?: "" else ""
+            val hasSaved = p.getInt("pending_code", 0) == now
+            val sum = if (hasSaved) p.getString("pending_summary", "") ?: "" else ""
+            val ch = if (hasSaved) changesFromJson(p.getString("pending_changes", null)) else emptyList()
             p.edit().putInt("last_seen_code", now).apply()
             try { apkFile(a).delete() } catch (_: Exception) {}
-            val changes = changesOrDefault(saved)
             val s = Sheet(a).handle()
                 .label("WHAT'S NEW")
                 .title("已更新到\n${installedName(a)}")
-                .text(savedSummary)
-                .note(installHint(false))
-                .changes(groupChanges(changes))
+                .summary(sum.ifBlank { DEFAULT_SUMMARY })
+                .changes(changesOrDefault(ch))
                 .primary("知道了") { closeCurrent() }
             open(s)
         }

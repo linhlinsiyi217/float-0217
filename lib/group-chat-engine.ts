@@ -1167,6 +1167,17 @@ export async function generateGroupOfflineChatCompletion(
             disableTools: true,
         },
     );
+    // 线下写作参数（文风/氛围/视角）：会话里设置了才注入，只约束正文写法
+    const offlineStyleParts: string[] = [];
+    if (session.offlineStyle?.style?.trim()) offlineStyleParts.push(`文风：${session.offlineStyle.style.trim()}`);
+    if (session.offlineStyle?.mood?.trim()) offlineStyleParts.push(`氛围：${session.offlineStyle.mood.trim()}`);
+    if (session.offlineStyle?.pov?.trim()) offlineStyleParts.push(`叙事视角：${session.offlineStyle.pov.trim()}`);
+    if (offlineStyleParts.length) {
+        llmMessages.push({
+            role: "system",
+            content: `线下正文写作要求（只影响正文写法，不要在正文里复述这些条目）：\n${offlineStyleParts.join("\n")}`,
+        });
+    }
     const summaryTag = preset?.story_summary_tag?.trim() || "summary";
     const thinkingTag = preset?.thinking_tag?.trim() || "thinking";
     const offlineTagEnabled = preset?.offline_thinking_enabled === true;
