@@ -6423,3 +6423,213 @@
   gap: 6px;
   padding: 0 10px 8px;
 }
+
+/* ══════════════════════════════════════════
+   工坊使用教程（设置 → 工坊 → 使用教程）
+   页面框架复用上面的 identity-editor-* 类；
+   这里只补内容区：分组折叠、工具卡片、徽标。
+   ══════════════════════════════════════════ */
+.workshop-tut-body {
+  gap: 4px;
+  padding-bottom: 40px;
+}
+
+.workshop-tut-section {
+  margin-top: 12px;
+}
+
+.workshop-tut-section-title {
+  margin: 0 2px 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--c-icon);
+}
+
+.workshop-tut-section-note {
+  margin: -4px 2px 8px;
+  font-size: calc(11.5px*var(--app-text-scale,1));
+  color: var(--c-icon);
+}
+
+.workshop-tut-prose {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--c-input);
+}
+
+.workshop-tut-prose p {
+  margin: 0;
+  font-size: calc(13px*var(--app-text-scale,1));
+  line-height: 1.75;
+  color: var(--c-text);
+}
+
+.workshop-tut-prose strong {
+  font-weight: 700;
+  color: var(--c-text-title);
+}
+
+/* 上手步骤：绿色序号圆点 */
+.workshop-tut-steps {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--c-input);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  list-style: none;
+}
+
+.workshop-tut-steps li {
+  display: flex;
+  gap: 10px;
+  font-size: calc(13px*var(--app-text-scale,1));
+  line-height: 1.65;
+  color: var(--c-text);
+}
+
+.workshop-tut-step-no {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: rgba(52, 199, 89, 0.14);
+  color: #1f8a3d;
+  font-size: 11.5px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+/* 折叠组 */
+.workshop-tut-section-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 16px;
+  border: none;
+  border-radius: 16px;
+  background: var(--c-input);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.workshop-tut-section-head:active { transform: scale(0.985); }
+
+.workshop-tut-section-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.workshop-tut-section-head .workshop-tut-section-title {
+  margin: 0;
+  font-size: calc(13.5px*var(--app-text-scale,1));
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--c-text-title);
+  font-weight: 600;
+}
+
+.workshop-tut-section-subtitle {
+  font-size: calc(11.5px*var(--app-text-scale,1));
+  color: var(--c-icon);
+  line-height: 1.5;
+}
+
+.workshop-tut-chevron {
+  flex-shrink: 0;
+  color: var(--c-icon);
+  transition: transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.workshop-tut-chevron.is-open { transform: rotate(180deg); }
+
+.workshop-tut-section-body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: workshop-tut-fade-in 0.24s ease-out both;
+}
+
+@keyframes workshop-tut-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 工具卡片 */
+.workshop-tut-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.workshop-tut-card {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--c-input);
+}
+
+.workshop-tut-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.workshop-tut-name {
+  font-size: calc(13.5px*var(--app-text-scale,1));
+  font-weight: 700;
+  color: var(--c-text-title);
+}
+
+.workshop-tut-badge {
+  flex-shrink: 0;
+  padding: 2.5px 9px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.workshop-tut-badge.is-read {
+  background: rgba(120, 120, 128, 0.12);
+  color: var(--c-icon);
+}
+
+/* 会改东西的用绿色标出来：这是全站的主高亮色，不是危险色 */
+.workshop-tut-badge.is-write {
+  background: rgba(52, 199, 89, 0.14);
+  color: #1f8a3d;
+}
+
+.workshop-tut-desc {
+  margin: 0;
+  font-size: calc(12.5px*var(--app-text-scale,1));
+  line-height: 1.7;
+  color: var(--c-text);
+}
+
+.workshop-tut-faq-icon {
+  color: var(--c-icon);
+  flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workshop-tut-section-body { animation: none; }
+  .workshop-tut-chevron,
+  .workshop-tut-section-head { transition: none; }
+}
