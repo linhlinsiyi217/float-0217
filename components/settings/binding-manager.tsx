@@ -488,7 +488,7 @@ export function BindingManager() {
             case "embeddingApiConfigId": return "用于语义向量召回";
             case "mascotApiConfigId": return "用于小卷对话与工具调用";
             case "reasoningTranslateApiConfigId": return "用于翻译思考过程（思维链）内容";
-            case "qaApiConfigId": return "用于工坊答疑、诊断与内容开发";
+            case "qaApiConfigId": return "用于 Claude 答疑、诊断与内容开发";
         }
     };
 
@@ -498,7 +498,7 @@ export function BindingManager() {
             case "embeddingApiConfigId": return "向量召回 API";
             case "mascotApiConfigId": return "小卷助手 API";
             case "reasoningTranslateApiConfigId": return "思维链翻译 API";
-            case "qaApiConfigId": return "工坊 API";
+            case "qaApiConfigId": return "Claude API";
         }
     };
 
@@ -1063,7 +1063,7 @@ export function BindingManager() {
                             {renderAuxSelect("memorySummaryApiConfigId", "记忆总结 API")}
                             {renderAuxSelect("embeddingApiConfigId", "向量召回 API")}
                             {renderAuxSelect("mascotApiConfigId", "小卷助手 API")}
-                            {renderAuxSelect("qaApiConfigId", "工坊 API")}
+                            {renderAuxSelect("qaApiConfigId", "Claude API")}
                             {renderAuxSelect("reasoningTranslateApiConfigId", "思维链翻译 API")}
                         </div>
                     </section>

@@ -483,6 +483,8 @@ export function formatCharacterRelationsForPrompt(characterId: string): string {
             userIdentity?.gender ? `性别：${userIdentity.gender}` : "",
             userIdentity?.age ? `年龄：${userIdentity.age}` : "",
             userIdentity?.occupation ? `职业：${userIdentity.occupation}` : "",
+            userIdentity?.nickname?.trim() ? `昵称：${userIdentity.nickname.trim()}` : "",
+            userIdentity?.signature?.trim() ? `签名：${userIdentity.signature.trim()}` : "",
             userIdentity?.bio?.trim() ? `简介：${userIdentity.bio.trim()}` : "",
             userIdentity?.customSettings?.trim() ? `补充设定：${userIdentity.customSettings.trim()}` : "",
         ].filter(Boolean).join("；");

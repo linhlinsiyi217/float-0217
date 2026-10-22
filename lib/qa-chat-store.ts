@@ -515,17 +515,27 @@ export function getQaEditAndResendBlockReason(sessionId: string, msgId: string):
     if (message.role !== "user") return "只有用户消息可以修改后重新发送。";
     if (!userMessageTurnId(session, messageIndex)) return "这条消息缺少完整的回复轮次，无法安全重新发送。";
 
-    const turnIds = resendTurnIds(session, messageIndex);
-    const visibleSideEffects = session.messages.slice(messageIndex + 1).some((candidate) =>
-        candidate.role === "assistant" && (Boolean(candidate.tools?.length) || Boolean(candidate.pendingCommit)),
-    );
-    const contextSideEffects = sessionContext(session).some((entry) =>
-        Boolean(entry.turn && turnIds.has(entry.turn) && (entry.role === "tool" || entry.toolCalls?.length)),
-    );
-    if (visibleSideEffects || contextSideEffects) {
-        return "后续回复已经调用工具或产生实际操作，不能安全回滚；你仍可以保存文字修改。";
-    }
+    // 有还没落定的仓库提交（等待确认 / 正在写入 / 正在撤销）时不允许截断重发；
+    // 已落地的提交不再硬性阻止——界面会先问用户"撤销还是保留"。
+    const inFlightCommit = session.messages.slice(messageIndex + 1).some((candidate) => {
+        const status = candidate.pendingCommit?.status;
+        return status === "pending" || status === "applying" || status === "reverting";
+    });
+    if (inFlightCommit) return "这条消息之后有还没处理完的仓库提交，先等它处理完再修改重发。";
     return null;
+}
+
+/** 这条消息之后（重发时将被截断的回复里）有几个已提交到仓库的改动 */
+export function countQaEditResendAppliedCommits(sessionId: string, msgId: string): number {
+    const session = sessions.find((candidate) => candidate.id === sessionId);
+    if (!session) return 0;
+    const messageIndex = session.messages.findIndex((message) => message.id === msgId);
+    if (messageIndex < 0) return 0;
+    return session.messages.slice(messageIndex).filter((candidate) =>
+        candidate.role === "assistant"
+        && candidate.pendingCommit?.status === "applied"
+        && Boolean(candidate.pendingCommit.result?.sha),
+    ).length;
 }
 
 /** 修改已发送消息，并同步模型侧上下文。 */
@@ -586,13 +596,14 @@ export function updateQaMessageContent(
     return { ok: true };
 }
 
-/** 修改用户消息并重新生成。只允许截断没有工具副作用的纯对话。 */
+/** 修改用户消息并重新生成。被截断回复里已提交到仓库的改动由用户决定撤销或保留，不再自动回退。 */
 export async function editAndResendQaMessage(
     sessionId: string,
     msgId: string,
     content: string,
     images?: string[],
     files?: QaTextAttachment[],
+    options?: { commitDecision?: "revert" | "keep" },
 ): Promise<QaMessageEditResult> {
     if (!content.trim() && !images?.length && !files?.length) return { ok: false, reason: "消息内容不能为空。" };
     const filesError = validateQaTextAttachments(files);
@@ -604,15 +615,38 @@ export async function editAndResendQaMessage(
     if (!session || activeSessionId !== sessionId) return { ok: false, reason: "当前会话已经切换，请重新操作。" };
     const messageIndex = session.messages.findIndex((message) => message.id === msgId);
     if (messageIndex < 0) return { ok: false, reason: "消息已不存在。" };
-    // 扫描被截断的消息中已 applied 的 GitHub Commit，并自动尝试回退
-    const discardedMessages = session.messages.slice(messageIndex);
-    for (const msg of discardedMessages) {
-        if (msg.pendingCommit?.status === "applied" && msg.pendingCommit.result?.sha) {
-            try {
-                // await 顺序执行，防止并发撤销报错，并保留记录不自动覆盖
-                await revertQaCommit(loadQaGithubConfig()!, msg.pendingCommit.result);
-            } catch {
-                // ignore
+
+    // 用户选择"撤销"时才动仓库：从新到旧逐个回退，任何一个失败都明确报错并停止重发。
+    // 回退成功的消息标记为 reverted，重试时不会重复回退。
+    if (options?.commitDecision === "revert") {
+        const appliedCommits = session.messages.slice(messageIndex)
+            .filter((msg) => msg.pendingCommit?.status === "applied" && msg.pendingCommit.result?.sha)
+            .reverse();
+        if (appliedCommits.length > 0) {
+            const githubConfig = loadQaGithubConfig();
+            if (!githubConfig) {
+                return { ok: false, reason: "还没有配置 GitHub 仓库，无法撤销已提交的改动；这次重发已停止。" };
+            }
+            for (const msg of appliedCommits) {
+                const commit = msg.pendingCommit!;
+                try {
+                    await revertQaCommit(githubConfig, commit.result!);
+                } catch (error) {
+                    const detail = error instanceof Error ? error.message : String(error);
+                    return {
+                        ok: false,
+                        reason: `撤销提交 ${commit.result!.sha.slice(0, 7)} 失败，已停止重发：${detail}。你可以选择"保留"跳过撤销，或稍后再试。`,
+                    };
+                }
+                // 标记已撤销，避免重试时对同一提交重复回退
+                updateSession(sessionId, (current) => ({
+                    ...current,
+                    messages: current.messages.map((candidate) =>
+                        candidate.id === msg.id && candidate.pendingCommit
+                            ? { ...candidate, pendingCommit: { ...candidate.pendingCommit, status: "reverted" } }
+                            : candidate,
+                    ),
+                }));
             }
         }
     }

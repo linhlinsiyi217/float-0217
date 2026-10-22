@@ -9,6 +9,7 @@ import { synthesizeSpeech } from "@/lib/tts-service";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { Toggle, Input } from "@/components/ui/form";
 import { Alert } from "@/components/ui/feedback";
+import { useSheetDragClose } from "@/lib/use-sheet-drag-close";
 
 const SUPPORTED_VOICE_PROVIDERS = new Set(["Minimax", "OpenAI"]);
 const MINIMAX_BASE_URL_OPTIONS = [
@@ -240,6 +241,7 @@ export function VoiceSettings() {
     const [manualModelIds, setManualModelIds] = useState<Record<string, boolean>>({});
     const [manualVoiceIds, setManualVoiceIds] = useState<Record<string, boolean>>({});
     const [isLoaded, setIsLoaded] = useState(false);
+    const editSheet = useSheetDragClose(() => { setIsNewConfig(false); setEditingId(null); });
     const audioRef = useRef<HTMLAudioElement | null>(null);
 
     // Fetching states for Voices
@@ -633,8 +635,8 @@ export function VoiceSettings() {
 
             {editingId && (
                 <div className="modal-overlay modal-overlay-bottom">
-                    <div className="modal-sheet" data-ui="modal-sheet">
-                        <div className="modal-header" data-ui="modal-header">
+                    <div ref={editSheet.sheetRef} className="modal-sheet" data-ui="modal-sheet">
+                        <div className="modal-header" data-ui="modal-header" {...editSheet.dragHandlers} style={{ touchAction: "none" }}>
                             <button onClick={() => { if (isNewConfig && editingId) removeConfig(editingId); setIsNewConfig(false); setEditingId(null); }} className="modal-header-btn modal-header-btn-muted"><X size={18} /></button>
                             <span className="modal-header-title">{isNewConfig ? "添加语音配置" : "编辑语音配置"}</span>
                             <button onClick={() => { setIsNewConfig(false); setEditingId(null); }} className="modal-header-btn modal-header-btn-action"><Check size={18} /></button>

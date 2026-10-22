@@ -9,7 +9,7 @@ function apiBase(config: QaGithubConfig): string {
 }
 
 function writeHeaders(config: QaGithubConfig): Record<string, string> {
-    if (!config.token) throw new Error("写操作需要 PAT。请在工坊「仓库」里填入有 Contents: Read and write 权限的 fine-grained PAT。");
+    if (!config.token) throw new Error("写操作需要 PAT。请在 Claude「仓库」里填入有 Contents: Read and write 权限的 fine-grained PAT。");
     return {
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",

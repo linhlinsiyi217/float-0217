@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, createContext, type CSSProperties, type ReactNode } from "react";
-import { Activity, CalendarDays, Camera, Check, ChevronRight, Clock, Database, FileText, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Laptop, Layers, LayoutTemplate, Link2, Loader2, Lock, LogOut, MessageSquare, Mic, PhoneCall, SlidersHorizontal, UserCircle, Wrench, X, CloudUpload, Zap } from "lucide-react";
+import { Activity, Bell, Bot, CalendarDays, Camera, Check, ChevronRight, Clock, Database, FileText, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Laptop, Layers, LayoutTemplate, Link2, Loader2, Lock, LogOut, MessageSquare, Mic, PanelTop, PhoneCall, SlidersHorizontal, UserCircle, Wrench, X, CloudUpload, Zap } from "lucide-react";
 import { ConfirmDialog } from "./ui/modal";
 import { useAccount } from "@/lib/account-context";
 import { isSelfHostedModeEnabled } from "@/lib/self-hosting";
@@ -28,8 +28,13 @@ import { SystemCalendarSettings } from "./system-calendar/system-calendar-settin
 import { ScreenshotSettings } from "./screenshot/screenshot-settings";
 import { WidgetSettings } from "./widget/widget-settings";
 import { LockScreenSettings } from "./settings/lockscreen-settings";
+import { NotificationSettings } from "./settings/notification-settings";
+import { StatusbarSettings } from "./settings/statusbar-settings";
+import { WorkshopSettings } from "./settings/workshop-settings";
 import { fetchIsAdmin } from "@/lib/moderation-client";
 import { PageShell } from "./ui/page-shell";
+import { useSheetDragClose } from "@/lib/use-sheet-drag-close";
+import { applyMotionPreference } from "@/lib/ui-motion";
 import { CardGrid, FeaturedCard, type CardItem, type FeaturedCardItem } from "./ui/card-grid";
 import { GlassIcon } from "./ui/glass-icon";
 import { Toggle } from "./ui/form";
@@ -63,6 +68,9 @@ type SubPage =
     | "data"
     | "binding"
     | "identity"
+    | "notifications"
+    | "statusbar"
+    | "workshop"
     | "cloud"
     | "weixin"
     | "toolbox"
@@ -98,6 +106,9 @@ const SETTINGS_MENU = [
     { id: "lockscreen", icon: Lock, label: "锁屏与开屏", desc: "模拟锁屏、密码与开屏动画", iconColor: BINDING_ACCENTS.identity , glass: "" },
     { id: "agentComputer", icon: Laptop, label: "角色电脑", desc: "云端小电脑（自部署）", iconColor: BINDING_ACCENTS.memory , glass: "agent-computer" },
     { id: "identity", icon: UserCircle, label: "用户身份", desc: "个人信息", iconColor: BINDING_ACCENTS.identity , glass: "identity" },
+    { id: "notifications", icon: Bell, label: "系统通知", desc: "推送、站内横幅与提示音", iconColor: BINDING_ACCENTS.voice , glass: "" },
+    { id: "statusbar", icon: PanelTop, label: "状态栏", desc: "开关与自定义样式", iconColor: BINDING_ACCENTS.api , glass: "" },
+    { id: "workshop", icon: Bot, label: "Claude", desc: "使用教程与工具说明", iconColor: BINDING_ACCENTS.memory , glass: "" },
     { id: "about", icon: Info, label: "更新日志", desc: "版本与更新内容", iconColor: BINDING_ACCENTS.memory , glass: "about" },
 ] as const;
 
@@ -172,6 +183,16 @@ export function PhoneSettingsApp({ onClose, onNotice, initialPage }: SettingsPag
         setConfirmPwd("");
         setPwdError("");
     };
+
+    // 设置里的三个底部抽屉都支持从标题栏下拉关闭
+    const floatingDockSheet = useSheetDragClose(() => setFloatingDockSheetOpen(false));
+    const accountSheet = useSheetDragClose(() => setAccountSheetOpen(false));
+    const pwdSheet = useSheetDragClose(closePwdModal);
+
+    // 低端机（核数/内存偏低）自动关掉整页转场，优先流畅
+    useEffect(() => {
+        applyMotionPreference();
+    }, []);
 
     const handleChangePassword = async () => {
         if (pwdBusy) return;
@@ -365,6 +386,12 @@ export function PhoneSettingsApp({ onClose, onNotice, initialPage }: SettingsPag
                 return <ModerationCenter onNotice={onNotice} />;
             case "identity":
                 return <UserIdentitySettings />;
+            case "notifications":
+                return <NotificationSettings onNotice={onNotice} />;
+            case "statusbar":
+                return <StatusbarSettings onNotice={onNotice} />;
+            case "workshop":
+                return <WorkshopSettings />;
             case "about":
                 return <UpdateLogPage />;
             default:
@@ -490,7 +517,7 @@ export function PhoneSettingsApp({ onClose, onNotice, initialPage }: SettingsPag
         <SettingsContext.Provider value={{ setSubpageTitle, setOverrideBack, setSubpageRightAction }}>
             <PageShell title={title} onBack={handleBack} rightAction={currentPage !== "main" ? subpageRightActions[currentPage] : undefined} bodyRef={pageBodyRef}>
                 {currentPage === "main" && (
-                    <div className="page-menu settings-main-menu">
+                    <div className="page-menu settings-main-menu ui-page-enter">
                         {!selfHostedMode && (
                             <button type="button" className="settings-account-card" onClick={() => setAccountSheetOpen(true)}>
                                 <span className="settings-account-avatar"><GlassIcon name="account" /></span>
@@ -634,8 +661,8 @@ export function PhoneSettingsApp({ onClose, onNotice, initialPage }: SettingsPag
                         />
                         {floatingDockSheetOpen && (
                             <div className="modal-overlay modal-overlay-bottom" data-ui="modal" onClick={() => setFloatingDockSheetOpen(false)}>
-                                <div className="modal-sheet" data-ui="modal-sheet" onClick={event => event.stopPropagation()}>
-                                    <div className="modal-header" data-ui="modal-header">
+                                <div ref={floatingDockSheet.sheetRef} className="modal-sheet" data-ui="modal-sheet" onClick={event => event.stopPropagation()}>
+                                    <div className="modal-header" data-ui="modal-header" {...floatingDockSheet.dragHandlers} style={{ touchAction: "none" }}>
                                         <span style={{ width: 44 }} />
                                         <h3 className="modal-title">悬浮球设置</h3>
                                         <button className="modal-header-btn modal-header-btn-muted" onClick={() => setFloatingDockSheetOpen(false)} aria-label="关闭"><X size={18} /></button>
@@ -660,8 +687,8 @@ export function PhoneSettingsApp({ onClose, onNotice, initialPage }: SettingsPag
                         )}
                         {accountSheetOpen && (
                             <div className="modal-overlay modal-overlay-bottom" data-ui="modal" onClick={() => setAccountSheetOpen(false)}>
-                                <div className="modal-sheet" data-ui="modal-sheet" onClick={event => event.stopPropagation()}>
-                                    <div className="modal-header" data-ui="modal-header">
+                                <div ref={accountSheet.sheetRef} className="modal-sheet" data-ui="modal-sheet" onClick={event => event.stopPropagation()}>
+                                    <div className="modal-header" data-ui="modal-header" {...accountSheet.dragHandlers} style={{ touchAction: "none" }}>
                                         <button className="modal-header-btn modal-header-btn-muted" onClick={() => setAccountSheetOpen(false)}><X size={18} /></button>
                                         <h3 className="modal-title">账号</h3>
                                         <span style={{ width: 44 }} />
@@ -708,8 +735,8 @@ export function PhoneSettingsApp({ onClose, onNotice, initialPage }: SettingsPag
 
                         {pwdModalOpen && (
                             <div className="modal-overlay modal-overlay-bottom" data-ui="modal" onClick={closePwdModal}>
-                                <div className="modal-sheet" data-ui="modal-sheet" onClick={event => event.stopPropagation()}>
-                                    <div className="modal-header" data-ui="modal-header">
+                                <div ref={pwdSheet.sheetRef} className="modal-sheet" data-ui="modal-sheet" onClick={event => event.stopPropagation()}>
+                                    <div className="modal-header" data-ui="modal-header" {...pwdSheet.dragHandlers} style={{ touchAction: "none" }}>
                                         <button className="modal-header-btn modal-header-btn-muted" onClick={closePwdModal} disabled={pwdBusy}><X size={18} /></button>
                                         <h3 className="modal-title">修改密码</h3>
                                         <button className="modal-header-btn modal-header-btn-action" onClick={() => void handleChangePassword()} disabled={pwdBusy}>
@@ -749,7 +776,7 @@ export function PhoneSettingsApp({ onClose, onNotice, initialPage }: SettingsPag
                     // shrink-0：page-body 是 flex 容器，包裹层默认可压缩——内容超一屏时会被压到
                     // 恰好一屏高、卡片从中溢出，底部 padding 落不到内容末尾，最后一张卡贴死滚动边界
                     //（iOS 底部工具栏/安全区一盖就"没放下又滚不动"）。尾部留白 = 原 pb-8 + 安全区。
-                    <div className="block min-h-full shrink-0 p-4 box-border" style={{ paddingBottom: "calc(32px + env(safe-area-inset-bottom, 0px))" }}>
+                    <div key={currentPage} className="ui-page-enter block min-h-full shrink-0 p-4 box-border" style={{ paddingBottom: "calc(32px + env(safe-area-inset-bottom, 0px))" }}>
                         {renderSubPage()}
                     </div>
                 )}

@@ -168,10 +168,12 @@
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  height: var(--status-bar-height, 36px);
+  /* --sb-h：状态栏自定义样式页的“高度”变量（不设则用原来的值） */
+  height: var(--sb-h, var(--status-bar-height, 36px));
   padding: 0 24px;
   z-index: 10;
-  color: var(--status-bar-color);
+  /* --sb-color：状态栏自定义样式页的“字与图标颜色”变量 */
+  color: var(--sb-color, var(--status-bar-color));
   font-family: inherit;
   transition: color 0.3s ease;
 }
@@ -215,7 +217,7 @@
   width: 17px;
   height: 12px;
   display: block;
-  color: var(--status-bar-color);
+  color: inherit;
   transition: color 0.3s ease;
 }
 
@@ -223,7 +225,7 @@
   width: 16px;
   height: 12px;
   display: block;
-  color: var(--status-bar-color);
+  color: inherit;
   transition: color 0.3s ease;
 }
 
@@ -231,7 +233,7 @@
   width: 26px;
   height: 12px;
   display: block;
-  color: var(--status-bar-color);
+  color: inherit;
   transition: color 0.3s ease;
   overflow: visible;
 }

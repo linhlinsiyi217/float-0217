@@ -909,7 +909,11 @@
    Unified Component Classes (.ui-* canonical)
    ══════════════════════════════════════════ */
 
-/* ── 按钮基础 ── */
+/* ── 按钮基础 ──
+   液态玻璃按钮体系（第三轮任务2）：ui-btn 是存量通用族（设置页/弹窗在用），
+   .glass-btn 是新的规范类（新页面用，见下一节）。两者同一套玻璃视觉：
+   半透明白/绿渐变 + 内高光 + 按下弹簧回弹。ui-btn 不加 backdrop-filter——
+   设置页一屏常有多颗小按钮，模糊留给 .glass-btn 主按钮（一屏最多 3~4 颗）。 */
 .ui-btn {
   display: inline-flex;
   align-items: center;
@@ -921,47 +925,303 @@
   font-size: calc(12.6px*var(--app-text-scale,1));
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+  transition: transform .35s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease, background .2s ease, opacity .2s ease;
   -webkit-tap-highlight-color: transparent;
 }
-.ui-btn:active { transform: scale(0.96); opacity: 0.9; }
+.ui-btn:active { transform: scale(0.97); }
 .ui-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
 
 .ui-btn-primary,
 .ui-btn-action {
-  background: var(--c-icon-active);
+  background: linear-gradient(180deg, rgba(52, 199, 89, 0.96), rgba(52, 199, 89, 0.78));
   color: white;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--c-icon-active) 35%, transparent), inset 0 1px 1px rgba(255,255,255,0.15);
+  box-shadow: 0 8px 22px rgba(52, 199, 89, 0.35),
+              inset 0 1px 0 rgba(255,255,255,0.55),
+              inset 0 -1px 0 rgba(0,0,0,0.08);
+}
+.ui-btn-primary:hover, .ui-btn-action:hover {
+  box-shadow: 0 10px 26px rgba(52, 199, 89, 0.42),
+              inset 0 1px 0 rgba(255,255,255,0.6),
+              inset 0 -1px 0 rgba(0,0,0,0.08);
 }
 .ui-btn-success {
-  background: var(--c-success);
+  background: linear-gradient(180deg, rgba(52, 199, 89, 0.96), rgba(52, 199, 89, 0.78));
   color: white;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--c-success) 35%, transparent), inset 0 1px 1px rgba(255,255,255,0.15);
+  box-shadow: 0 8px 22px rgba(52, 199, 89, 0.35),
+              inset 0 1px 0 rgba(255,255,255,0.55),
+              inset 0 -1px 0 rgba(0,0,0,0.08);
 }
 .ui-btn-danger {
-  background: var(--c-danger);
-  color: white;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--c-danger) 35%, transparent), inset 0 1px 1px rgba(255,255,255,0.15);
+  background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.6));
+  color: #ff3b30;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.08),
+              inset 0 1px 0 rgba(255,255,255,0.95),
+              inset 0 -1px 0 rgba(0,0,0,0.04);
 }
 .ui-btn-ghost {
   background: transparent;
-  color: var(--c-icon-active);
+  color: #248a3d;
   padding: 8px 12px;
 }
 .ui-btn-outline {
-  background: color-mix(in srgb, var(--c-text) 8%, transparent);
+  background: linear-gradient(180deg, rgba(255,255,255,0.88), rgba(255,255,255,0.58));
   border: none;
   color: var(--c-text-title);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.08),
+              inset 0 1px 0 rgba(255,255,255,0.95),
+              inset 0 -1px 0 rgba(0,0,0,0.04);
 }
 .ui-btn-soft-action {
-  background: color-mix(in srgb, var(--c-icon-active) 10%, transparent);
+  background: rgba(52, 199, 89, 0.1);
   border: none;
-  color: var(--c-icon-active);
+  color: #248a3d;
 }
 .ui-btn-soft-danger {
-  background: color-mix(in srgb, var(--c-danger) 10%, transparent);
+  background: rgba(255, 59, 48, 0.1);
   border: none;
-  color: var(--c-danger);
+  color: #ff3b30;
+}
+
+/* ── 规范玻璃按钮（新页面/主要操作用）──
+   用法：主要操作 .glass-btn.is-primary（绿，一页最多一颗）；
+   次要操作 .glass-btn（白玻璃）；危险操作 .glass-btn.is-danger（红字）。
+   加载中：加 .is-loading（文字隐藏、转圈、宽度不变）。 */
+:root { --glass-green: 52 199 89; }          /* #34C759 */
+.glass-btn {
+  position: relative; overflow: hidden; isolation: isolate;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 52px; padding: 0 22px; border: 0; border-radius: 999px;
+  font-size: calc(15px*var(--app-text-scale,1));
+  font-weight: 600; color: #1c1c1e; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  background: linear-gradient(180deg, rgba(255,255,255,.88), rgba(255,255,255,.58));
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+          backdrop-filter: blur(16px) saturate(1.6);
+  box-shadow: 0 6px 18px rgba(0,0,0,.08),
+              inset 0 1px 0 rgba(255,255,255,.95),
+              inset 0 -1px 0 rgba(0,0,0,.04);
+  transition: transform .35s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease;
+}
+.glass-btn::after {            /* 高光从左扫到右，只扫一次 */
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,.7) 50%, transparent 70%);
+  transform: translateX(-120%); transition: transform .6s ease;
+}
+.glass-btn:active { transform: scale(.97); }
+.glass-btn:hover::after, .glass-btn:active::after { transform: translateX(120%); }
+.glass-btn.is-primary {
+  color: #fff;
+  background: linear-gradient(180deg, rgb(var(--glass-green) / .96), rgb(var(--glass-green) / .78));
+  box-shadow: 0 8px 22px rgb(var(--glass-green) / .35),
+              inset 0 1px 0 rgba(255,255,255,.55),
+              inset 0 -1px 0 rgba(0,0,0,.08);
+}
+.glass-btn.is-ghost {
+  background: transparent;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: none;
+  color: #248a3d;
+}
+.glass-btn.is-danger { color: #ff3b30; }
+.glass-btn[disabled] { opacity: .45; pointer-events: none; }
+/* 加载中：转圈 + 文字隐藏，按钮宽度保持不变 */
+.glass-btn.is-loading { color: transparent !important; pointer-events: none; }
+.glass-btn.is-loading::before {
+  content: ""; position: absolute;
+  left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.45); border-top-color: currentColor;
+  color: #fff;
+  animation: glass-btn-spin .8s linear infinite;
+}
+.glass-btn.is-loading.is-primary::before { border-color: rgba(255,255,255,.4); border-top-color: #fff; }
+.glass-btn.is-loading:not(.is-primary)::before { border-color: rgba(0,0,0,.15); border-top-color: #48484a; }
+@keyframes glass-btn-spin { to { transform: rotate(360deg); } }
+/* 低端设备/系统减弱动态效果/减弱透明度：自动降级 */
+@media (prefers-reduced-motion: reduce) {
+  .glass-btn, .glass-btn::after { transition: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass-btn {
+    background: #f2f1ed;
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  .ui-btn-primary, .ui-btn-action, .ui-btn-success { background: #34c759; }
+  .ui-btn-outline, .ui-btn-danger { background: #f2f1ed; }
+}
+
+/* ══════════════════════════════════════════
+   整页「编辑资料」编辑器 (.identity-editor-*)
+   设置 → 用户身份 → 点卡片/编辑/新增身份进入。
+   fixed 覆盖层 + 右侧滑入滑出，自带头部与底部按钮区。
+   ══════════════════════════════════════════ */
+.identity-editor-page {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-page-body-bg);
+  animation: identity-page-in 0.32s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.identity-editor-page.is-closing {
+  animation: identity-page-out 0.28s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+@keyframes identity-page-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes identity-page-out { from { transform: translateX(0); } to { transform: translateX(100%); } }
+
+.identity-editor-header {
+  display: grid;
+  grid-template-columns: 56px 1fr 56px;
+  align-items: center;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) 8px 10px;
+  background: var(--c-page-body-bg);
+}
+.identity-editor-back {
+  width: 40px; height: 40px;
+  margin-left: 8px;
+  border-radius: 50%;
+  border: 1px solid var(--c-input-border);
+  background: var(--c-input);
+  color: var(--c-text-title);
+  display: grid; place-items: center;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.identity-editor-back:active { transform: scale(0.92); }
+.identity-editor-titles {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  min-width: 0;
+}
+.identity-editor-title {
+  font-size: calc(16.5px*var(--app-text-scale,1));
+  font-weight: 700;
+  color: var(--c-text-title);
+  line-height: 1.2;
+}
+.identity-editor-subtitle {
+  font-size: 9.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--c-icon);
+}
+.identity-editor-header-spacer { width: 40px; }
+
+/* 未保存提示：一行横幅，不用系统弹窗 */
+.identity-editor-discard {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin: 0 16px 4px;
+  padding: 9px 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, #ff3b30 8%, var(--c-input));
+  border: 1px solid color-mix(in srgb, #ff3b30 22%, transparent);
+  animation: identity-discard-in 0.22s ease-out both;
+}
+@keyframes identity-discard-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+.identity-editor-discard-text {
+  font-size: calc(12.5px*var(--app-text-scale,1));
+  color: var(--c-text-title);
+}
+.identity-editor-discard-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.identity-editor-discard-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 5px 13px;
+  font-size: calc(12px*var(--app-text-scale,1));
+  font-weight: 600;
+  background: #fff;
+  color: var(--c-text-title);
+  cursor: pointer;
+}
+.identity-editor-discard-btn[data-variant="danger"] { color: #ff3b30; }
+.identity-editor-discard-btn:active { transform: scale(0.95); }
+
+.identity-editor-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 18px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 头像区 */
+.identity-editor-avatar-block {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 12px 0 18px;
+}
+.identity-editor-avatar {
+  width: 96px; height: 96px;
+  border-radius: 50%;
+  border: 2px dashed var(--c-input-border);
+  background: var(--c-input);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.identity-editor-avatar:active { transform: scale(0.95); }
+.identity-editor-avatar-hint { font-size: 9.5px; color: var(--c-icon-active); }
+.identity-editor-avatar-badge {
+  position: absolute; right: 0; bottom: 0;
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  background: rgba(0, 0, 0, 0.65);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+}
+.identity-editor-avatar-url {
+  display: flex; align-items: center; gap: 6px;
+  width: 100%; max-width: 300px;
+}
+
+/* 分组标题：小号灰色大写、字间距拉开 */
+.identity-editor-group-title {
+  margin: 10px 2px 2px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--c-icon);
+}
+.identity-editor-fields {
+  display: flex; flex-direction: column; gap: 12px;
+}
+.identity-editor-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.identity-editor-field-row {
+  display: flex; gap: 12px;
+}
+.identity-editor-field-row .identity-editor-field { flex: 1; }
+.identity-editor-textarea-lg { min-height: 132px; font-size: calc(13px*var(--app-text-scale,1)); }
+.identity-editor-body input,
+.identity-editor-body textarea,
+.identity-editor-body select { scroll-margin-bottom: 140px; }
+
+/* 底部按钮区：绿色玻璃主按钮 + 灰色删除 */
+.identity-editor-footer {
+  display: flex; flex-direction: column; align-items: stretch; gap: 10px;
+  padding: 12px 18px calc(env(safe-area-inset-bottom, 0px) + 16px);
+  background: linear-gradient(180deg, transparent, var(--c-page-body-bg) 38%);
+}
+.identity-editor-footer .glass-btn { width: 100%; height: 50px; }
+.identity-editor-delete {
+  height: 46px;
+  background: linear-gradient(180deg, rgba(255,255,255,.88), rgba(255,255,255,.6));
+  color: var(--c-icon);
+  border: 1px solid var(--c-input-border);
+  box-shadow: 0 4px 14px rgba(0,0,0,.06);
+}
+.identity-editor-delete.is-armed { color: #ff3b30; border-color: color-mix(in srgb, #ff3b30 35%, transparent); }
+.identity-editor-delete.is-armed::after {
+  background: linear-gradient(110deg, transparent 30%, rgba(255,59,48,.12) 50%, transparent 70%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .identity-editor-page,
+  .identity-editor-page.is-closing { animation-duration: 0.01s; }
+  .identity-editor-discard { animation: none; }
 }
 
 /* ── 胶囊选择按钮 ── */
@@ -2511,9 +2771,14 @@
   background: transparent;
   cursor: pointer;
   text-align: left;
-  transition: background-color 120ms ease;
+  transition: background-color 120ms ease, transform 120ms ease;
   position: relative;
   width: 100%;
+}
+/* 列表行按下：轻微变深 + 轻微缩放，给到"按到了"的手感 */
+.menu-item:not(:disabled):active {
+  background-color: color-mix(in srgb, var(--c-text-title) 6%, transparent);
+  transform: scale(0.994);
 }
 .menu-item:not(:last-child)::after {
   content: "";
@@ -4026,8 +4291,10 @@
   border-radius: 999px;
   background: var(--c-page-body-bg);
   border: none;
-  transition: background 0.25s;
+  /* 状态变化 120ms 内给到颜色反馈 */
+  transition: background 120ms ease;
   padding: 0;
+  -webkit-tap-highlight-color: transparent;
 }
 .ui-toggle[data-checked] {
   background: var(--c-success);
@@ -4041,11 +4308,18 @@
   border-radius: 999px;
   background: white;
   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-  transition: transform 0.25s;
+  /* 弹簧回弹：位移用 overshoot 曲线，宽度变化让按压时有一点"拉伸" */
+  transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1), width 160ms ease;
   pointer-events: none;
 }
 .ui-toggle[data-checked] .ui-toggle-knob {
   transform: translateX(16px);
+}
+.ui-toggle:not(:disabled):active .ui-toggle-knob {
+  width: 24px;
+}
+.ui-toggle[data-checked]:not(:disabled):active .ui-toggle-knob {
+  transform: translateX(14px);
 }
 
 /* ── Empty state ── */
@@ -6162,4 +6436,240 @@
   flex-wrap: wrap;
   gap: 6px;
   padding: 0 10px 8px;
+}
+
+/* ══════════════════════════════════════════
+   工坊使用教程（设置 → 工坊 → 使用教程）
+   页面框架复用上面的 identity-editor-* 类；
+   这里只补内容区：分组折叠、工具卡片、徽标。
+   ══════════════════════════════════════════ */
+.workshop-tut-body {
+  gap: 4px;
+  padding-bottom: 40px;
+}
+
+.workshop-tut-section {
+  margin-top: 12px;
+}
+
+.workshop-tut-section-title {
+  margin: 0 2px 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--c-icon);
+}
+
+.workshop-tut-section-note {
+  margin: -4px 2px 8px;
+  font-size: calc(11.5px*var(--app-text-scale,1));
+  color: var(--c-icon);
+}
+
+.workshop-tut-prose {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--c-input);
+}
+
+.workshop-tut-prose p {
+  margin: 0;
+  font-size: calc(13px*var(--app-text-scale,1));
+  line-height: 1.75;
+  color: var(--c-text);
+}
+
+.workshop-tut-prose strong {
+  font-weight: 700;
+  color: var(--c-text-title);
+}
+
+/* 上手步骤：绿色序号圆点 */
+.workshop-tut-steps {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--c-input);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  list-style: none;
+}
+
+.workshop-tut-steps li {
+  display: flex;
+  gap: 10px;
+  font-size: calc(13px*var(--app-text-scale,1));
+  line-height: 1.65;
+  color: var(--c-text);
+}
+
+.workshop-tut-step-no {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: rgba(52, 199, 89, 0.14);
+  color: #1f8a3d;
+  font-size: 11.5px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+/* 折叠组 */
+.workshop-tut-section-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 16px;
+  border: none;
+  border-radius: 16px;
+  background: var(--c-input);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.workshop-tut-section-head:active { transform: scale(0.985); }
+
+.workshop-tut-section-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.workshop-tut-section-head .workshop-tut-section-title {
+  margin: 0;
+  font-size: calc(13.5px*var(--app-text-scale,1));
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--c-text-title);
+  font-weight: 600;
+}
+
+.workshop-tut-section-subtitle {
+  font-size: calc(11.5px*var(--app-text-scale,1));
+  color: var(--c-icon);
+  line-height: 1.5;
+}
+
+.workshop-tut-chevron {
+  flex-shrink: 0;
+  color: var(--c-icon);
+  transition: transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.workshop-tut-chevron.is-open { transform: rotate(180deg); }
+
+.workshop-tut-section-body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: workshop-tut-fade-in 0.24s ease-out both;
+}
+
+@keyframes workshop-tut-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 工具卡片 */
+.workshop-tut-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.workshop-tut-card {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--c-input);
+}
+
+.workshop-tut-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.workshop-tut-name {
+  font-size: calc(13.5px*var(--app-text-scale,1));
+  font-weight: 700;
+  color: var(--c-text-title);
+}
+
+.workshop-tut-badge {
+  flex-shrink: 0;
+  padding: 2.5px 9px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.workshop-tut-badge.is-read {
+  background: rgba(120, 120, 128, 0.12);
+  color: var(--c-icon);
+}
+
+/* 会改东西的用绿色标出来：这是全站的主高亮色，不是危险色 */
+.workshop-tut-badge.is-write {
+  background: rgba(52, 199, 89, 0.14);
+  color: #1f8a3d;
+}
+
+.workshop-tut-desc {
+  margin: 0;
+  font-size: calc(12.5px*var(--app-text-scale,1));
+  line-height: 1.7;
+  color: var(--c-text);
+}
+
+.workshop-tut-faq-icon {
+  color: var(--c-icon);
+  flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workshop-tut-section-body { animation: none; }
+  .workshop-tut-chevron,
+  .workshop-tut-section-head { transition: none; }
+}
+
+/* ══════════════════════════════════════════
+   统一页面转场 (.ui-page-enter)
+   ══════════════════════════════════════════ */
+/* 设置里的主菜单和子页进入/返回共用同一套：轻微下滑 + 淡入 + 一丝缩放（视差感），
+   340ms 弹簧曲线。只动 transform / opacity（走合成层，不触发重排）。 */
+.ui-page-enter {
+  animation: ui-page-enter 340ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+@keyframes ui-page-enter {
+  from { opacity: 0; transform: translate3d(0, 12px, 0) scale(0.996); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-page-enter { animation: none; }
+  .ui-toggle, .ui-toggle-knob { transition: none; }
+  .menu-item { transition: none; }
+  .menu-item:not(:disabled):active { transform: none; }
+}
+
+/* 低端机（CPU 核数/内存偏低）直接关掉整页转场，流畅优先 */
+html[data-motion="lite"] .ui-page-enter,
+html[data-motion="lite"] .identity-editor-page {
+  animation: none;
 }

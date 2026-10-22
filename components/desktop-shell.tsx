@@ -132,6 +132,9 @@ import { DebugPromptPanel } from "@/components/debug-prompt-panel";
 import { QuickActionFloat } from "@/components/quick-action-float";
 import { CHAT_MESSAGE_PUSHED_EVENT, CHAT_REQUEST_REPLY_EVENT, findChatSessionById, hydrateChatStorage, loadChatSessions, loadChatMessages, pushChatMessage, resolveChatCharacterAvatar, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { publishIslandNotification } from "@/lib/island-notify";
+import { loadNotificationPrefs } from "@/lib/notification-prefs";
+import { loadStatusbarCss, STATUSBAR_CSS_EVENT } from "@/lib/statusbar-css";
+import { playBannerSound, armAudioUnlock } from "@/lib/banner-sound";
 import { ensureGlobalBindingDefaults, resolveUserIdentity } from "@/lib/settings-storage";
 import { loadCharacters } from "@/lib/character-storage";
 import { generateChatCompletion, flattenCompletionResult } from "@/lib/chat-engine";
@@ -1269,8 +1272,13 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     body: string;
     avatar: string | null;
     isGroup?: boolean;
+    /** 合并显示：同一会话在横幅挂着时又来消息的条数 */
+    mergedCount?: number;
   } | null>(null);
   const chatMessageNoticeTimerRef = useRef<number | null>(null);
+  // 横幅状态镜像：事件 handler 里读"当前挂着的那张横幅"用（state 闭包会拿到旧值）
+  const chatMessageNoticeRef = useRef(chatMessageNotice);
+  useEffect(() => { chatMessageNoticeRef.current = chatMessageNotice; }, [chatMessageNotice]);
   // Swipe-up-to-dismiss state for the chat message notice banner.
   const [noticeDragY, setNoticeDragY] = useState(0);
   const noticeDragRef = useRef({ startY: 0, dy: 0, dragging: false, far: false });
@@ -1282,6 +1290,34 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   useEffect(() => {
     activeAppRef.current = activeApp;
   }, [activeApp]);
+  // 状态栏自定义样式（任务 5）：统一写进独立的 <style>，设置页改动即时生效
+  useEffect(() => {
+    const styleId = "float-statusbar-custom-css";
+    const apply = () => {
+      let tag = document.getElementById(styleId) as HTMLStyleElement | null;
+      if (!tag) {
+        tag = document.createElement("style");
+        tag.id = styleId;
+        document.head.appendChild(tag);
+      }
+      const css = loadStatusbarCss();
+      if (tag.textContent !== css) tag.textContent = css;
+    };
+    apply();
+    window.addEventListener(STATUSBAR_CSS_EVENT, apply);
+    return () => window.removeEventListener(STATUSBAR_CSS_EVENT, apply);
+  }, []);
+
+  // 状态栏设置页直接改主题档里的 statusBarMode / islandMode，这里同步回壳
+  useEffect(() => {
+    const onStatusbarSettings = () => {
+      const fresh = readThemeProfile();
+      setDraftTheme(prev => ({ ...prev, statusBarMode: fresh.statusBarMode, islandMode: fresh.islandMode }));
+    };
+    window.addEventListener("statusbar-settings-updated", onStatusbarSettings);
+    return () => window.removeEventListener("statusbar-settings-updated", onStatusbarSettings);
+  }, []);
+
   // Listen for theme CSS updates from 小卷
   useEffect(() => {
     const onThemeUpdate = () => {
@@ -2787,33 +2823,72 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
   }, [chatMessageNotice, openChatSessionFromNotice]);
 
   useEffect(() => {
+    // 提示音开着：挂一次手势闩（iOS Safari 需要一次点击解锁音频）
+    if (loadNotificationPrefs().soundEnabled) armAudioUnlock();
+
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<ChatMessageNoticeDetail>).detail;
       if (!detail?.sessionId || !detail.body?.trim()) return;
 
+      const prefs = loadNotificationPrefs();
+      // 「预览横幅」等测试弹窗（sessionId=demo）绕过会话查找与"正在聊天"限制
+      const isDemo = detail.isTest === true && detail.sessionId === "demo";
+
       const isCurrentMainChat = activeApp === "chat" && activeChatSession?.id === detail.sessionId;
       const isCurrentMiniChat = showMiniChat && miniSessionRef.current?.id === detail.sessionId;
-      // 测试弹窗（提示音设置里触发）不受“正在实时聊天则不弹横幅”限制
-      if (!detail.isTest && (isCurrentMainChat || isCurrentMiniChat)) return;
+      if (!isDemo && !detail.isTest && (isCurrentMainChat || isCurrentMiniChat)) return;
 
-      const sessions = loadChatSessions();
-      const session = sessions.find(s => s.id === detail.sessionId);
-      if (!session) return;
+      let title = "新消息";
+      let avatar: string | null = detail.avatar ?? null;
+      let isGroup = false;
+      if (isDemo) {
+        title = detail.senderName?.trim() || "新消息";
+      } else {
+        const sessions = loadChatSessions();
+        const session = sessions.find(s => s.id === detail.sessionId);
+        if (!session) return;
 
-      const chars = loadCharacters();
-      const isGroup = detail.isGroup ?? !!session.isGroup;
-      const char = !isGroup ? chars.find(c => c.id === session.contactId) : null;
-      const detailSenderName = detail.senderName?.trim();
-      const title = detailSenderName && detailSenderName !== "对方"
-        ? detailSenderName
-        : (isGroup ? session.groupName || "群聊" : session.alias || char?.name || "新消息");
+        const chars = loadCharacters();
+        isGroup = detail.isGroup ?? !!session.isGroup;
+        const char = !isGroup ? chars.find(c => c.id === session.contactId) : null;
+        const detailSenderName = detail.senderName?.trim();
+        title = detailSenderName && detailSenderName !== "对方"
+          ? detailSenderName
+          : (isGroup ? session.groupName || "群聊" : session.alias || char?.name || "新消息");
+        avatar = detail.avatar ?? char?.avatar ?? null;
+      }
 
-      // 壳环境：站内横幅整体停用，改发原生系统通知（标题/头像沿用上面的解析结果）。
-      // 放在这里是因为「正在看这个会话就不打扰」的判断刚做完——用户要的正是
-      // 「除当前聊天页外全线弹系统通知」，过滤逻辑与横幅共用同一处。
+      // 消息预览关掉：通知与横幅统一只显示"收到一条新消息"
+      const bodyText = prefs.previewEnabled ? detail.body.trim() : "收到一条新消息";
+      // 固定通知标题：填了就顶替角色名（SOURCE 组）
+      const displayTitle = prefs.fixedTitle.trim() || title;
+
+      // 壳环境：站内横幅整体停用，改发原生系统通知。
+      // 第 4 个参数带会话 id：壳点通知时据此直达该会话；旧壳会忽略多余参数。
       if (canSendShellNotification()) {
-        // 第 4 个参数带会话 id：壳点通知时据此直达该会话；旧壳会忽略多余参数。
-        sendShellNotification(title, detail.body.trim(), detail.avatar ?? char?.avatar ?? null, detail.sessionId);
+        if (!prefs.systemEnabled && !isDemo) return; // 总开关关着：壳里不再发系统通知
+        sendShellNotification(displayTitle, bodyText, avatar, isDemo ? "" : detail.sessionId);
+        return;
+      }
+
+      // 网页端：系统通知（Notification API）与站内横幅分开管，避免同一条消息打扰两遍。
+      // 页面在后台 → 系统通知；页面在前台 → 横幅开着就让给横幅，横幅关着且开了前台通知才发系统通知。
+      const pageHidden = document.visibilityState !== "visible";
+      if (prefs.systemEnabled && (pageHidden || (prefs.foregroundEnabled && !prefs.bannerEnabled))) {
+        sendBrowserNotification(displayTitle, { body: bodyText, icon: avatar ?? undefined }, { force: true });
+        if (pageHidden) return; // 后台已经发系统通知，不再弹横幅
+      }
+
+      if (!prefs.bannerEnabled && !isDemo) return; // 站内横幅关着（demo 预览照常弹）
+
+      // 灵动岛开着：通知状态走岛（岛点击直达会话，通知优先于音乐），不再弹独立横幅
+      if (islandVisible && !isDemo && !detail.isTest) {
+        publishIslandNotification({
+          sessionId: detail.sessionId,
+          title: displayTitle,
+          text: bodyText.slice(0, 40),
+          avatar: avatar ?? "",
+        });
         return;
       }
 
@@ -2822,13 +2897,20 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
       }
       noticeDragRef.current = { startY: 0, dy: 0, dragging: false, far: false };
       setNoticeDragY(0);
+      // 合并显示：同一个人正挂着横幅时又来消息 → 只改条数，正文换成"发送了 N 条信息"
+      const prev = chatMessageNoticeRef.current;
+      const merging = prefs.mergeBanners && prev && prev.sessionId === detail.sessionId;
+      const count = merging ? (prev!.mergedCount ?? 1) + 1 : 1;
       setChatMessageNotice({
         sessionId: detail.sessionId,
-        title,
-        body: detail.body.trim(),
-        avatar: detail.avatar ?? char?.avatar ?? null,
+        title: displayTitle,
+        body: merging ? `发送了 ${count} 条信息` : bodyText,
+        avatar,
         isGroup,
+        mergedCount: count,
       });
+      // 一轮只响一声（合并与否都只响一次）
+      if (prefs.soundEnabled) playBannerSound();
       chatMessageNoticeTimerRef.current = window.setTimeout(() => {
         setChatMessageNotice(null);
         chatMessageNoticeTimerRef.current = null;
@@ -2837,7 +2919,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
     window.addEventListener(CHAT_MESSAGE_NOTICE_EVENT, handler);
     return () => window.removeEventListener(CHAT_MESSAGE_NOTICE_EVENT, handler);
-  }, [activeApp, activeChatSession?.id, showMiniChat]);
+  }, [activeApp, activeChatSession?.id, showMiniChat, islandVisible]);
 
   useEffect(() => {
     return () => {
@@ -4413,7 +4495,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     }
     if (activeApp === "qa") {
       return (
-        <ChatPluginPageBoundary page="工坊" onClose={() => setActiveApp(null)}>
+        <ChatPluginPageBoundary page="Claude" onClose={() => setActiveApp(null)}>
           <PhoneQaApp onClose={() => setActiveApp(null)} onNotice={setNotice} />
         </ChatPluginPageBoundary>
       );

@@ -2,10 +2,15 @@
 
 import { Camera, Check, Link, User, X } from "lucide-react";
 import { Input } from "@/components/ui/form";
+import { useSheetDragClose } from "@/lib/use-sheet-drag-close";
 
 export type UserIdentity = {
     id: string;
     name: string;
+    /** 可选：昵称（AI 也可以这样称呼用户）。旧数据没有这个字段，读出来是 undefined。 */
+    nickname?: string;
+    /** 可选：个性签名。旧数据兼容，同上。 */
+    signature?: string;
     avatarUrl?: string;
     bio: string;
     gender: string;
@@ -26,7 +31,7 @@ export function createEmptyUserIdentity(): UserIdentity {
     };
 }
 
-function fileToDataUrl(file: File, maxSize = 400, quality = 0.8): Promise<string> {
+export function fileToDataUrl(file: File, maxSize = 400, quality = 0.8): Promise<string> {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
@@ -62,10 +67,11 @@ export function UserIdentityEditorSheet({
     onCancel: () => void;
     onConfirm: () => void;
 }) {
+    const { sheetRef, dragHandlers } = useSheetDragClose(onCancel);
     return (
         <div className="modal-overlay modal-overlay-bottom">
-            <div className="modal-sheet" data-ui="modal-sheet">
-                <div className="modal-header" data-ui="modal-header">
+            <div ref={sheetRef} className="modal-sheet" data-ui="modal-sheet">
+                <div className="modal-header" data-ui="modal-header" {...dragHandlers} style={{ touchAction: "none" }}>
                     <button type="button" onClick={onCancel} className="modal-header-btn modal-header-btn-muted" aria-label="取消">
                         <X size={18} />
                     </button>

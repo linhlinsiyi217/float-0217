@@ -319,6 +319,8 @@ export function buildUserPersonaText(userIdentity: UserIdentity | null | undefin
     const parts: string[] = [];
     if (userIdentity) {
         parts.push(`The user's name is ${userIdentity.name}.`);
+        if (userIdentity.nickname) parts.push(`You may also call the user: ${userIdentity.nickname}`);
+        if (userIdentity.signature) parts.push(`User's signature: ${userIdentity.signature}`);
         if (userIdentity.gender && userIdentity.gender !== "保密") parts.push(`Gender: ${userIdentity.gender}`);
         if (userIdentity.age) parts.push(`Age: ${userIdentity.age}`);
         if (userIdentity.occupation) parts.push(`Occupation: ${userIdentity.occupation}`);
