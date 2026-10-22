@@ -2,10 +2,13 @@ package app.floatphone.shell
 
 import android.app.Activity
 import android.app.Dialog
+import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.text.SpannableString
+import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -24,54 +27,28 @@ object UiColor {
     val GRAY_TEXT = 0xFF9A9AA0.toInt()
     val GRAY_BG = 0xFFF5F5F7.toInt()
     val GRAY_LINE = 0xFFE5E5EA.toInt()
-    // 固定的三个高饱和色，只做小面积点缀
+    // 固定的三个高饱和色，只做小面积点缀（分类小圆点）
     val BLUE = 0xFF2F6BFF.toInt()
     val RED = 0xFFFF3B30.toInt()
     val ORANGE = 0xFFFF9500.toInt()
 }
 
-/** 更新条目的分类：与网站 app-version.json 的 type 字段一一对应。 */
-object ChangeTypes {
-    const val APP = "app"
-    const val CONTENT = "content"
-    const val GLOBAL = "global"
-    const val PROMPT = "prompt"
-    const val FIX = "fix"
-    const val OTHER = "other"
+/** 一条更新内容：type 是分类（app / content / global / prompt / fix），其他值显示成「其他」。 */
+data class Change(val type: String, val title: String, val detail: String)
 
-    val ORDER = listOf(APP, CONTENT, GLOBAL, PROMPT, FIX)
-
-    fun label(t: String): String = when (t) {
-        APP -> "应用"
-        CONTENT -> "页面内容"
-        GLOBAL -> "全局"
-        PROMPT -> "提示词"
-        FIX -> "修复"
-        else -> "其他"
+/** 有最大高度的滚动区：内容少时按内容高度，内容多时最高 maxPx，超出可上下滑。 */
+class MaxHeightScrollView(ctx: Context, private val maxPx: Int) : ScrollView(ctx) {
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        super.onMeasure(
+            widthMeasureSpec,
+            View.MeasureSpec.makeMeasureSpec(maxPx, View.MeasureSpec.AT_MOST)
+        )
     }
-
-    fun color(t: String): Int = when (t) {
-        APP -> UiColor.BLUE
-        CONTENT -> UiColor.BLACK
-        GLOBAL -> UiColor.ORANGE
-        PROMPT -> UiColor.GRAY_TEXT
-        FIX -> UiColor.RED
-        else -> UiColor.GRAY_TEXT
-    }
-
-    /** 非法值归到页面内容类，保证旧数据也能显示。 */
-    fun normalize(t: String): String = if (t in ORDER) t else CONTENT
 }
-
-/** 一条更新：短名字 + 一句说明。 */
-data class ChangeItem(val title: String, val detail: String)
-
-/** 一个分类组：小圆点 + 组名，下面挂若干条更新。 */
-data class ChangeGroup(val type: String, val items: List<ChangeItem>)
 
 /**
  * 底部弹出的轻量弹窗：白底大圆角、黑色大按钮、浅灰辅助色。
- * 高饱和色只出现在分类小圆点上。
+ * 高饱和色只出现在分类小圆点上。内容不删减：一句总结 + 按类别分开的小小分解。
  */
 class Sheet(private val a: Activity) {
     private val dialog = Dialog(a)
@@ -121,13 +98,6 @@ class Sheet(private val a: Activity) {
         card.addView(v, lp)
     }
 
-    private fun dot(color: Int, sizeDp: Int = 7): View = View(a).apply {
-        val d = GradientDrawable()
-        d.shape = GradientDrawable.OVAL
-        d.setColor(color)
-        background = d
-    }
-
     fun handle(): Sheet {
         val v = View(a)
         v.background = bg(UiColor.GRAY_LINE, 3)
@@ -149,83 +119,81 @@ class Sheet(private val a: Activity) {
         return this
     }
 
-    /** 一两句总结（普通正文）。 */
-    fun text(t: String): Sheet {
+    /** 一两句总结。 */
+    fun summary(t: String): Sheet {
         if (t.isBlank()) return this
-        val v = tv(t, 15f, UiColor.INK)
-        v.setLineSpacing(0f, 1.2f)
-        add(v, 10)
+        val v = tv(t, 16f, UiColor.INK)
+        v.setLineSpacing(0f, 1.25f)
+        add(v, 14)
         return this
     }
 
-    /** 一行灰色小提示，如「包含应用更新，需要安装」。 */
+    /** 一行灰色小提示，例如「包含应用更新，需要安装」。 */
     fun note(t: String): Sheet {
         if (t.isBlank()) return this
-        add(tv(t, 13f, UiColor.GRAY_TEXT), 8)
+        add(tv(t, 13f, UiColor.GRAY_TEXT), 6)
         return this
     }
 
-    /** 精简的更新内容：几条短句，浅灰圆角框，不滚动。 */
-    fun bullets(lines: List<String>): Sheet {
-        val box = LinearLayout(a)
-        box.orientation = LinearLayout.VERTICAL
-        box.background = bg(UiColor.GRAY_BG, 18)
-        box.setPadding(dp(16), dp(10), dp(16), dp(10))
-        for (l in lines) {
-            val t = tv("·  $l", 15f, UiColor.INK)
-            t.setPadding(0, dp(5), 0, dp(5))
-            box.addView(t)
+    /** 分类小标签：圆点带颜色，文字是黑色。 */
+    private fun chip(type: String): TextView {
+        val (label, color) = when (type) {
+            "app" -> "应用" to UiColor.BLUE
+            "content" -> "页面内容" to UiColor.INK
+            "global" -> "全局" to UiColor.ORANGE
+            "prompt" -> "提示词" to UiColor.GRAY_TEXT
+            "fix" -> "修复" to UiColor.RED
+            else -> "其他" to UiColor.GRAY_TEXT
         }
-        add(box, 16)
-        return this
+        val sp = SpannableString("●  $label")
+        sp.setSpan(ForegroundColorSpan(color), 0, 1, 0)
+        return TextView(a).apply {
+            text = sp
+            textSize = 12f
+            setTextColor(UiColor.INK)
+            typeface = Typeface.DEFAULT_BOLD
+            background = bg(UiColor.WHITE, 12)
+            setPadding(dp(10), dp(4), dp(12), dp(4))
+        }
     }
 
-    /**
-     * 按分类分组的更新内容：每组「小圆点 + 组名」，组里每条是
-     * 「粗体小标题 + 灰色一行说明」。内容多时框内可上下滑。
-     */
-    fun changes(groups: List<ChangeGroup>, heightDp: Int = 220): Sheet {
-        if (groups.isEmpty()) return this
-        val sv = ScrollView(a)
-        sv.isVerticalScrollBarEnabled = false
-        sv.background = bg(UiColor.GRAY_BG, 18)
+    /** 按分类分组显示更新内容：每组一个小标签，每条是「粗体小标题 + 灰色一行说明」。 */
+    fun changes(list: List<Change>, maxHeightDp: Int = 260): Sheet {
+        if (list.isEmpty()) return this
         val box = LinearLayout(a)
         box.orientation = LinearLayout.VERTICAL
-        box.setPadding(dp(16), dp(12), dp(16), dp(12))
-        groups.forEachIndexed { gi, g ->
-            // 组头：小圆点 + 组名
-            val head = LinearLayout(a)
-            head.orientation = LinearLayout.HORIZONTAL
-            head.gravity = Gravity.CENTER_VERTICAL
-            head.addView(dot(ChangeTypes.color(g.type)), LinearLayout.LayoutParams(dp(7), dp(7)))
-            val headTv = tv(ChangeTypes.label(g.type), 13f, UiColor.GRAY_TEXT, true)
-            headTv.setPadding(dp(6), 0, 0, 0)
-            head.addView(headTv)
-            if (gi > 0) {
-                val headLp = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
-                headLp.topMargin = dp(14)
-                box.addView(head, headLp)
-            } else {
-                box.addView(head)
-            }
-            // 组内条目：粗体小标题 + 灰色一行说明
-            for (it in g.items) {
-                val t = tv(it.title, 14f, UiColor.INK, true)
-                t.setPadding(0, dp(6), 0, 0)
-                box.addView(t)
-                if (it.detail.isNotBlank()) {
-                    val d = tv(it.detail, 13f, UiColor.GRAY_TEXT)
-                    d.setPadding(0, dp(1), 0, 0)
-                    box.addView(d)
+        box.setPadding(dp(14), dp(12), dp(14), dp(14))
+        val order = listOf("app", "content", "global", "prompt", "fix")
+        val types = order + list.map { it.type }.filter { it !in order }.distinct()
+        var first = true
+        for (ty in types) {
+            val items = list.filter { it.type == ty }
+            if (items.isEmpty()) continue
+            val clp = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
+            clp.topMargin = if (first) 0 else dp(14)
+            box.addView(chip(ty), clp)
+            first = false
+            for (ch in items) {
+                val tlp = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
+                tlp.topMargin = dp(8)
+                box.addView(tv(ch.title, 15f, UiColor.INK, true), tlp)
+                if (ch.detail.isNotBlank()) {
+                    val d = tv(ch.detail, 13f, UiColor.GRAY_TEXT)
+                    d.setLineSpacing(0f, 1.2f)
+                    val dlp = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
+                    dlp.topMargin = dp(2)
+                    box.addView(d, dlp)
                 }
             }
         }
+        val sv = MaxHeightScrollView(a, dp(maxHeightDp))
+        sv.background = bg(UiColor.GRAY_BG, 18)
         sv.addView(box)
-        add(sv, 16, dp(heightDp))
+        add(sv, 16)
         return this
     }
 
-    /** 较长的文字（保活引导用），可上下滑动。 */
+    /** 较长的文字（保活引导用），固定高度，可上下滑。 */
     fun scrollText(t: String, heightDp: Int = 180): Sheet {
         val sv = ScrollView(a)
         sv.background = bg(UiColor.GRAY_BG, 18)

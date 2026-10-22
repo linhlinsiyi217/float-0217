@@ -4,13 +4,15 @@
   "apkUrl": "https://github.com/linhlinsiyi217/float-0217/releases/download/v1.2.0/app-release.apk",
   "force": false,
   "webVersion": "2026-10-22-1",
-  "summary": "这次补全了灵动岛和 AI 头像心声弹窗，重做了开屏进度与模拟锁屏，线下模式改成书页式正文（荧光带台词、就地编辑、重写候选、约会记录），聊天室小弹窗全部改成只验证不误触。",
+  "summary": "这次重做了安卓壳的更新弹窗，没打开应用时也会提醒新版本；网页里线下模式改成了书页式正文，还补全了灵动岛、开屏锁屏和心声弹窗。",
   "changes": [
-    { "type": "page", "title": "灵动岛补全", "detail": "岛内状态与展开内容补齐，动画衔接更顺" },
-    { "type": "page", "title": "心声式弹窗", "detail": "点 AI 头像弹出角色此刻的心声，读完即散" },
-    { "type": "page", "title": "开屏与锁屏", "detail": "开屏改为真实加载进度；新增模拟锁屏界面与锁屏设置" },
-    { "type": "page", "title": "线下书页模式", "detail": "线下正文像一本书：台词荧光带、段落四件事就地完成、重写后左右划切候选、结束约会存进记录" },
-    { "type": "prompt", "title": "线下写作参数", "detail": "会话设置里可给线下正文定文风、氛围与视角，只影响书页" },
-    { "type": "fix", "title": "小弹窗只验证", "detail": "聊天室各类小弹窗统一改为验证式交互，减少误触" }
+    { "type": "app", "title": "更新弹窗重做", "detail": "白底按分类分组展示，去掉条数和字数限制" },
+    { "type": "app", "title": "新版本通知", "detail": "没打开应用时也定时检查，发「有新版本」系统通知" },
+    { "type": "content", "title": "线下书页", "detail": "线下正文像一本书：荧光带台词、就地编辑、重写候选、约会记录" },
+    { "type": "content", "title": "心声弹窗", "detail": "点 AI 头像弹出 TA 此刻的心声，读完即散" },
+    { "type": "content", "title": "小弹窗只验证", "detail": "聊天室各类小弹窗统一改为验证式交互，减少误触" },
+    { "type": "global", "title": "灵动岛补全", "detail": "真电量、分钟时钟、通知状态显示与开关" },
+    { "type": "global", "title": "开屏与锁屏", "detail": "开屏改为真实加载进度；新增模拟锁屏界面" },
+    { "type": "prompt", "title": "线下写作参数", "detail": "可为线下书页单独定文风、氛围与视角" }
   ]
 }

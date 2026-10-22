@@ -123,6 +123,8 @@ object KeepAlive {
 class KeepAliveJobService : JobService() {
     override fun onStartJob(params: JobParameters?): Boolean {
         try { KeepAlive.ensureService(this) } catch (_: Exception) {}
+        // 顺手查一次线上版本：有新版本时发一条系统通知，点击进 App 自动弹更新窗
+        try { UpdateManager.checkInBackground(this) } catch (_: Exception) {}
         return false
     }
     override fun onStopJob(params: JobParameters?): Boolean = true

@@ -14,11 +14,12 @@ export const SYSTEM_RELEASES: Release[] = [
     releaseId: "system-2026-10-22-v0611",
     date: "2026-10-22",
     name: "灵动岛补全、心声弹窗、开屏锁屏与线下书页",
-    summary: "桌面：灵动岛补上真电量、分钟时钟、通知状态和开关；开屏改为真实加载进度并新增模拟锁屏。聊天：点 AI 头像弹出心声弹窗，线下模式改成书页式正文，小弹窗全部改成只验证。设置：新增锁屏设置与线下写作参数；更新应用：聊天、桌面、设置",
+    summary: "桌面：灵动岛补上真电量、分钟时钟、通知状态和开关；开屏改为真实加载进度并新增模拟锁屏。聊天：点 AI 头像弹出心声弹窗，线下模式改成书页式正文，小弹窗全部改成只验证。设置：新增锁屏设置与线下写作参数。安卓壳：更新弹窗重做为分类分组界面，没打开应用时也提醒新版本；更新日志全部标注影响范围。更新应用：聊天、桌面、设置",
     entries: [
       {
         id: "sys-0611-island",
         category: "feat",
+        scope: "global",
         app: "桌面 · 音乐灵动岛",
         title: "灵动岛信息补全与开关",
         items: [
@@ -30,6 +31,7 @@ export const SYSTEM_RELEASES: Release[] = [
       {
         id: "sys-0611-innervoice",
         category: "feat",
+        scope: "content",
         app: "聊天 · 心声弹窗",
         title: "点 AI 头像看 TA 此刻的心声",
         items: [
@@ -40,6 +42,7 @@ export const SYSTEM_RELEASES: Release[] = [
       {
         id: "sys-0611-lock",
         category: "feat",
+        scope: "global",
         app: "桌面 · 开屏与锁屏",
         title: "开屏真进度与模拟锁屏",
         items: [
@@ -51,6 +54,7 @@ export const SYSTEM_RELEASES: Release[] = [
       {
         id: "sys-0611-book",
         category: "feat",
+        scope: "content",
         app: "聊天 · 线下书页",
         title: "线下模式改成书页式正文",
         items: [
@@ -66,6 +70,7 @@ export const SYSTEM_RELEASES: Release[] = [
       {
         id: "sys-0611-verify",
         category: "fix",
+        scope: "fix",
         app: "聊天 · 小弹窗",
         title: "聊天室小弹窗改为只验证",
         items: [
@@ -75,11 +80,37 @@ export const SYSTEM_RELEASES: Release[] = [
       {
         id: "sys-0611-offline-style",
         category: "feat",
+        scope: "prompt",
         app: "设置 · 线下写作参数",
         title: "给线下正文定文风、氛围与视角",
         items: [
           "会话设置里可以给线下书页单独定文风、氛围、视角，只影响线下写作",
           "线下正文 CSS 与线上聊天 CSS 分开存放，自动套线下页作用域",
+        ],
+      },
+      {
+        id: "sys-0611-sheet",
+        category: "feat",
+        scope: "app",
+        app: "安卓壳 · 更新弹窗",
+        title: "更新弹窗重做与新版本通知",
+        items: [
+          "弹窗白底按分类分组展示更新内容，每组一个分类小标签，内容多时框内上下滑",
+          "取消更新内容的条数和字数限制，总结与分解完整显示",
+          "没打开应用时每 15 分钟检查一次版本，发现新版本发系统通知，点击进入自动弹更新窗",
+          "安卓壳版本号对齐 1.2.0(13)",
+        ],
+      },
+      {
+        id: "sys-0611-logscope",
+        category: "feat",
+        scope: "content",
+        app: "设置 · 更新日志",
+        title: "更新日志按影响范围标注",
+        items: [
+          "每条更新标注影响范围：应用/页面内容/全局/提示词/修复",
+          "日志页与更新弹窗按范围分组显示，小圆点配色与应用内更新弹窗一致",
+          "老条目没有范围标记时按页面内容处理，照常显示",
         ],
       },
     ],
@@ -88,6 +119,7 @@ export const SYSTEM_RELEASES: Release[] = [
       "模拟锁屏是界面模拟，不是系统级锁屏；PIN 只在本机校验",
       "线下书页的荧光带、就地编辑、重写候选、约会记录需要在真机上实际写一轮验证",
       "心声弹窗需要真实模型会话验证内容质量",
+      "更新弹窗新界面与「有新版本」通知需要在真机验证：分类分组显示、下载安装流程、15 分钟定时通知",
     ],
   },
   {
