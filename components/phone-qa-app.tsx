@@ -324,9 +324,18 @@ function QaWorkshopMark() {
 /** Claude 风格思考过程：生成时自动展开，完成后折叠成一条可回看的摘要。 */
 function QaReasoningBlock({ reasoning, isStreaming }: { reasoning: string; isStreaming: boolean }) {
   const [open, setOpen] = useState(isStreaming);
+  const [elapsed, setElapsed] = useState(0);
+  const [startedAt] = useState(() => Date.now());
   useEffect(() => {
     if (isStreaming) setOpen(true);
   }, [isStreaming]);
+  useEffect(() => {
+    if (!isStreaming) return;
+    const update = () => setElapsed(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [isStreaming, startedAt]);
   const preview = reasoning.replace(/\s+/g, " ").trim();
   return (
     <div className={`qa-reasoning ${isStreaming ? "is-streaming" : ""} ${open ? "is-open" : ""}`}>
@@ -334,6 +343,7 @@ function QaReasoningBlock({ reasoning, isStreaming }: { reasoning: string; isStr
         <span className="qa-reasoning-mark" aria-hidden><Sparkles size={14} strokeWidth={1.8} /></span>
         <span className="qa-reasoning-label">{isStreaming ? "正在思考" : "思考过程"}</span>
         {isStreaming && <span className="qa-reasoning-dots" aria-hidden><i /><i /><i /></span>}
+        {(isStreaming || elapsed > 0) && <span className="qa-reasoning-timer">{elapsed}s</span>}
         {!isStreaming && preview && <span className="qa-reasoning-preview">{preview}</span>}
         <ChevronDown size={14} className="qa-reasoning-chevron" aria-hidden />
       </button>
@@ -505,6 +515,8 @@ function QaSessionDrawer({
   onDelete,
   onCreate,
   onOpenSettings,
+  onOpenApiLog,
+  onClearTools,
   onRenameRequest,
   onCarryOver,
 }: {
@@ -515,6 +527,8 @@ function QaSessionDrawer({
   onDelete: (id: string) => void;
   onCreate: () => void;
   onOpenSettings: () => void;
+  onOpenApiLog: () => void;
+  onClearTools: () => void;
   onRenameRequest: (id: string, title: string) => void;
   onCarryOver: (id: string) => void;
 }) {
@@ -531,7 +545,7 @@ function QaSessionDrawer({
   return (
     <aside className="qa-drawer">
       <div className="qa-drawer-head">
-        <span className="qa-drawer-title">对话记录</span>
+        <span className="qa-drawer-title">工坊空间</span>
       </div>
       <div
         className="qa-drawer-list hide-scrollbar"
@@ -631,6 +645,14 @@ function QaSessionDrawer({
         <button type="button" className="qa-drawer-new qa-drawer-settings" onClick={onOpenSettings}>
           <Wrench size={15} strokeWidth={2} />
           <span>工坊配置</span>
+        </button>
+        <button type="button" className="qa-drawer-new" onClick={onOpenApiLog}>
+          <FileCode2 size={15} strokeWidth={2} />
+          <span>调用记录</span>
+        </button>
+        <button type="button" className="qa-drawer-new" onClick={onClearTools}>
+          <BrushCleaning size={15} strokeWidth={2} />
+          <span>清理执行记录</span>
         </button>
         <button type="button" className="qa-drawer-new" onClick={onCreate}>
           <Plus size={16} strokeWidth={2} />
@@ -1317,6 +1339,14 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
           setSettingsOpen(true);
           setDrawerOpen(false);
         }}
+        onOpenApiLog={() => {
+          setApiLogOpen(true);
+          setDrawerOpen(false);
+        }}
+        onClearTools={() => {
+          setDrawerOpen(false);
+          handleClearToolHistory();
+        }}
         onRenameRequest={(id, title) => {
           setRenameTarget({ id, title });
           setRenameTitle(title);
@@ -1333,36 +1363,26 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
         </div>
       )}
       <header className="qa-header">
-        <div className="qa-header-left">
-          <button type="button" className="qa-icon-btn" onClick={onClose} aria-label="返回">
+        <div className="qa-header-left qa-header-control-group">
+          <button type="button" className="qa-icon-btn qa-header-back" onClick={onClose} aria-label="返回">
             <ChevronLeft size={22} strokeWidth={1.75} />
+          </button>
+          <span className="qa-header-divider" aria-hidden />
+          <button type="button" className="qa-icon-btn" onClick={() => setDrawerOpen((v) => !v)} aria-label="打开工坊侧栏">
+            <Menu size={18} strokeWidth={1.85} />
           </button>
         </div>
         <div className="qa-header-center">
           <span className="qa-header-title">工坊</span>
-          <span className="qa-header-sub">AI 工作台</span>
+          <span className="qa-header-sub">{modelName || "AI 工作台"}</span>
         </div>
-        <div className="qa-header-right">
-          <button
-            type="button"
-            className="qa-icon-btn"
-            onClick={() => setApiLogOpen(true)}
-            aria-label="调用记录"
-            title="查看工坊的 AI 调用记录"
-          >
-            <FileCode2 size={17} strokeWidth={1.75} />
+        <div className="qa-header-right qa-header-control-group">
+          <button type="button" className="qa-icon-btn" onClick={() => setDrawerOpen(true)} aria-label="文件与会话">
+            <FileText size={18} strokeWidth={1.75} />
           </button>
-          <button
-            type="button"
-            className="qa-icon-btn"
-            onClick={handleClearToolHistory}
-            aria-label="清理原生tool调用历史（防报错）"
-            title="清理原生tool调用历史——防报错"
-          >
-            <BrushCleaning size={17} strokeWidth={1.75} />
-          </button>
-          <button type="button" className="qa-icon-btn" onClick={() => setDrawerOpen((v) => !v)} aria-label="对话记录">
-            <Menu size={18} strokeWidth={1.75} />
+          <span className="qa-header-divider" aria-hidden />
+          <button type="button" className="qa-icon-btn" onClick={() => { createQaSession(); setDrawerOpen(false); }} aria-label="新对话">
+            <Pencil size={18} strokeWidth={1.8} />
           </button>
         </div>
       </header>

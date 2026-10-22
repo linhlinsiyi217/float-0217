@@ -3,13 +3,14 @@
   "versionName": "1.1.0",
   "apkUrl": "https://github.com/linhlinsiyi217/float-0217/releases/download/v1.1.0/app-release.apk",
   "force": false,
-  "webVersion": "2026-10-22-1",
-  "summary": "工坊入口收回现有加号菜单；更新公告恢复原有紧凑列表和分类颜色。",
+  "webVersion": "2026-10-22-2",
+  "summary": "工坊重排为自己的 Claude 式工作台：左侧工坊空间、文档流消息、可计时思考过程和更清晰的输入栏。",
   "changes": [
     { "type": "app", "title": "应用内更新", "detail": "新版本先弹窗，下载后拉起系统安装页，装完弹一次更新日志" },
     { "type": "app", "title": "后台保活", "detail": "被划掉后自动拉起，首次打开引导设置" },
     { "type": "app", "title": "自动打包", "detail": "推到 main 后 Actions 自动构建并发布 APK 到 Releases" },
-    { "type": "content", "title": "工坊入口", "detail": "在原有附件菜单中加入本机内容与技能两级入口，选择后同步到当前消息" },
-    { "type": "app", "title": "更新公告", "detail": "恢复原有紧凑条目，只保留分类色点、标签和查看全部" }
+    { "type": "content", "title": "工坊工作台", "detail": "重排顶部控制组、工坊空间侧栏、文档流消息和底部输入栏，原有工坊能力继续可用" },
+    { "type": "content", "title": "思考过程", "detail": "生成时显示展开状态、动态点和计时，完成后收起为可回看的摘要" },
+    { "type": "content", "title": "工坊入口", "detail": "本机内容、技能、附件和仓库引用保留在输入栏的分层入口中" }
   ]
 }
