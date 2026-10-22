@@ -47,15 +47,18 @@ export function buildOfflinePromptHistory(
                 createdAt: userAt,
             });
         }
-        history.push({
-            id: `${turn.id}_assistant`,
-            sessionId: session.id,
-            role: "assistant",
-            content: formatOfflineTurnXml(turn),
-            status: "sent",
-            createdAt: assistantAt,
-            ...(session.isGroup ? { senderName: session.groupName || "群聊线下" } : {}),
-        });
+        // 半轮兼容：TA 还没回（或回复那侧被删）的轮次不往上下文里塞空气泡
+        if (turn.assistantContent.trim()) {
+            history.push({
+                id: `${turn.id}_assistant`,
+                sessionId: session.id,
+                role: "assistant",
+                content: formatOfflineTurnXml(turn),
+                status: "sent",
+                createdAt: assistantAt,
+                ...(session.isGroup ? { senderName: session.groupName || "群聊线下" } : {}),
+            });
+        }
     }
     if (pendingUserContent.trim()) {
         history.push({

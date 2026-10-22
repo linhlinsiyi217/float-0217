@@ -206,17 +206,91 @@ export function updateChatOfflineTurn(
     return updated;
 }
 
-export function deleteChatOfflineTurn(sessionId: string, turnId: string): ChatOfflineTurn[] {
-    const next = loadChatOfflineTurns(sessionId).filter((turn) => turn.id !== turnId);
-    saveChatOfflineTurns(sessionId, next);
-    return next;
-}
-
 export function deleteChatOfflineTurnsFrom(sessionId: string, turnId: string): ChatOfflineTurn[] {
     const turns = loadChatOfflineTurns(sessionId);
     const idx = turns.findIndex((turn) => turn.id === turnId);
     if (idx < 0) return turns;
     const next = turns.slice(0, idx);
+    saveChatOfflineTurns(sessionId, next);
+    return next;
+}
+
+// 收藏是按侧标记的，清掉一侧时把它那一侧的收藏也摘掉；全空就整个去掉
+function clearFavedSide(faved: ChatOfflineTurn["faved"], role: "user" | "assistant") {
+    if (!faved || !faved[role]) return faved;
+    const next = { ...faved };
+    delete next[role];
+    return Object.keys(next).length ? next : undefined;
+}
+
+// 清空 turn 里一侧的正文（assistant 侧的摘要/思维链跟着回复走，一并清掉）。
+// 两侧都空了就把这一轮整条移除。旧数据零迁移：老轮次照常读，只是被删的那侧变空。
+export function clearChatOfflineTurnSide(
+    sessionId: string,
+    turnId: string,
+    role: "user" | "assistant",
+): ChatOfflineTurn[] {
+    const turns = loadChatOfflineTurns(sessionId);
+    const next: ChatOfflineTurn[] = [];
+    for (const turn of turns) {
+        if (turn.id !== turnId) {
+            next.push(turn);
+            continue;
+        }
+        if (role === "user") {
+            const cleared: ChatOfflineTurn = { ...turn, userContent: "", faved: clearFavedSide(turn.faved, "user") };
+            if (cleared.assistantContent.trim()) next.push(cleared);
+        } else {
+            const cleared: ChatOfflineTurn = {
+                ...turn,
+                assistantContent: "",
+                summary: "",
+                rawText: undefined,
+                reasoningText: undefined,
+                thinkingText: undefined,
+                thinkingTag: undefined,
+                faved: clearFavedSide(turn.faved, "assistant"),
+            };
+            if (cleared.userContent.trim()) next.push(cleared);
+        }
+    }
+    saveChatOfflineTurns(sessionId, next);
+    return next;
+}
+
+// 时光回溯（方案一·轻）：回到某一段之前——两段式确认放在界面层，这里只管截断。
+// 长按你写的段：回到你落笔之前，这一轮（连同回复）和后面全部丢弃；
+// 长按 TA 写的段：回到 TA 落笔之前，保留你写的（留下半轮），TA 的回复和后面全部丢弃。
+// 数据上就是 turn 数组截断 + 一次半轮清空，AI 上下文随数组自然变短。
+export function rewindChatOfflineTurnBefore(
+    sessionId: string,
+    turnId: string,
+    role: "user" | "assistant",
+): ChatOfflineTurn[] {
+    const turns = loadChatOfflineTurns(sessionId);
+    const idx = turns.findIndex((turn) => turn.id === turnId);
+    if (idx < 0) return turns;
+    let next: ChatOfflineTurn[];
+    if (role === "user") {
+        next = turns.slice(0, idx);
+    } else if (turns[idx].userContent.trim()) {
+        next = [
+            ...turns.slice(0, idx),
+            {
+                ...turns[idx],
+                assistantContent: "",
+                summary: "",
+                rawText: undefined,
+                reasoningText: undefined,
+                thinkingText: undefined,
+                thinkingTag: undefined,
+                faved: clearFavedSide(turns[idx].faved, "assistant"),
+            },
+        ];
+    } else {
+        // 你这侧本来就没字：等价于从这一轮起整轮丢弃
+        next = turns.slice(0, idx);
+    }
     saveChatOfflineTurns(sessionId, next);
     return next;
 }

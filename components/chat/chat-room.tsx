@@ -47,7 +47,7 @@ import { deleteWeixinCloudMessagesFromCloud, emitWeixinSyncToast, syncAllWeixinB
 import { loadBindingConfig, loadPresets, loadRegexes, resolveBinding, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
 import { resolveChatAccountUserIdentity } from "@/lib/chat-scope-storage";
 import { generateGroupChatCompletion, generateGroupOfflineChatCompletion, parseGroupChatResponse, buildEditableGroupRoundText } from "@/lib/group-chat-engine";
-import { appendChatOfflineTurn, clearChatOfflineTurns, deleteChatOfflineTurn, deleteChatOfflineTurnsFrom, extractThinkingTag, loadChatOfflineTurns, parseOfflineResponse, preserveChatOfflineSummaries, saveChatOfflineTurns, updateChatOfflineTurn, type ChatOfflineTurn } from "@/lib/chat-offline-storage";
+import { appendChatOfflineTurn, clearChatOfflineTurnSide, clearChatOfflineTurns, deleteChatOfflineTurnsFrom, extractThinkingTag, loadChatOfflineTurns, parseOfflineResponse, preserveChatOfflineSummaries, rewindChatOfflineTurnBefore, saveChatOfflineTurns, updateChatOfflineTurn, type ChatOfflineTurn } from "@/lib/chat-offline-storage";
 import { applyDisplayRegex, applyEditRegex } from "@/lib/llm-prompt-assembler";
 import { scheduleFollowUp, cancelFollowUp, cancelBackgroundGeneration, isBackgroundReplyGenerating } from "@/lib/follow-up-service";
 import { useKeyboardDismissAutoSend } from "@/components/chat/use-keyboard-dismiss-auto-send";
@@ -1379,6 +1379,12 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
     // 线下模式流式预览解析的 rAF 合并帧（独立于线上，避免互相干扰）
     const offlineStreamFrameRef = useRef(0);
     const [activeOfflineTarget, setActiveOfflineTarget] = useState<OfflineActionTarget | null>(null);
+    // 「回到这段之前」的两段式确认：第一下架起来（3 秒内再点才真回溯），与段首删除的按两次同一个规矩
+    const [offlineRewindArmed, setOfflineRewindArmed] = useState<OfflineActionTarget | null>(null);
+    const offlineRewindArmTimer = useRef(0);
+    useEffect(() => () => {
+        if (offlineRewindArmTimer.current) window.clearTimeout(offlineRewindArmTimer.current);
+    }, []);
     const [editingOfflineTarget, setEditingOfflineTarget] = useState<OfflineActionTarget | null>(null);
     const [editingOfflineContent, setEditingOfflineContent] = useState("");
     const [regexRevision, setRegexRevision] = useState(0);
@@ -1719,9 +1725,18 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         return () => window.removeEventListener(IMESSAGE_TAPBACK_APPLIED_EVENT, syncAppliedTapback);
     }, [session.id, syncMessagesFromStorage]);
 
+    const disarmOfflineRewind = () => {
+        if (offlineRewindArmTimer.current) {
+            window.clearTimeout(offlineRewindArmTimer.current);
+            offlineRewindArmTimer.current = 0;
+        }
+        setOfflineRewindArmed(null);
+    };
+
     const closeContextMenu = () => {
         setActiveMessageId(null);
         setActiveOfflineTarget(null);
+        disarmOfflineRewind();
         setContextMenuAnchor(null);
         setTapbackInputTarget(null);
         setTapbackInputError("");
@@ -1751,6 +1766,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
     const openOfflineContextMenu = (target: OfflineActionTarget, anchor: ContextMenuAnchor) => {
         setActiveMessageId(null);
         setContextMenuAnchor(anchor);
+        disarmOfflineRewind();
         setActiveOfflineTarget(target);
     };
 
@@ -4939,9 +4955,25 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         setEditingOfflineContent("");
     };
 
-    const handleOfflineDeleteTurn = (turnId: string) => {
-        setOfflineTurns(deleteChatOfflineTurn(session.id, turnId));
+    // 删段（改法一·轻）：只清空被删的那一侧，另一侧原样保留（留下半轮）
+    const handleOfflineDeleteTurn = (turnId: string, role: OfflineActionTarget["role"]) => {
+        setOfflineTurns(clearChatOfflineTurnSide(session.id, turnId, role));
         setActiveOfflineTarget(null);
+    };
+
+    // 时光回溯（方案一·轻）：回到这段之前——两段式确认，3 秒内再点一下才真做
+    const handleOfflineRewindBefore = (turnId: string, role: OfflineActionTarget["role"]) => {
+        const armed = offlineRewindArmed?.turnId === turnId && offlineRewindArmed.role === role;
+        if (!armed) {
+            if (offlineRewindArmTimer.current) window.clearTimeout(offlineRewindArmTimer.current);
+            setOfflineRewindArmed({ turnId, role });
+            offlineRewindArmTimer.current = window.setTimeout(() => setOfflineRewindArmed(null), 3000);
+            return;
+        }
+        disarmOfflineRewind();
+        setOfflineTurns(rewindChatOfflineTurnBefore(session.id, turnId, role));
+        setActiveOfflineTarget(null);
+        showChatToast("已回到这段之前");
     };
 
     const handleOfflineDeleteTurnsFrom = (turnId: string) => {
@@ -5542,7 +5574,16 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                     <button onClick={() => void handleOfflineRetryFrom(turn.id)} className="ctx-menu-btn ctx-menu-btn-danger">重试以下</button>
                 </div>
                 <div className="flex">
-                    <button onClick={() => handleOfflineDeleteTurn(turn.id)} className="ctx-menu-btn ctx-menu-btn-danger">删除</button>
+                    <button
+                        onClick={() => handleOfflineRewindBefore(turn.id, role)}
+                        className="ctx-menu-btn ctx-menu-btn-danger"
+                        style={offlineRewindArmed?.turnId === turn.id && offlineRewindArmed.role === role ? { background: "#FF3B30", color: "#fff", fontWeight: 600 } : undefined}
+                    >
+                        {offlineRewindArmed?.turnId === turn.id && offlineRewindArmed.role === role ? "再点一次确认" : "回到这段之前"}
+                    </button>
+                </div>
+                <div className="flex">
+                    <button onClick={() => handleOfflineDeleteTurn(turn.id, role)} className="ctx-menu-btn ctx-menu-btn-danger">删除</button>
                     <button onClick={() => handleOfflineDeleteTurnsFrom(turn.id)} className="ctx-menu-btn ctx-menu-btn-danger">删除以下</button>
                 </div>
                 <div data-menu-triangle className="ctx-menu-triangle absolute -top-[6px] w-0 h-0" />
@@ -6682,7 +6723,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                         />
                                     </div>
                                 </div>
-                                <div className="chat-offline-entry" data-role="assistant">
+                                <div className="chat-offline-entry" data-role="assistant" style={offlineDisplay.assistantContent.trim() ? undefined : { display: "none" }}>
                                     {/* 头像占位：默认 display:none（见 chat.css），供自定义 CSS 显示 */}
                                     <div className="chat-offline-avatar" aria-hidden="true">
                                         {effectiveCharacterAvatar ? <img src={effectiveCharacterAvatar} alt="" /> : <ChatFallbackAvatar />}
