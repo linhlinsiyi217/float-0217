@@ -7,9 +7,9 @@ import { loadUserIdentities, saveUserIdentities } from "@/lib/settings-storage";
 import { ConfirmDialog } from "@/components/ui/modal";
 import {
     createEmptyUserIdentity,
-    UserIdentityEditorSheet,
     type UserIdentity,
 } from "./user-identity-editor-sheet";
+import { UserIdentityEditorPage } from "./user-identity-editor-page";
 
 export type { UserIdentity } from "./user-identity-editor-sheet";
 
@@ -38,6 +38,7 @@ export function UserIdentitySettings() {
     const { setSubpageRightAction } = useContext(SettingsContext);
     const [identities, setIdentitiesRaw] = useState<UserIdentity[]>([]);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [draftIdentity, setDraftIdentity] = useState<UserIdentity | null>(null);
     const [isNewIdentity, setIsNewIdentity] = useState(false);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
@@ -56,13 +57,13 @@ export function UserIdentitySettings() {
         saveUserIdentities(next);
     }, []);
 
+    // 新增身份：先不进列表，保存后才落库——放弃时不需要清理半成品
     const addIdentity = useCallback(() => {
         const newIdentity = createEmptyUserIdentity();
-        const next = [newIdentity, ...identities];
-        setIdentities(next);
         setIsNewIdentity(true);
         setEditingId(newIdentity.id);
-    }, [identities, setIdentities]);
+        setDraftIdentity(newIdentity);
+    }, []);
 
     useEffect(() => {
         setSubpageRightAction("identity",
@@ -86,8 +87,15 @@ export function UserIdentitySettings() {
         setIdentities(next);
         if (editingId === id) {
             setEditingId(null);
+            setDraftIdentity(null);
             setIsNewIdentity(false);
         }
+    };
+
+    const openEditor = (identity: UserIdentity) => {
+        setDraftIdentity({ ...identity });
+        setIsNewIdentity(false);
+        setEditingId(identity.id);
     };
 
     return (
@@ -119,12 +127,12 @@ export function UserIdentitySettings() {
                             role="button"
                             tabIndex={0}
                             aria-label={`编辑 ${identity.name || "身份"}`}
-                            onClick={() => setEditingId(identity.id)}
+                            onClick={() => openEditor(identity)}
                             onKeyDown={(event) => {
                                 if (event.target !== event.currentTarget) return;
                                 if (event.key === "Enter" || event.key === " ") {
                                     event.preventDefault();
-                                    setEditingId(identity.id);
+                                    openEditor(identity);
                                 }
                             }}
                         >
@@ -146,7 +154,7 @@ export function UserIdentitySettings() {
                                         type="button"
                                         onClick={(event) => {
                                             event.stopPropagation();
-                                            setEditingId(identity.id);
+                                            openEditor(identity);
                                         }}
                                         className="ui-link-btn"
                                     >
@@ -170,26 +178,30 @@ export function UserIdentitySettings() {
                 </div>
             )}
 
-            {editingId && (() => {
-                const identity = identities.find(item => item.id === editingId);
-                if (!identity) return null;
-                return (
-                    <UserIdentityEditorSheet
-                        identity={identity}
-                        title={isNewIdentity ? "添加身份" : "编辑身份"}
-                        onChange={(updates) => updateIdentity(identity.id, updates)}
-                        onCancel={() => {
-                            if (isNewIdentity) removeIdentity(identity.id);
-                            setIsNewIdentity(false);
-                            setEditingId(null);
-                        }}
-                        onConfirm={() => {
-                            setIsNewIdentity(false);
-                            setEditingId(null);
-                        }}
-                    />
-                );
-            })()}
+            {editingId && draftIdentity && (
+                <UserIdentityEditorPage
+                    identity={draftIdentity}
+                    isNew={isNewIdentity}
+                    onClose={() => {
+                        setEditingId(null);
+                        setDraftIdentity(null);
+                        setIsNewIdentity(false);
+                    }}
+                    onSave={(draft) => {
+                        if (isNewIdentity) {
+                            setIdentities([draft, ...identities]);
+                        } else {
+                            updateIdentity(draft.id, draft);
+                        }
+                    }}
+                    onDelete={(id) => {
+                        removeIdentity(id);
+                        setEditingId(null);
+                        setDraftIdentity(null);
+                        setIsNewIdentity(false);
+                    }}
+                />
+            )}
 
             {confirmDeleteId && (
                 <ConfirmDialog

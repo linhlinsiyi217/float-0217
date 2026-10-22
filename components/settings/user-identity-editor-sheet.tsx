@@ -6,6 +6,10 @@ import { Input } from "@/components/ui/form";
 export type UserIdentity = {
     id: string;
     name: string;
+    /** 可选：昵称（AI 也可以这样称呼用户）。旧数据没有这个字段，读出来是 undefined。 */
+    nickname?: string;
+    /** 可选：个性签名。旧数据兼容，同上。 */
+    signature?: string;
     avatarUrl?: string;
     bio: string;
     gender: string;
@@ -26,7 +30,7 @@ export function createEmptyUserIdentity(): UserIdentity {
     };
 }
 
-function fileToDataUrl(file: File, maxSize = 400, quality = 0.8): Promise<string> {
+export function fileToDataUrl(file: File, maxSize = 400, quality = 0.8): Promise<string> {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
