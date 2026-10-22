@@ -768,7 +768,7 @@ function section(label: string, value: string): string {
 
 // 版权护栏：从市场安装的他人应用，源码读取/导出/修改仅限作者本人。
 // 归类逻辑与市场 UI 的"本地测试"分区共用同一实现（lib/custom-app-ownership），
-// 保证"本地测试里看不到的，小坊也碰不到"。市场数据短暂缓存，连续操作不反复拉接口。
+// 保证"本地测试里看不到的，克克也碰不到"。市场数据短暂缓存，连续操作不反复拉接口。
 let marketOwnershipCache: { at: number; data: MarketOwnershipData } | null = null;
 
 async function fetchMarketOwnershipData(): Promise<MarketOwnershipData> {
@@ -982,7 +982,7 @@ const saveGameDraftTool: QaContentTool = {
             publishedTemplateId: existing?.publishedTemplateId,
             // 关联已发布条目的草稿被改动：与 UI 存草稿一致，标记有未发布改动
             hasUnpublishedChanges: existing?.publishedTemplateId ? true : undefined,
-            // 集市来源标记必须原样保留，否则让小坊改一次就把出处洗掉了
+            // 集市来源标记必须原样保留，否则让克克改一次就把出处洗掉了
             importedFrom: existing?.importedFrom,
             createdAt: existing?.createdAt ?? now,
             updatedAt: now,
@@ -1067,7 +1067,7 @@ const saveTheaterDraftTool: QaContentTool = {
             sourceTemplateTitle: existing?.sourceTemplateTitle,
             // 关联已发布档案的草稿被改动：与 UI 存草稿一致，标记有未发布改动
             hasUnpublishedChanges: existing?.sourceTemplateId ? true : undefined,
-            // 集市来源标记必须原样保留，否则让小坊改一次就把出处洗掉了
+            // 集市来源标记必须原样保留，否则让克克改一次就把出处洗掉了
             importedFrom: existing?.importedFrom,
             createdAt: existing?.createdAt ?? now,
             updatedAt: now,

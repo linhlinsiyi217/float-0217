@@ -64,20 +64,20 @@ export function normalizeUpdateCategory(category: UpdateCategory): UpdateCategor
 
 /** 分类色只用于小标签文字与圆点；始终与文字分类同时出现 */
 export const CATEGORY_COLOR: Record<UpdateCategory, string> = {
-  feat: "#2E8B57",
-  fix: "#CE7A1F",
-  perf: "#2F6FD0",
-  tweak: "#2F6FD0",
-  privacy: "#7A5CB8",
+  feat: "#00A86B",
+  fix: "#F04438",
+  perf: "#2563EB",
+  tweak: "#2563EB",
+  privacy: "#7C3AED",
 };
 
 /** 分类标签的浅色底（纯白卡上的小色块，保持低饱和） */
 export const CATEGORY_TINT: Record<UpdateCategory, string> = {
-  feat: "#EFF7F1",
-  fix: "#FBF1E7",
-  perf: "#EDF3FB",
-  tweak: "#EDF3FB",
-  privacy: "#F4F0FA",
+  feat: "#E7FFF4",
+  fix: "#FFF0EE",
+  perf: "#EEF4FF",
+  tweak: "#EEF4FF",
+  privacy: "#F3EEFF",
 };
 
 // ── 影响范围（scope）────────────────────────────────
@@ -106,6 +106,15 @@ export const SCOPE_COLOR: Record<UpdateScope, string> = {
   global: "#FF9500",
   prompt: "#9A9AA0",
   fix: "#FF3B30",
+};
+
+/** 分类标签的浅色底（与 SCOPE_COLOR 同色系的浅版，用于日志页与弹窗的标签底色） */
+export const SCOPE_TINT: Record<UpdateScope, string> = {
+  app: "#EEF4FF",
+  content: "#F2F2F2",
+  global: "#FFF4E5",
+  prompt: "#F5F5F7",
+  fix: "#FFEEED",
 };
 
 /** 老数据没有 scope 字段时当作「页面内容」 */

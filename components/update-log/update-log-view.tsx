@@ -7,6 +7,7 @@ import {
   CATEGORY_COLOR,
   CATEGORY_LABEL,
   CATEGORY_ORDER,
+  CATEGORY_TINT,
   normalizeUpdateCategory,
   releaseApps,
   releaseCounts,
@@ -14,6 +15,7 @@ import {
   scopeGroups,
   SCOPE_COLOR,
   SCOPE_LABEL,
+  SCOPE_TINT,
   type Release,
 } from "@/lib/update-log/types";
 
@@ -67,6 +69,15 @@ export function UpdateLogView({ releases, currentReleaseId, seen }: UpdateLogVie
                     ))}
                   </span>
                 )}
+                {!expanded && releaseHasScope(release) && (
+                  <span className="upd-scope-counts">
+                    {scopeGroups(release.entries).map((group) => (
+                      <span key={group.scope} className="upd-scope-count" style={{ color: SCOPE_COLOR[group.scope], background: SCOPE_TINT[group.scope] }}>
+                        {SCOPE_LABEL[group.scope]} {group.entries.length}
+                      </span>
+                    ))}
+                  </span>
+                )}
               </span>
               <ChevronDown size={18} strokeWidth={1.8} className="upd-arrow" aria-hidden />
             </button>
@@ -77,7 +88,7 @@ export function UpdateLogView({ releases, currentReleaseId, seen }: UpdateLogVie
                   ? // 新数据：按影响范围分组（应用/页面内容/全局/提示词/修复），小圆点配色与安卓壳弹窗一致
                     scopeGroups(release.entries).map((group) => (
                       <div key={group.scope} className="upd-group">
-                        <span className="upd-group-label" style={{ color: SCOPE_COLOR[group.scope] }}>
+                        <span className="upd-group-label" style={{ color: SCOPE_COLOR[group.scope], background: SCOPE_TINT[group.scope] }}>
                           <i style={{ background: SCOPE_COLOR[group.scope] }} aria-hidden />
                           {SCOPE_LABEL[group.scope]}
                         </span>
@@ -85,6 +96,10 @@ export function UpdateLogView({ releases, currentReleaseId, seen }: UpdateLogVie
                           <div key={entry.id} className="upd-entry">
                             <span className="upd-entry-app">{entry.app}</span>
                             <span className="upd-entry-title">{entry.title}</span>
+                            <span className="upd-entry-tags">
+                              <span className="upd-entry-tag" style={{ color: SCOPE_COLOR[group.scope], background: SCOPE_TINT[group.scope] }}>{SCOPE_LABEL[group.scope]}</span>
+                              <span className="upd-entry-tag" style={{ color: CATEGORY_COLOR[normalizeUpdateCategory(entry.category)], background: CATEGORY_TINT[normalizeUpdateCategory(entry.category)] }}>{CATEGORY_LABEL[normalizeUpdateCategory(entry.category)]}</span>
+                            </span>
                             <ul>
                               {entry.items.map((item, index) => (
                                 <li key={index}>{item}</li>
@@ -100,7 +115,7 @@ export function UpdateLogView({ releases, currentReleaseId, seen }: UpdateLogVie
                       if (entries.length === 0) return null;
                       return (
                         <div key={category} className="upd-group">
-                          <span className="upd-group-label" style={{ color: CATEGORY_COLOR[category] }}>
+                          <span className="upd-group-label" style={{ color: CATEGORY_COLOR[category], background: CATEGORY_TINT[category] }}>
                             <i style={{ background: CATEGORY_COLOR[category] }} aria-hidden />
                             {CATEGORY_LABEL[category]}
                           </span>

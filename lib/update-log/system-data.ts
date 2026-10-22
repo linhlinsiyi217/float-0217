@@ -10,14 +10,14 @@ import type { Release } from "./types";
 
 export const SYSTEM_RELEASES: Release[] = [
   {
-    version: "0.6.11",
-    releaseId: "system-2026-10-22-v0611",
+    version: "0.6.16",
+    releaseId: "system-2026-10-22-v0616",
     date: "2026-10-22",
     name: "灵动岛补全、心声弹窗、开屏锁屏与线下书页",
     summary: "桌面：灵动岛补上真电量、分钟时钟、通知状态和开关；开屏改为真实加载进度并新增模拟锁屏。聊天：点 AI 头像弹出心声弹窗，线下模式改成书页式正文，小弹窗全部改成只验证。设置：新增锁屏设置与线下写作参数。安卓壳：更新弹窗重做为分类分组界面，没打开应用时也提醒新版本；更新日志全部标注影响范围。更新应用：聊天、桌面、设置",
     entries: [
       {
-        id: "sys-0611-island",
+        id: "sys-0616-island",
         category: "feat",
         scope: "global",
         app: "桌面 · 音乐灵动岛",
@@ -29,7 +29,7 @@ export const SYSTEM_RELEASES: Release[] = [
         ],
       },
       {
-        id: "sys-0611-innervoice",
+        id: "sys-0616-innervoice",
         category: "feat",
         scope: "content",
         app: "聊天 · 心声弹窗",
@@ -40,7 +40,7 @@ export const SYSTEM_RELEASES: Release[] = [
         ],
       },
       {
-        id: "sys-0611-lock",
+        id: "sys-0616-lock",
         category: "feat",
         scope: "global",
         app: "桌面 · 开屏与锁屏",
@@ -52,7 +52,7 @@ export const SYSTEM_RELEASES: Release[] = [
         ],
       },
       {
-        id: "sys-0611-book",
+        id: "sys-0616-book",
         category: "feat",
         scope: "content",
         app: "聊天 · 线下书页",
@@ -68,7 +68,7 @@ export const SYSTEM_RELEASES: Release[] = [
         ],
       },
       {
-        id: "sys-0611-verify",
+        id: "sys-0616-verify",
         category: "fix",
         scope: "fix",
         app: "聊天 · 小弹窗",
@@ -78,7 +78,7 @@ export const SYSTEM_RELEASES: Release[] = [
         ],
       },
       {
-        id: "sys-0611-offline-style",
+        id: "sys-0616-offline-style",
         category: "feat",
         scope: "prompt",
         app: "设置 · 线下写作参数",
@@ -89,7 +89,7 @@ export const SYSTEM_RELEASES: Release[] = [
         ],
       },
       {
-        id: "sys-0611-sheet",
+        id: "sys-0616-sheet",
         category: "feat",
         scope: "app",
         app: "安卓壳 · 更新弹窗",
@@ -98,11 +98,11 @@ export const SYSTEM_RELEASES: Release[] = [
           "弹窗白底按分类分组展示更新内容，每组一个分类小标签，内容多时框内上下滑",
           "取消更新内容的条数和字数限制，总结与分解完整显示",
           "没打开应用时每 15 分钟检查一次版本，发现新版本发系统通知，点击进入自动弹更新窗",
-          "安卓壳版本号对齐 1.2.0(13)",
+          "安卓壳版本号对齐 1.2.0(10200)",
         ],
       },
       {
-        id: "sys-0611-logscope",
+        id: "sys-0616-logscope",
         category: "feat",
         scope: "content",
         app: "设置 · 更新日志",
@@ -120,6 +120,183 @@ export const SYSTEM_RELEASES: Release[] = [
       "线下书页的荧光带、就地编辑、重写候选、约会记录需要在真机上实际写一轮验证",
       "心声弹窗需要真实模型会话验证内容质量",
       "更新弹窗新界面与「有新版本」通知需要在真机验证：分类分组显示、下载安装流程、15 分钟定时通知",
+    ],
+  },
+  {
+    version: "0.6.15",
+    releaseId: "system-2026-10-22-v0615",
+    date: "2026-10-22",
+    name: "工坊与更新公告精修",
+    summary: "工坊收紧为更纯粹的对话工作台；更新公告改用五色高饱和分类、双层标签和紧凑摘要弹窗，版本信息同步升级。",
+    entries: [
+      { id: "sys-0615-workshop", category: "perf", app: "工坊 · 工作台", scope: "content", title: "收紧欢迎页、上下文卡片与输入区层级", items: ["减少空白和装饰性容器，让问候、状态提示与输入区形成清晰的三段层级", "本机内容、技能、附件和仓库引用继续保留，但改为统一的轻量菜单卡片"] },
+      { id: "sys-0615-thinking", category: "perf", app: "工坊 · 思考过程", scope: "content", title: "让思考状态成为可读的工作记录", items: ["生成中显示细小动态点与计时，完成后折叠为一行摘要", "正文、工具调用和思考记录分开排版，长回答不再被状态装饰打断"] },
+      { id: "sys-0615-log", category: "feat", app: "设置 · 更新日志", scope: "content", title: "按影响范围与改动性质双层分类", items: ["应用、页面内容、全局、提示词和修复使用高饱和色区分", "每条记录同时显示影响范围与新功能、体验优化、问题修复或隐私安全标签"] },
+      { id: "sys-0615-popup", category: "perf", app: "设置 · 更新公告", scope: "content", title: "更新弹窗改为三条摘要的紧凑卡", items: ["首屏只展示三条最有代表性的改动，卡片限制高度并贴近底部显示", "保留查看完整日志、稍后查看和我知道了，详细内容不再挤满首屏"] },
+      { id: "sys-0615-release", category: "fix", app: "系统 · 发布信息", scope: "global", title: "同步应用版本与更新标识", items: ["网页版本标识升级到 2026-10-22-3", "更新公告、更新日志和应用内版本信息使用同一 releaseId"] },
+    ],
+    pending: ["已通过 TypeScript、更新日志核对和生产构建检查，建议在真机确认弹窗高度、菜单滚动和键盘弹出后的输入区。"],
+  },
+  {
+    version: "0.6.14",
+    releaseId: "system-2026-10-22-v0614",
+    date: "2026-10-22",
+    name: "工坊工作台重排",
+    summary: "工坊按自己的品牌重排成 Claude 式工作台：侧栏、会话栏、输入区和思考过程各归其位，原有工坊能力继续保留。",
+    entries: [
+      { id: "sys-0614-workbench", category: "feat", app: "工坊 · 工作台", scope: "content", title: "重排工作台与工坊空间", items: ["顶部改为返回、菜单、文件与新对话双控制组，工坊空间从左侧进入", "会话、配置、调用记录和执行记录清理入口集中到同一个工作区侧栏"] },
+      { id: "sys-0614-thinking", category: "feat", app: "工坊 · 思考过程", scope: "content", title: "思考过程改为可展开的计时行", items: ["生成中显示正在思考、动态点和已用秒数，结束后折叠成可回看的摘要", "正文保持文档流布局，思考信息不再抢占回答主体的视觉层级"] },
+      { id: "sys-0614-composer", category: "fix", app: "工坊 · 输入区", scope: "content", title: "把工具、模型和发送操作收回输入栏", items: ["保留上传附件、图片、本机内容、技能和仓库引用，并沿用当前上下文胶囊", "模型、模式、预览与发送按钮集中在底部输入栏，窄屏下也保持可操作"] },
+    ],
+    pending: ["已通过 TypeScript、更新日志核对和生产构建检查，建议在真机确认侧栏推入动画、键盘弹出和窄屏输入区。"],
+  },
+  {
+    version: "0.6.13",
+    releaseId: "system-2026-10-22-v0613",
+    date: "2026-10-22",
+    name: "工坊入口与更新公告调整",
+    summary: "工坊原有附件入口继续保留，本机内容与技能收进同一个加号菜单；更新公告恢复紧凑列表和原有分类颜色。",
+    entries: [
+      {
+        id: "sys-0613-workshop-menu",
+        category: "feat",
+        app: "工坊 · 加号菜单",
+        scope: "content",
+        title: "本机内容与技能归入现有附件入口",
+        items: [
+          "上传附件、添加图片、本机内容和技能按原有位置分层展示",
+          "选择入口后同步到当前消息，并可从输入栏清除当前工坊上下文",
+        ],
+      },
+      {
+        id: "sys-0613-update-popup",
+        category: "fix",
+        app: "设置 · 更新公告",
+        scope: "content",
+        title: "恢复原有紧凑更新弹窗",
+        items: [
+          "移除摘要框和大卡片，只保留分类色点、标签、标题与查看全部",
+          "保留稍后查看、我知道了和查看完整日志的原有行为",
+        ],
+      },
+    ],
+    pending: [
+      "已通过 TypeScript、更新日志核对和生产构建检查，建议在真机窄屏上确认菜单滚动与弹窗高度。",
+    ],
+  },
+  {
+    version: "0.6.12",
+    releaseId: "system-2026-10-21-v0612",
+    date: "2026-10-21",
+    name: "工坊界面与系统活动视觉重做",
+    summary: "工坊改成更克制的 Claude 式工作台；更新公告改为摘要优先的分组卡片；灵动岛只在有真实活动时显示头像和动态波形。",
+    entries: [
+      {
+        id: "sys-0612-workshop-visual",
+        category: "feat",
+        app: "工坊 · 工作台",
+        scope: "content",
+        title: "重做工坊欢迎页、消息层级和思考动效",
+        items: [
+          "移除像素螃蟹与厚重玻璃装饰，改为留白、轻量标记和文档流消息",
+          "思考过程保留可展开回看，生成中以细小点状动效提示，不抢正文焦点",
+        ],
+      },
+      {
+        id: "sys-0612-update-popup",
+        category: "feat",
+        app: "设置 · 更新公告",
+        scope: "content",
+        title: "更新弹窗改为摘要优先的分组卡片",
+        items: [
+          "先展示本次更新摘要，再按影响范围显示标题、应用和一条具体说明",
+          "保留稍后查看、我知道了和查看完整日志的原有行为",
+        ],
+      },
+      {
+        id: "sys-0612-dynamic-island",
+        category: "fix",
+        app: "桌面 · 灵动岛",
+        scope: "app",
+        title: "修正空闲灵动岛的显示状态",
+        items: [
+          "空闲时不再显示「Float 在线 / 刚刚活跃」文案；有音乐、一起听或短暂通知时才展示活动",
+          "紧凑态改为头像加动态波形，点开后才显示标题、进度和控制按钮",
+        ],
+      },
+    ],
+    pending: [
+      "工坊与弹窗已通过 TypeScript 和生产构建检查，建议在真机窄屏上确认键盘、弹窗滚动和深色模式",
+      "灵动岛依赖浏览器对 :has() 的支持；不支持时仍保留黑色系统胶囊和完整展开控件",
+    ],
+  },
+  {
+    version: "0.6.11",
+    releaseId: "system-2026-10-21-v0611",
+    date: "2026-10-21",
+    name: "工坊 Claude 风格改造与安卓壳发布修复",
+    summary: "工坊：加入 Claude 风格欢迎页、思考过程动效与上下文入口；安卓壳：修复 release lint 阻断并保留后台保活、应用内更新；聊天菜单定位继续保留。",
+    entries: [
+      {
+        id: "sys-0611-workshop-claude",
+        category: "feat",
+        app: "工坊 · Claude 风格答疑",
+        scope: "content",
+        title: "工坊支持思考过程展示与更清晰的上下文入口",
+        items: [
+          "欢迎页改为暖色 Claude 风格，保留原有答疑、仓库读写、文件预览和工具执行能力",
+          "模型返回思考过程时显示可展开的思考卡片，生成中有点状动效，完成后可回看摘要",
+          "输入区显示当前工作区、仓库连接状态与更明确的发送状态；手机端临时层支持返回键或 Escape 关闭",
+        ],
+      },
+      {
+        id: "sys-0611-workshop-identity",
+        category: "fix",
+        app: "工坊 · 用户身份",
+        scope: "content",
+        title: "欢迎语和提示跟随用户自己设置的名字",
+        items: [
+          "工坊不再写死问候名称，读取本机内置用户身份并在身份更新后即时同步",
+          "未设置名字时使用中性的「你」作为兜底，不影响原有会话和工具功能",
+        ],
+      },
+      {
+        id: "sys-0611-chat-menu",
+        category: "fix",
+        app: "聊天 · 消息菜单",
+        scope: "content",
+        title: "长按消息时菜单定位和层级更稳定",
+        items: [
+          "菜单会以气泡边缘为基准显示，不再从气泡中间压住正文或被气泡盖住",
+          "屏幕顶部或底部空间不足时自动翻转并限制在屏幕内",
+        ],
+      },
+      {
+        id: "sys-0611-shell",
+        category: "fix",
+        app: "桌面 · 安卓壳自动打包与保活",
+        scope: "app",
+        title: "修复 release APK 被 Android lint 拦截的问题",
+        items: [
+          "为被划掉任务后的 PendingIntent 补齐不可变标记，release lint 不再因 Android 12 安全检查失败",
+          "保留 3 秒拉起、15 分钟 JobScheduler 检查、后台设置引导和应用内更新弹窗",
+        ],
+      },
+      {
+        id: "sys-0611-update-log",
+        category: "perf",
+        app: "设置 · 更新日志",
+        scope: "content",
+        title: "更新日志继续按影响范围呈现本次改动",
+        items: [
+          "应用、页面内容、全局、提示词和修复等影响范围在日志页与更新弹窗中保持一致",
+          "本次工坊和安卓壳改动会在更新公告中分别标出，方便判断是否需要安装 APK",
+        ],
+      },
+    ],
+    pending: [
+      "工坊思考过程和输入区已通过 TypeScript 与生产构建检查，仍建议在真机窄屏上确认键盘弹出、滚动和动画节奏",
+      "安卓壳安装更新、后台保活效果受具体 ROM 的电池策略影响，需要在你的手机上最终确认",
     ],
   },
   {

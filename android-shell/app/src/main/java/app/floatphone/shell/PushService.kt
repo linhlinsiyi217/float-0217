@@ -81,6 +81,7 @@ class PushService : Service() {
         running = true
         createChannels()
         startForeground(NOTIF_FG_ID, buildKeepAliveNotification("等待连接…"))
+        KeepAlive.scheduleJob(this)
         thread(name = "shell-push-loop") { connectionLoop() }
     }
 

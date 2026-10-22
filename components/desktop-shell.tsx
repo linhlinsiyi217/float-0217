@@ -151,6 +151,7 @@ import { canSendShellNotification, sendShellNotification } from "@/lib/shell-not
 import type { ChatSharePayload } from "@/lib/chat-share";
 import { completePendingMcpOAuthCallback } from "@/lib/tool-executor";
 import { LayoutGrid, LoaderCircle, RefreshCw } from "lucide-react";
+import { PhoneLockScreen } from "@/components/phone-lock-screen";
 
 const EMOJI_FONTS = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla"';
 
@@ -1219,6 +1220,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   const [desktopReady, setDesktopReady] = useState(false);
   const [glassPaintPass, setGlassPaintPass] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
+  const [isLocked, setIsLocked] = useState(false);
   const [activeApp, setActiveApp] = useState<DesktopIconId | null>(null);
   const [customApps, setCustomApps] = useState<InstalledCustomApp[]>([]);
   // 自定义 APP 桌面图标样式偏好（global = 忽略上传图标走全局效果）
@@ -4533,9 +4535,17 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
             >
               <div className="phone-wallpaper" style={wallpaperStyle} />
 
-              <header className="phone-status-bar">
+              <header
+                className="phone-status-bar"
+                onDoubleClick={() => setIsLocked(true)}
+                title="双击顶部状态栏锁定"
+              >
                 <StatusClock />
-                <div className="status-island" />
+                <div className="status-island">
+                  {/* The black capsule is the phone's existing simulated Dynamic Island.
+                      MusicDynamicIsland only renders the live activity that expands from it. */}
+                  {islandVisible ? <MusicDynamicIsland /> : null}
+                </div>
                 <div className="status-right" aria-hidden>
                   <svg viewBox="0 0 72 51" className="status-signal" fill="currentColor">
                     <path d="M11.6,41.9c0,1.4,0,2.8,0,4.3c0,2.3-1.4,3.7-3.6,3.8c-1.5,0.1-3,0.1-4.4,0c-1.9-0.1-3.2-1.2-3.4-3c-0.3-3.4-0.2-6.8,0-10.1c0.1-1.8,1.5-3,3.3-3.1c1.5-0.1,3-0.1,4.4,0c2.2,0.1,3.6,1.5,3.7,3.8C11.6,39,11.6,40.5,11.6,41.9z" />
@@ -4552,8 +4562,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                   <StatusBattery />
                 </div>
               </header>
-
-              {islandVisible ? <MusicDynamicIsland /> : null}
 
               {notice ? (
                 <aside className="phone-shell-notice" role="status" aria-live="polite">
@@ -5506,6 +5514,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                   )}
                 </BottomSheet>
               )}
+
+              {isLocked && <PhoneLockScreen onUnlock={() => setIsLocked(false)} />}
             </div>
           </div>
         </div>
