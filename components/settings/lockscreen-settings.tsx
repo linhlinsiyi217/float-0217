@@ -113,7 +113,7 @@ export function LockScreenSettings({ onNotice }: { onNotice?: (msg: string) => v
           >
             <div className="flex flex-col gap-0.5 min-w-0 pr-3">
               <span className="menu-label">跳过开屏动画</span>
-              <span className="menu-desc">开机直接显示锁屏页（需要先开启锁屏）。</span>
+              <span className="menu-desc">仅在开启锁屏页面时可以设置跳过开屏动画。</span>
             </div>
             <Toggle
               checked={config.on && config.skipBoot}
@@ -133,7 +133,7 @@ export function LockScreenSettings({ onNotice }: { onNotice?: (msg: string) => v
             <div className="flex flex-col gap-0.5 min-w-0 pr-3">
               <span className="menu-label">{config.pin ? "已设置 4 位数字密码" : "未设置密码"}</span>
               <span className="menu-desc">
-                {config.pin ? "上滑后输入密码才能解锁。" : "只设上滑也能解锁，密码是可选的。"}
+                {config.pin ? "上滑输入密码才可解锁。" : "只设上滑也能解锁，密码是可选的。"}
               </span>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -153,7 +153,7 @@ export function LockScreenSettings({ onNotice }: { onNotice?: (msg: string) => v
                   }}
                   className="inline-flex h-9 items-center justify-center rounded-[18px] border border-black/10 bg-white px-3.5 text-xs font-bold text-gray-500 shadow-sm transition-all hover:bg-gray-50 active:scale-95 focus:outline-none"
                 >
-                  关闭
+                  关闭密码
                 </button>
               ) : null}
             </div>
