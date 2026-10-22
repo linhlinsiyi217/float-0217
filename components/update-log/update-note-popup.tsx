@@ -14,6 +14,7 @@ import {
   scopeGroups,
   SCOPE_COLOR,
   SCOPE_LABEL,
+  SCOPE_TINT,
   type Release,
   type UpdateEntry,
 } from "@/lib/update-log/types";
@@ -34,24 +35,28 @@ type UpdateNotePopupProps = {
  *  标了影响范围的条目用五类小圆点（应用/页面内容/全局/提示词/修复），
  *  老条目保持原来的性质分类（新功能/体验优化/…）。 */
 function EntryRow({ entry }: { entry: UpdateEntry }) {
+  const category = normalizeUpdateCategory(entry.category);
   return (
     <li className="updn-row" title={entry.app}>
       <span className="updn-row-top">
         {entry.scope ? (
           <>
             <i className="updn-dot" style={{ background: SCOPE_COLOR[entry.scope] }} aria-hidden />
-            <span className="updn-tag" style={{ color: SCOPE_COLOR[entry.scope] }}>
+            <span className="updn-tag" style={{ color: SCOPE_COLOR[entry.scope], background: SCOPE_TINT[entry.scope] }}>
               {SCOPE_LABEL[entry.scope]}
+            </span>
+            <span className="updn-tag" style={{ color: CATEGORY_COLOR[category], background: CATEGORY_TINT[category] }}>
+              {CATEGORY_LABEL[category]}
             </span>
           </>
         ) : (
           <>
-            <i className="updn-dot" style={{ background: CATEGORY_COLOR[entry.category] }} aria-hidden />
+            <i className="updn-dot" style={{ background: CATEGORY_COLOR[category] }} aria-hidden />
             <span
               className="updn-tag"
-              style={{ color: CATEGORY_COLOR[entry.category], background: CATEGORY_TINT[entry.category] }}
+              style={{ color: CATEGORY_COLOR[category], background: CATEGORY_TINT[category] }}
             >
-              {CATEGORY_LABEL[entry.category]}
+              {CATEGORY_LABEL[category]}
             </span>
           </>
         )}
@@ -72,7 +77,7 @@ function EntryRow({ entry }: { entry: UpdateEntry }) {
 export function UpdateNotePopup({ appName, release, onConfirm, onOpenLog, onHide }: UpdateNotePopupProps) {
   const [leaving, setLeaving] = useState(false);
   const [showAll, setShowAll] = useState(false);
-  const summary = useMemo(() => popupEntries(release, 5), [release]);
+  const summary = useMemo(() => popupEntries(release, 3), [release]);
   const hasMore = release.entries.length > summary.length;
 
   const handleConfirm = () => {
