@@ -10,6 +10,21 @@ import type { Release } from "./types";
 
 export const SYSTEM_RELEASES: Release[] = [
   {
+    version: "0.6.15",
+    releaseId: "system-2026-10-22-v0615",
+    date: "2026-10-22",
+    name: "工坊与更新公告精修",
+    summary: "工坊收紧为更纯粹的对话工作台；更新公告改用五色高饱和分类、双层标签和紧凑摘要弹窗，版本信息同步升级。",
+    entries: [
+      { id: "sys-0615-workshop", category: "perf", app: "工坊 · 工作台", scope: "content", title: "收紧欢迎页、上下文卡片与输入区层级", items: ["减少空白和装饰性容器，让问候、状态提示与输入区形成清晰的三段层级", "本机内容、技能、附件和仓库引用继续保留，但改为统一的轻量菜单卡片"] },
+      { id: "sys-0615-thinking", category: "perf", app: "工坊 · 思考过程", scope: "content", title: "让思考状态成为可读的工作记录", items: ["生成中显示细小动态点与计时，完成后折叠为一行摘要", "正文、工具调用和思考记录分开排版，长回答不再被状态装饰打断"] },
+      { id: "sys-0615-log", category: "feat", app: "设置 · 更新日志", scope: "content", title: "按影响范围与改动性质双层分类", items: ["应用、页面内容、全局、提示词和修复使用高饱和色区分", "每条记录同时显示影响范围与新功能、体验优化、问题修复或隐私安全标签"] },
+      { id: "sys-0615-popup", category: "perf", app: "设置 · 更新公告", scope: "content", title: "更新弹窗改为三条摘要的紧凑卡", items: ["首屏只展示三条最有代表性的改动，卡片限制高度并贴近底部显示", "保留查看完整日志、稍后查看和我知道了，详细内容不再挤满首屏"] },
+      { id: "sys-0615-release", category: "fix", app: "系统 · 发布信息", scope: "global", title: "同步应用版本与更新标识", items: ["网页版本标识升级到 2026-10-22-3", "更新公告、更新日志和应用内版本信息使用同一 releaseId"] },
+    ],
+    pending: ["已通过 TypeScript、更新日志核对和生产构建检查，建议在真机确认弹窗高度、菜单滚动和键盘弹出后的输入区。"],
+  },
+  {
     version: "0.6.14",
     releaseId: "system-2026-10-22-v0614",
     date: "2026-10-22",
