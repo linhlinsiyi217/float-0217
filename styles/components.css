@@ -909,7 +909,11 @@
    Unified Component Classes (.ui-* canonical)
    ══════════════════════════════════════════ */
 
-/* ── 按钮基础 ── */
+/* ── 按钮基础 ──
+   液态玻璃按钮体系（第三轮任务2）：ui-btn 是存量通用族（设置页/弹窗在用），
+   .glass-btn 是新的规范类（新页面用，见下一节）。两者同一套玻璃视觉：
+   半透明白/绿渐变 + 内高光 + 按下弹簧回弹。ui-btn 不加 backdrop-filter——
+   设置页一屏常有多颗小按钮，模糊留给 .glass-btn 主按钮（一屏最多 3~4 颗）。 */
 .ui-btn {
   display: inline-flex;
   align-items: center;
@@ -921,47 +925,129 @@
   font-size: calc(12.6px*var(--app-text-scale,1));
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+  transition: transform .35s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease, background .2s ease, opacity .2s ease;
   -webkit-tap-highlight-color: transparent;
 }
-.ui-btn:active { transform: scale(0.96); opacity: 0.9; }
+.ui-btn:active { transform: scale(0.97); }
 .ui-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
 
 .ui-btn-primary,
 .ui-btn-action {
-  background: var(--c-icon-active);
+  background: linear-gradient(180deg, rgba(52, 199, 89, 0.96), rgba(52, 199, 89, 0.78));
   color: white;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--c-icon-active) 35%, transparent), inset 0 1px 1px rgba(255,255,255,0.15);
+  box-shadow: 0 8px 22px rgba(52, 199, 89, 0.35),
+              inset 0 1px 0 rgba(255,255,255,0.55),
+              inset 0 -1px 0 rgba(0,0,0,0.08);
+}
+.ui-btn-primary:hover, .ui-btn-action:hover {
+  box-shadow: 0 10px 26px rgba(52, 199, 89, 0.42),
+              inset 0 1px 0 rgba(255,255,255,0.6),
+              inset 0 -1px 0 rgba(0,0,0,0.08);
 }
 .ui-btn-success {
-  background: var(--c-success);
+  background: linear-gradient(180deg, rgba(52, 199, 89, 0.96), rgba(52, 199, 89, 0.78));
   color: white;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--c-success) 35%, transparent), inset 0 1px 1px rgba(255,255,255,0.15);
+  box-shadow: 0 8px 22px rgba(52, 199, 89, 0.35),
+              inset 0 1px 0 rgba(255,255,255,0.55),
+              inset 0 -1px 0 rgba(0,0,0,0.08);
 }
 .ui-btn-danger {
-  background: var(--c-danger);
-  color: white;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--c-danger) 35%, transparent), inset 0 1px 1px rgba(255,255,255,0.15);
+  background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.6));
+  color: #ff3b30;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.08),
+              inset 0 1px 0 rgba(255,255,255,0.95),
+              inset 0 -1px 0 rgba(0,0,0,0.04);
 }
 .ui-btn-ghost {
   background: transparent;
-  color: var(--c-icon-active);
+  color: #248a3d;
   padding: 8px 12px;
 }
 .ui-btn-outline {
-  background: color-mix(in srgb, var(--c-text) 8%, transparent);
+  background: linear-gradient(180deg, rgba(255,255,255,0.88), rgba(255,255,255,0.58));
   border: none;
   color: var(--c-text-title);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.08),
+              inset 0 1px 0 rgba(255,255,255,0.95),
+              inset 0 -1px 0 rgba(0,0,0,0.04);
 }
 .ui-btn-soft-action {
-  background: color-mix(in srgb, var(--c-icon-active) 10%, transparent);
+  background: rgba(52, 199, 89, 0.1);
   border: none;
-  color: var(--c-icon-active);
+  color: #248a3d;
 }
 .ui-btn-soft-danger {
-  background: color-mix(in srgb, var(--c-danger) 10%, transparent);
+  background: rgba(255, 59, 48, 0.1);
   border: none;
-  color: var(--c-danger);
+  color: #ff3b30;
+}
+
+/* ── 规范玻璃按钮（新页面/主要操作用）──
+   用法：主要操作 .glass-btn.is-primary（绿，一页最多一颗）；
+   次要操作 .glass-btn（白玻璃）；危险操作 .glass-btn.is-danger（红字）。
+   加载中：加 .is-loading（文字隐藏、转圈、宽度不变）。 */
+:root { --glass-green: 52 199 89; }          /* #34C759 */
+.glass-btn {
+  position: relative; overflow: hidden; isolation: isolate;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 52px; padding: 0 22px; border: 0; border-radius: 999px;
+  font-size: calc(15px*var(--app-text-scale,1));
+  font-weight: 600; color: #1c1c1e; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  background: linear-gradient(180deg, rgba(255,255,255,.88), rgba(255,255,255,.58));
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+          backdrop-filter: blur(16px) saturate(1.6);
+  box-shadow: 0 6px 18px rgba(0,0,0,.08),
+              inset 0 1px 0 rgba(255,255,255,.95),
+              inset 0 -1px 0 rgba(0,0,0,.04);
+  transition: transform .35s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease;
+}
+.glass-btn::after {            /* 高光从左扫到右，只扫一次 */
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,.7) 50%, transparent 70%);
+  transform: translateX(-120%); transition: transform .6s ease;
+}
+.glass-btn:active { transform: scale(.97); }
+.glass-btn:hover::after, .glass-btn:active::after { transform: translateX(120%); }
+.glass-btn.is-primary {
+  color: #fff;
+  background: linear-gradient(180deg, rgb(var(--glass-green) / .96), rgb(var(--glass-green) / .78));
+  box-shadow: 0 8px 22px rgb(var(--glass-green) / .35),
+              inset 0 1px 0 rgba(255,255,255,.55),
+              inset 0 -1px 0 rgba(0,0,0,.08);
+}
+.glass-btn.is-ghost {
+  background: transparent;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: none;
+  color: #248a3d;
+}
+.glass-btn.is-danger { color: #ff3b30; }
+.glass-btn[disabled] { opacity: .45; pointer-events: none; }
+/* 加载中：转圈 + 文字隐藏，按钮宽度保持不变 */
+.glass-btn.is-loading { color: transparent !important; pointer-events: none; }
+.glass-btn.is-loading::before {
+  content: ""; position: absolute;
+  left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.45); border-top-color: currentColor;
+  color: #fff;
+  animation: glass-btn-spin .8s linear infinite;
+}
+.glass-btn.is-loading.is-primary::before { border-color: rgba(255,255,255,.4); border-top-color: #fff; }
+.glass-btn.is-loading:not(.is-primary)::before { border-color: rgba(0,0,0,.15); border-top-color: #48484a; }
+@keyframes glass-btn-spin { to { transform: rotate(360deg); } }
+/* 低端设备/系统减弱动态效果/减弱透明度：自动降级 */
+@media (prefers-reduced-motion: reduce) {
+  .glass-btn, .glass-btn::after { transition: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass-btn {
+    background: #f2f1ed;
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  .ui-btn-primary, .ui-btn-action, .ui-btn-success { background: #34c759; }
+  .ui-btn-outline, .ui-btn-danger { background: #f2f1ed; }
 }
 
 /* ── 胶囊选择按钮 ── */
