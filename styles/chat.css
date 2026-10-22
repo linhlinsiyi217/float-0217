@@ -1549,6 +1549,18 @@
 .chat-msg-wrapper[data-role="system"],
 .chat-msg-wrapper[data-role="poke"] { justify-content: center; }
 .chat-msg-wrapper[data-active] { z-index: 45; }
+/* 长按菜单开着时：被长按的那条保持清晰，其余消息轻微退后（克制的变暗，不是全黑遮罩） */
+.chat-scroll-anchored[data-dimming] .chat-msg-wrapper,
+.chat-scroll-anchored[data-dimming] .chat-sys-msg {
+  opacity: 0.38;
+  filter: saturate(0.6);
+  transition: opacity 0.18s ease, filter 0.18s ease;
+}
+.chat-scroll-anchored[data-dimming] .chat-msg-wrapper[data-active],
+.chat-scroll-anchored[data-dimming] .chat-sys-msg[data-active] {
+  opacity: 1;
+  filter: none;
+}
 .chat-msg-wrapper[data-highlight] {
   outline: 2px solid var(--c-icon-active);
   outline-offset: 4px;

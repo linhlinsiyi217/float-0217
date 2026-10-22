@@ -6689,6 +6689,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
             <div
                 ref={scrollRef}
                 className="page-body chat-room-main-pane flex flex-col gap-4 chat-scroll-anchored"
+                {...(activeMessageId ? { "data-dimming": "" } : {})}
                 onScroll={(e) => {
                     if (activeMessageId) closeContextMenu();
                 }}
