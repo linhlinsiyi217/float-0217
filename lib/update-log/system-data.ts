@@ -10,6 +10,19 @@ import type { Release } from "./types";
 
 export const SYSTEM_RELEASES: Release[] = [
   {
+    version: "0.6.14",
+    releaseId: "system-2026-10-22-v0614",
+    date: "2026-10-22",
+    name: "工坊工作台重排",
+    summary: "工坊按自己的品牌重排成 Claude 式工作台：侧栏、会话栏、输入区和思考过程各归其位，原有工坊能力继续保留。",
+    entries: [
+      { id: "sys-0614-workbench", category: "feat", app: "工坊 · 工作台", scope: "content", title: "重排工作台与工坊空间", items: ["顶部改为返回、菜单、文件与新对话双控制组，工坊空间从左侧进入", "会话、配置、调用记录和执行记录清理入口集中到同一个工作区侧栏"] },
+      { id: "sys-0614-thinking", category: "feat", app: "工坊 · 思考过程", scope: "content", title: "思考过程改为可展开的计时行", items: ["生成中显示正在思考、动态点和已用秒数，结束后折叠成可回看的摘要", "正文保持文档流布局，思考信息不再抢占回答主体的视觉层级"] },
+      { id: "sys-0614-composer", category: "fix", app: "工坊 · 输入区", scope: "content", title: "把工具、模型和发送操作收回输入栏", items: ["保留上传附件、图片、本机内容、技能和仓库引用，并沿用当前上下文胶囊", "模型、模式、预览与发送按钮集中在底部输入栏，窄屏下也保持可操作"] },
+    ],
+    pending: ["已通过 TypeScript、更新日志核对和生产构建检查，建议在真机确认侧栏推入动画、键盘弹出和窄屏输入区。"],
+  },
+  {
     version: "0.6.13",
     releaseId: "system-2026-10-22-v0613",
     date: "2026-10-22",
