@@ -6637,6 +6637,30 @@
   color: var(--c-text);
 }
 
+.workshop-tut-use {
+  margin: 6px 0 0;
+  font-size: calc(12px*var(--app-text-scale,1));
+  line-height: 1.65;
+  color: var(--c-text-secondary, var(--c-text));
+}
+
+.workshop-tut-use strong {
+  color: var(--c-text-title, var(--c-text));
+  font-weight: 650;
+}
+
+.workshop-tut-example {
+  margin: 4px 0 0;
+  font-size: calc(12px*var(--app-text-scale,1));
+  line-height: 1.65;
+  color: var(--c-text-secondary, var(--c-text));
+}
+
+.workshop-tut-example strong {
+  color: var(--c-accent, var(--c-text-title, var(--c-text)));
+  font-weight: 650;
+}
+
 .workshop-tut-faq-icon {
   color: var(--c-icon);
   flex-shrink: 0;
