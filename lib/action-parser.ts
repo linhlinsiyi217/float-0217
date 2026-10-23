@@ -21,6 +21,7 @@ import type { MomentPost, MomentComment } from "./moments-types";
 import { attachMomentPhotoInBackground, parseMomentPostResponse } from "./moments-engine";
 import { isAbortError, throwIfAborted } from "./abort-utils";
 import { saveMindRecordFromDispatch } from "./inner-voice";
+import { extractInnerVoiceJson } from "./inner-voice-protocol";
 
 // ── Types ──
 
@@ -287,6 +288,7 @@ function resolveActorContext(action: ActionTag, context: ActionContext): ActionC
 // ── Action Handlers ──
 
 // 心声：内容是一份 JSON，落到当前会话的心声历史里（弹窗由用户点 AI 头像打开）
+// 解析走七级兜底（inner-voice-protocol，自 wanwan 迁入）：截断/围栏/尾逗号/裸换行都能救回
 function dispatchInnerVoice(action: ActionTag, context: ActionContext): void {
     const sessionId = context.sessionId;
     if (!sessionId) {
@@ -297,19 +299,9 @@ function dispatchInnerVoice(action: ActionTag, context: ActionContext): void {
     let text = (action.rawText ?? action.content).trim();
     // 掐掉方括号标签壳本身
     text = text.replace(/^\[[^\]\n]*\]/, "").replace(/\[[^\]\n]*\]\s*$/, "").trim();
-    // 模型偶尔套一层代码围栏
-    text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start < 0 || end <= start) {
-        console.warn("[ActionParser] 心声内容里没有 JSON，跳过");
-        return;
-    }
-    let raw: unknown;
-    try {
-        raw = JSON.parse(text.slice(start, end + 1));
-    } catch (err) {
-        console.warn("[ActionParser] 心声 JSON 解析失败:", err);
+    const raw = extractInnerVoiceJson(text);
+    if (!raw) {
+        console.warn("[ActionParser] 心声内容里没有可用 JSON，跳过");
         return;
     }
     const rec = saveMindRecordFromDispatch(sessionId, raw);
