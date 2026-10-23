@@ -10,6 +10,7 @@ export type IconId =
   | "game"
   | "appmarket"
   | "xiaohongshu"
+  | "x"
   | "dwelling"
   | "checkphone"
   | "shopping"
@@ -62,6 +63,7 @@ export const PAGE_2_DEFAULT: IconId[] = [
   "game",
   "appmarket",
   "xiaohongshu",
+  "x",
   "dwelling",
   "story",
   "vnmode",
@@ -89,6 +91,7 @@ export const ICONS: Record<IconId, IconMeta> = {
     placeholder: false
   },
   checkphone: { id: "checkphone", label: "查手机", tone: "var(--c-icon-slate)", placeholder: false },
+  x: { id: "x", label: "X", tone: "var(--c-icon-blue)", placeholder: false },
   dwelling: {
     id: "dwelling",
     label: "栖所",
