@@ -589,7 +589,8 @@ export async function generateMascotReply({
             );
             if (streamedDisplay) await paintStream(true);
 
-            const displayReply = response.reply.join("\n");
+            // reply 数组是按空行拆出的段落，用双换行重新拼接，保留 markdown 段落/列表结构
+            const displayReply = response.reply.join("\n\n");
             const assistantMsg: MascotMsg = {
                 role: "mascot",
                 text: response.rawAssistant,

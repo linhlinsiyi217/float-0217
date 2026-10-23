@@ -332,6 +332,45 @@ function cleanToolActor(raw: string): string | undefined {
     return actor || undefined;
 }
 
+/** 把字符串字面量内的裸控制字符（换行/回车/制表符）转义，使 JSON.parse 能接受。
+ * LLM 经常在 persona 等长字符串值里直接写真实换行，这在 JSON 里是非法的。 */
+function escapeRawControlCharsInJsonStrings(text: string): string {
+    let out = "";
+    let quote: '"' | "'" | null = null;
+    let escaped = false;
+    for (const ch of text) {
+        if (quote) {
+            if (escaped) {
+                escaped = false;
+                out += ch;
+                continue;
+            }
+            if (ch === "\\") {
+                escaped = true;
+                out += ch;
+                continue;
+            }
+            if (ch === quote) {
+                quote = null;
+                out += ch;
+                continue;
+            }
+            if (ch === "\n") { out += "\\n"; continue; }
+            if (ch === "\r") { out += "\\r"; continue; }
+            if (ch === "\t") { out += "\\t"; continue; }
+            out += ch;
+            continue;
+        }
+        if (ch === '"' || ch === "'") {
+            quote = ch;
+            out += ch;
+            continue;
+        }
+        out += ch;
+    }
+    return out;
+}
+
 function parseToolArgsJson(raw: string): Record<string, unknown> | null {
     const trimmed = raw.trim();
     const parseObject = (text: string): Record<string, unknown> | null => {
@@ -343,7 +382,20 @@ function parseToolArgsJson(raw: string): Record<string, unknown> | null {
         } catch { /* try fallback below */ }
         return null;
     };
-    return parseObject(trimmed) || parseObject(trimmed.replace(/'/g, '"'));
+    // 逐级修复 LLM 常见的不规范 JSON：字符串内裸换行/制表符 → 尾逗号 → 中文弯引号。
+    const escaped = escapeRawControlCharsInJsonStrings(trimmed);
+    const noTrailingCommas = escaped.replace(/,\s*([}\]])/g, "$1");
+    const smartQuotesFixed = noTrailingCommas.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+    const attempts = [trimmed, escaped, noTrailingCommas, smartQuotesFixed];
+    // 只有全文没有双引号时，才把单引号当字符串引号处理（避免破坏英文撇号，如 it's）
+    if (!trimmed.includes('"')) {
+        attempts.push(smartQuotesFixed.replace(/'/g, '"'));
+    }
+    for (const attempt of attempts) {
+        const parsed = parseObject(attempt);
+        if (parsed) return parsed;
+    }
+    return null;
 }
 
 function parseToolCallAt(text: string, start: number): ParsedToolCallSpan | null {
