@@ -7,6 +7,7 @@
 
 import { kvGet, kvSet } from "./kv-db";
 import { sanitizeMindHtml, MIND_SCOPE_CLASS } from "./inner-voice-safe";
+import { cleanThoughtDecor, normalizeInnerVoiceStatus } from "./inner-voice-protocol";
 
 // ── 类型 ──
 
@@ -491,6 +492,15 @@ function clearPendingMindTheme(sessionId: string): void {
 
 // ── 发给模型的那一段 ──
 
+// 注入长度上限：主题提示词是用户手写的，不加限会无限膨胀（任务书：限制注入长度）
+export const MIND_PROMPT_INJECT_MAX = 1200;
+
+function clampMindPrompt(prompt: string): string {
+    const s = (prompt || "").trim();
+    if (s.length <= MIND_PROMPT_INJECT_MAX) return s;
+    return s.slice(0, MIND_PROMPT_INJECT_MAX).replace(/[\s,，。；;、：:！？!?…—-]+$/, "") + "…";
+}
+
 export function buildInnerVoicePromptFragment(sessionId: string): string {
     let theme: MindTheme | null = null;
     try {
@@ -500,7 +510,7 @@ export function buildInnerVoicePromptFragment(sessionId: string): string {
     }
     if (!theme || !theme.fields.length) return "";
 
-    const body = theme.prompt ? `${theme.prompt}\n\n` : "";
+    const body = theme.prompt ? `${clampMindPrompt(theme.prompt)}\n\n` : "";
     const listNotes = buildMindListNotes(theme);
     const hasList = theme.fields.some(isListField);
     const rule = hasList
@@ -582,6 +592,13 @@ function takeMindList(f: MindField, v: unknown): Array<Record<string, string>> {
     return out;
 }
 
+// wanwan 心声协议键名 → float 主题字段别名：模型按 {thought,status,reply} 直出时也能落库。
+// reply 是正文，不在此映射（正文由聊天主流程处理，永远不进入心声卡片）。
+const MIND_KEY_ALIASES: Record<string, string[]> = {
+    "心声": ["thought", "inner_voice", "innerVoice"],
+    "心情": ["status", "mood", "状态"],
+};
+
 // 只保留主题声明过的字段，多的忽略、缺的补空；全空返回 null（那一轮当没心声）
 export function normalizeMindFieldsInput(theme: MindTheme, raw: unknown): Record<string, MindFieldValue> | null {
     if (!theme.fields.length) return null;
@@ -594,7 +611,16 @@ export function normalizeMindFieldsInput(theme: MindTheme, raw: unknown): Record
             if (list.length) any = true;
             out[f.key] = list;
         } else {
-            const text = takeMindText(src[f.key]);
+            let text = takeMindText(src[f.key]);
+            if (!text) {
+                for (const alias of MIND_KEY_ALIASES[f.key] || []) {
+                    text = takeMindText(src[alias]);
+                    if (text) break;
+                }
+            }
+            // wanwan 协议约束：thought 去首尾装饰引号；status（心情）≤15 字
+            if (text && f.key === "心声") text = cleanThoughtDecor(text);
+            if (text && f.key === "心情") text = normalizeInnerVoiceStatus(text) || text;
             if (text) any = true;
             out[f.key] = text;
         }

@@ -133,6 +133,11 @@ export const APP_DATA_SPEC: Record<string, AppDataSpec> = {
     dataLabel: "小红书状态与角色动态记忆",
   },
 
+  x: {
+    kvKeys: ["ai_phone_x_state_v1"],
+    dataLabel: "X 应用账号会话、帖子、点赞与资料",
+  },
+
   dwelling: {
     databases: ["AiPhoneDwellingDB"],
     closers: ["dwelling"],
