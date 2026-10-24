@@ -36,6 +36,7 @@ export function LockPinPad({
   const [buf, setBuf] = useState("");
   const [visible, setVisible] = useState(false);
   const [shaking, setShaking] = useState(false);
+  const [badCount, setBadCount] = useState(0);
   const busyRef = useRef(false);
   const bufRef = useRef("");
   const badTimerRef = useRef<number | null>(null);
@@ -55,6 +56,7 @@ export function LockPinPad({
     busyRef.current = false;
     bufRef.current = "";
     setShaking(false);
+    setBadCount(0);
     setBuf("");
   }, [step]);
 
@@ -80,6 +82,7 @@ export function LockPinPad({
       }
       // 抖完再清
       setShaking(true);
+      setBadCount(count => count + 1);
       badTimerRef.current = window.setTimeout(() => {
         busyRef.current = false;
         bufRef.current = "";
@@ -111,6 +114,9 @@ export function LockPinPad({
           <i className={buf.length >= 2 ? "is-on" : ""} />
           <i className={buf.length >= 3 ? "is-on" : ""} />
           <i className={buf.length >= 4 ? "is-on" : ""} />
+        </div>
+        <div className={`lock-pad-bad${shaking ? " is-show" : ""}`} role="alert" aria-live="assertive">
+          {shaking ? (badCount >= 3 ? "密码多次不对，请稍后再试" : "密码不对，再试一次") : ""}
         </div>
       </div>
       <div className="lock-keys">
