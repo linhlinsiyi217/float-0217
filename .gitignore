@@ -28,3 +28,7 @@ tools/weixin-local-assistant/config.txt
 *.ts.net.crt
 *.ts.net.key
 /public/models/world-builder/
+
+# 构建时由 scripts/sync-app-version.mjs 从根目录 CHANGELOG.md 复制生成，
+# 根目录文件是唯一权威源，public 副本不进仓库避免漂移
+/public/CHANGELOG.md
