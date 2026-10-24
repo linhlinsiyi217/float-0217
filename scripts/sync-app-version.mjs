@@ -90,6 +90,18 @@ try {
   console.warn("[sync-app-version] CHANGELOG.md 不存在或不可写，跳过回填");
 }
 
+// ── 把回填后的 CHANGELOG.md 部署出去 ─────────────────
+// Next.js 只静态伺服 public/ 下的文件；根目录 CHANGELOG.md 是唯一权威源，
+// 构建时复制一份到 public/ 供线上 /CHANGELOG.md 拉取与核对（next.config 已给它 no-store，
+// sw.js 也已排除）。public 副本进 .gitignore，避免与根目录源文件漂移。
+try {
+  const changelog = readFileSync(changelogPath, "utf8");
+  writeFileSync(path.join(root, "public", "CHANGELOG.md"), changelog);
+  console.log("[sync-app-version] CHANGELOG.md 已复制到 public/ 供部署");
+} catch {
+  console.warn("[sync-app-version] CHANGELOG.md 复制到 public/ 失败（不影响构建）");
+}
+
 // ── 构建期自检：规范 §9 要求清单三要素非空 ─────────────
 if (!json.releaseId) {
   console.error("[sync-app-version] releaseId 生成失败，部署出去的清单无法被检测为新版本");
