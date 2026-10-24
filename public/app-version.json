@@ -1,55 +1,20 @@
 {
-  "versionCode": 10200,
-  "versionName": "1.2.0",
-  "apkUrl": "https://github.com/linhlinsiyi217/float-0217/releases/download/v1.2.0/app-release.apk",
+  "versionCode": 10201,
+  "versionName": "1.2.1",
+  "apkUrl": "https://github.com/linhlinsiyi217/float-0217/releases/download/v1.2.1/app-release.apk",
   "force": false,
-  "webVersion": "2026-10-22-5",
-  "summary": "工坊整体升级并更名为 Claude：界面按新规范精修，新增对话大纲胶囊插件和整页使用教程。桌面与设置全面统一手感：页面转场、开关回弹、列表按压、底部面板下拉关闭与极轻触感；液态玻璃主按钮；用户信息、通知、状态栏三处设置整页化；锁屏 PIN 键盘补齐玻璃质感。",
+  "webVersion": "2026-10-22-6",
+  "summary": "推送常驻通知文案细分与去重：之前一律显示「未登录或站点不可达，稍后重试」会让真正没登录的用户误以为只是临时网络问题；现在按真实原因区分为「未登录」「站点不可达」「在线服务未配置」三类，且同状态不重复刷新通知，避免国产 ROM 把它当成新通知反复弹一次 heads-up。",
   "changes": [
     {
       "type": "app",
-      "title": "工坊更名 Claude",
-      "detail": "桌面图标、设置入口、应用内标题全部改为 Claude，已有数据与配置照常保留"
+      "title": "推送通知文案细分",
+      "detail": "PushService 把 fetchConfig 失败原因拆成 NotLoggedIn / SiteUnreachable / NotConfigured 三类，对应「未登录，请在主应用里登录账号」「站点不可达，正在重试…」「在线服务未配置，请先到设置 → 在线服务」三句具体文案，不再无脑合并"
     },
     {
       "type": "app",
-      "title": "Claude 使用教程",
-      "detail": "设置 → Claude 新增整页教程：五步上手、全部工具卡片说明与常见问题"
-    },
-    {
-      "type": "app",
-      "title": "对话大纲胶囊",
-      "detail": "内置插件为长会话显示 x / N 轮大纲胶囊，可一键结转新会话"
-    },
-    {
-      "type": "global",
-      "title": "液态玻璃主按钮",
-      "detail": "主操作按钮升级玻璃质感：半透明模糊、顶缘高光、按压缩放回弹"
-    },
-    {
-      "type": "global",
-      "title": "交互手感统一",
-      "detail": "页面转场 340ms 弹簧曲线，开关滑块回弹，列表行按压反馈，底部面板支持下拉关闭，关键操作给极轻触感"
-    },
-    {
-      "type": "content",
-      "title": "用户信息整页化",
-      "detail": "编辑资料从底部抽屉升级为整页，进出带统一转场"
-    },
-    {
-      "type": "content",
-      "title": "通知设置页",
-      "detail": "新增通知设置页与站内横幅，可按来源控制站内通知"
-    },
-    {
-      "type": "content",
-      "title": "状态栏样式页",
-      "detail": "新增状态栏样式设置，灵动岛圆角阴影与展开动效更顺滑"
-    },
-    {
-      "type": "content",
-      "title": "锁屏玻璃键盘",
-      "detail": "12 颗 PIN 按键统一液态玻璃质感，暗色壁纸下保持可读"
+      "title": "推送通知去重",
+      "detail": "同状态 60s 一次的 keepalive 通知不再重复 notify()，避免某些国产 ROM 把同文案的刷新当成新通知弹一次 heads-up"
     }
   ]
 }

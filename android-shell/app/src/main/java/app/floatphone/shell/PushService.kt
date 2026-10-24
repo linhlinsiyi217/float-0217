@@ -73,6 +73,9 @@ class PushService : Service() {
     private var msgSeq = 2
     private var notifId = 100
     private var shellSubRegistered = false
+    /** 上一次 keepalive 通知文案。同文案不重复 notify()，避免系统反复刷新通知
+     *  触发"通知栏闪一下"或国产 ROM 把它当成新通知弹一次 heads-up。 */
+    private var lastKeepAliveText: String? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -118,7 +121,8 @@ class PushService : Service() {
         while (!stopped) {
             val config = fetchConfig()
             if (config == null) {
-                updateKeepAlive("未登录或站点不可达，稍后重试")
+                // fetchConfig 已经按真实原因细分了 keepalive 文案，这里不要再无脑覆盖；
+                // 同状态 60s 一次，updateKeepAlive 内部还有去重，避免反复刷新通知。
                 sleepSec(60); continue
             }
             updateKeepAlive("已连接，等待角色消息")
@@ -133,14 +137,48 @@ class PushService : Service() {
 
     private data class PushConfig(val supabaseUrl: String, val anonKey: String, val userId: String)
 
-    /** 借 WebView 的登录 Cookie 调站点接口获取连接参数。 */
-    private fun fetchConfig(): PushConfig? = runCatching {
+    /** fetchConfig 失败原因：用于把"未登录或站点不可达"拆成用户看得懂的具体文案。
+     *  之前一律显示"未登录或站点不可达，稍后重试"会让真正没登录的用户以为只是临时网络问题，
+     *  也让真正网络故障的用户以为是自己没登录。 */
+    private sealed class FetchFail {
+        object NotLoggedIn : FetchFail()        // /api/auth/me 401/403 或没有 account.id
+        object SiteUnreachable : FetchFail()   // OkHttp 抛异常或 5xx
+        object NotConfigured : FetchFail()      // /api/online/config 返回 configured=false
+    }
+
+    /** 借 WebView 的登录 Cookie 调站点接口获取连接参数。
+     *  失败时返回 FetchFail 具体子类，让 connectionLoop 走对应文案，不再无脑合并。 */
+    private fun fetchConfig(): PushConfig? = fetchConfigDetailed().let { result ->
+        when (result) {
+            is PushConfig -> result
+            is FetchFail -> {
+                // 把失败原因翻译成 keepalive 文案；updateKeepAlive 内部去重，
+                // 同状态反复刷新只刷一次，避免每 60s 都触发系统通知刷新。
+                updateKeepAlive(when (result) {
+                    FetchFail.NotLoggedIn -> "未登录，请在主应用里登录账号"
+                    FetchFail.SiteUnreachable -> "站点不可达，正在重试…"
+                    FetchFail.NotConfigured -> "在线服务未配置，请先到设置 → 在线服务"
+                })
+                null
+            }
+            // fetchConfigDetailed 返回 Any，Kotlin 编译器无法穷尽校验；
+            // 理论上不会走到这里（runCatching 保证只返回上述两类），兜底按站点不可达处理。
+            else -> {
+                updateKeepAlive("站点不可达，正在重试…")
+                null
+            }
+        }
+    }
+
+    private fun fetchConfigDetailed(): Any = runCatching {
         // 单机模式（NEXT_PUBLIC_SELF_HOSTED_MODE=true）不走登录流程，WebView 里
         // 可能完全没有 Cookie。此前这里 `?: return null` 把这种正常情况直接判成
         // 「未登录」，壳于是永远拿不到配置、常驻通知停在「未登录或站点不可达」。
         // 改为：Cookie 缺失也照常请求，放不放行交给服务端裁决。
         val cookie = CookieManager.getInstance().getCookie(MainActivity.SITE_URL).orEmpty()
 
+        /** 401/403 视为未登录；5xx 视为站点不可达；其他非成功也归站点不可达。
+         *  getJson 内部的 runCatching 抓到 OkHttp 异常（DNS/超时/拒绝连接）也归站点不可达。 */
         fun getJson(path: String): JSONObject? {
             val builder = Request.Builder()
                 .url("${MainActivity.SITE_URL}$path")
@@ -149,22 +187,25 @@ class PushService : Service() {
             if (cookie.isNotEmpty()) builder.header("Cookie", cookie)
             val request = builder.build()
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return null
+                if (response.code == 401 || response.code == 403) return null
+                if (!response.isSuccessful) throw java.io.IOException("http ${response.code}")
                 return JSONObject(response.body?.string() ?: return null)
             }
         }
 
-        val me = getJson("/api/auth/me") ?: return null
+        val me = getJson("/api/auth/me")
+            ?: return@runCatching FetchFail.NotLoggedIn
         val userId = me.optJSONObject("account")?.optString("id").orEmpty()
-        if (userId.isEmpty()) return null
-        val online = getJson("/api/online/config") ?: return null
-        if (!online.optBoolean("configured")) return null
+        if (userId.isEmpty()) return@runCatching FetchFail.NotLoggedIn
+        val online = getJson("/api/online/config")
+            ?: return@runCatching FetchFail.NotLoggedIn
+        if (!online.optBoolean("configured")) return@runCatching FetchFail.NotConfigured
         val url = online.optString("supabaseUrl")
         val key = online.optString("anonKey")
-        if (url.isEmpty() || key.isEmpty()) return null
+        if (url.isEmpty() || key.isEmpty()) return@runCatching FetchFail.NotConfigured
         registerShellSubscription(cookie, userId)
         PushConfig(url.trimEnd('/'), key, userId)
-    }.getOrNull()
+    }.getOrElse { FetchFail.SiteUnreachable }
 
     /**
      * 在站点注册一条合成推送订阅（endpoint = shell:<userId>）。
@@ -337,6 +378,10 @@ class PushService : Service() {
             .build()
 
     private fun updateKeepAlive(text: String) {
+        // 同文案不重复刷新：foreground service 通知是常驻的，同文案反复 notify()
+        // 在某些国产 ROM 上会被当成新通知弹一次 heads-up，造成"反复弹出"。
+        if (lastKeepAliveText == text) return
+        lastKeepAliveText = text
         getSystemService(NotificationManager::class.java)
             .notify(NOTIF_FG_ID, buildKeepAliveNotification(text))
     }

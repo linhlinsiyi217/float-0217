@@ -10,6 +10,41 @@ import type { Release } from "./types";
 
 export const SYSTEM_RELEASES: Release[] = [
   {
+    version: "0.6.18",
+    releaseId: "system-2026-10-24-v0618",
+    date: "2026-10-24",
+    name: "推送常驻通知文案细分与去重",
+    summary: "安卓壳推送服务修复：之前一律显示「未登录或站点不可达，稍后重试」会让真正没登录的用户误以为只是临时网络问题，也让真正网络故障的用户以为是自己没登录。现在按真实原因区分为「未登录」「站点不可达」「在线服务未配置」三类，且同状态不重复刷新通知，避免国产 ROM 把它当成新通知反复弹一次 heads-up。",
+    entries: [
+      {
+        id: "sys-0618-push-text",
+        category: "fix",
+        scope: "app",
+        app: "安卓壳 · 推送服务",
+        title: "推送通知文案细分",
+        items: [
+          "PushService 把 fetchConfig 失败原因拆成 NotLoggedIn / SiteUnreachable / NotConfigured 三类",
+          "对应「未登录，请在主应用里登录账号」「站点不可达，正在重试…」「在线服务未配置，请先到设置 → 在线服务」三句具体文案",
+          "不再无脑合并成一句模糊的「未登录或站点不可达」",
+        ],
+      },
+      {
+        id: "sys-0618-push-dedupe",
+        category: "fix",
+        scope: "app",
+        app: "安卓壳 · 推送服务",
+        title: "推送通知去重",
+        items: [
+          "同状态 60s 一次的 keepalive 通知不再重复 notify()",
+          "避免某些国产 ROM 把同文案的刷新当成新通知弹一次 heads-up",
+        ],
+      },
+    ],
+    pending: [
+      "推送通知文案细分与去重已通过 TypeScript 与生产构建检查，建议在真机断网/未登录/未配置三种状态下确认通知栏文案是否正确，并观察是否还会反复闪通知。",
+    ],
+  },
+  {
     version: "0.6.17",
     releaseId: "system-2026-10-22-v0617",
     date: "2026-10-22",
