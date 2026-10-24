@@ -161,6 +161,12 @@ class PushService : Service() {
                 })
                 null
             }
+            // fetchConfigDetailed 返回 Any，Kotlin 编译器无法穷尽校验；
+            // 理论上不会走到这里（runCatching 保证只返回上述两类），兜底按站点不可达处理。
+            else -> {
+                updateKeepAlive("站点不可达，正在重试…")
+                null
+            }
         }
     }
 
