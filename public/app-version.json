@@ -3,18 +3,54 @@
   "versionName": "1.2.1",
   "apkUrl": "https://github.com/linhlinsiyi217/float-0217/releases/download/v1.2.1/app-release.apk",
   "force": false,
-  "webVersion": "2026-10-22-6",
-  "summary": "推送常驻通知文案细分与去重：之前一律显示「未登录或站点不可达，稍后重试」会让真正没登录的用户误以为只是临时网络问题；现在按真实原因区分为「未登录」「站点不可达」「在线服务未配置」三类，且同状态不重复刷新通知，避免国产 ROM 把它当成新通知反复弹一次 heads-up。",
+  "webVersion": "2026-10-22-7",
+  "summary": "更新系统重构：每次生产部署自动生成新的发布标识（releaseId = webVersion + commitSha），即使版本号没变也能检测为新版本；版本清单与更新日志走缓存绕过（no-store + no-cache + 时间戳参数，Service Worker 显式排除）；设置 → 更新日志新增手动「检查更新」，支持检查中、已有更新、已是最新、离线、超时、失败与重试；更新公告五类语义色对齐（应用功能蓝 / 全局系统紫 / 页面内容绿 / AI 与提示词橙 / 修复与兼容红）。",
   "changes": [
     {
       "type": "app",
-      "title": "推送通知文案细分",
-      "detail": "PushService 把 fetchConfig 失败原因拆成 NotLoggedIn / SiteUnreachable / NotConfigured 三类，对应「未登录，请在主应用里登录账号」「站点不可达，正在重试…」「在线服务未配置，请先到设置 → 在线服务」三句具体文案，不再无脑合并"
+      "title": "每次部署生成新发布标识",
+      "detail": "构建时向 app-version.json 注入 releaseId / commitSha / releasedAt / changelogFile / entries；releaseId 优先于 commitSha、webVersion 和 versionCode 比较，versionName 不变也能检测出新版本"
     },
     {
+      "type": "global",
+      "title": "版本清单缓存绕过",
+      "detail": "next.config 对 /app-version.json 与 /CHANGELOG.md 返回 no-store；网页拉取叠加 no-cache 头与 ?check= 时间戳参数；Service Worker 显式排除这两个文件，更新检测不再吃旧缓存"
+    },
+    {
+      "type": "fix",
+      "title": "手动检查更新入口",
+      "detail": "设置 → 更新日志顶部新增「检查更新」卡片，与更新公告弹窗共用同一套拉取与比较逻辑但状态独立，支持检查中、已有更新、已是最新、离线、超时、失败与重试"
+    },
+    {
+      "type": "global",
+      "title": "五类更新语义色对齐",
+      "detail": "影响范围五类 key 固定为 app/global/content/ai/fix，默认色蓝 #3478F6、紫 #7C5CFC、绿 #34C759、橙 #FF9500、红 #FF3B30；标签底色改半透明适配浅色/深色主题；旧「提示词」键自动归入「AI 与提示词」"
+    }
+  ],
+  "releaseId": "2026-10-22-7-ed427f56c250ad6a164ac3106e9da3522e0b4a95",
+  "commitSha": "ed427f56c250ad6a164ac3106e9da3522e0b4a95",
+  "releasedAt": "2026-10-24T06:29:32.616Z",
+  "changelogFile": "/CHANGELOG.md",
+  "entries": [
+    {
       "type": "app",
-      "title": "推送通知去重",
-      "detail": "同状态 60s 一次的 keepalive 通知不再重复 notify()，避免某些国产 ROM 把同文案的刷新当成新通知弹一次 heads-up"
+      "title": "每次部署生成新发布标识",
+      "detail": "构建时向 app-version.json 注入 releaseId / commitSha / releasedAt / changelogFile / entries；releaseId 优先于 commitSha、webVersion 和 versionCode 比较，versionName 不变也能检测出新版本"
+    },
+    {
+      "type": "global",
+      "title": "版本清单缓存绕过",
+      "detail": "next.config 对 /app-version.json 与 /CHANGELOG.md 返回 no-store；网页拉取叠加 no-cache 头与 ?check= 时间戳参数；Service Worker 显式排除这两个文件，更新检测不再吃旧缓存"
+    },
+    {
+      "type": "fix",
+      "title": "手动检查更新入口",
+      "detail": "设置 → 更新日志顶部新增「检查更新」卡片，与更新公告弹窗共用同一套拉取与比较逻辑但状态独立，支持检查中、已有更新、已是最新、离线、超时、失败与重试"
+    },
+    {
+      "type": "global",
+      "title": "五类更新语义色对齐",
+      "detail": "影响范围五类 key 固定为 app/global/content/ai/fix，默认色蓝 #3478F6、紫 #7C5CFC、绿 #34C759、橙 #FF9500、红 #FF3B30；标签底色改半透明适配浅色/深色主题；旧「提示词」键自动归入「AI 与提示词」"
     }
   ]
 }

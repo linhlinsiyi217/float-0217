@@ -40,6 +40,20 @@ const nextConfig = {
   outputFileTracingIncludes: {
     "/api/**": ["./data/**"],
   },
+  async headers() {
+    // 更新检测的两份机器文件绝不缓存：no-store 保证每次拉到当前部署的
+    // releaseId/commitSha，否则新版本检测会吃旧缓存失效（UPDATE_SYSTEM.md §3）。
+    return [
+      {
+        source: "/app-version.json",
+        headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
+      },
+      {
+        source: "/CHANGELOG.md",
+        headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
+      },
+    ];
+  },
   webpack: (config, { isServer, webpack }) => {
     if (!isServer) {
       // @gltf-transform/core 的 dist 引用 node:fs / node:path(带 node: 前缀),

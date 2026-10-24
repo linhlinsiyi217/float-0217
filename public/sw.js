@@ -41,6 +41,8 @@ function isCacheableRequest(request) {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return false;
   if (url.pathname.startsWith("/api/")) return false;
+  // 版本清单与发布日志绝不进缓存：更新检测必须每次拿到当前部署的 releaseId
+  if (url.pathname === "/app-version.json" || url.pathname === "/CHANGELOG.md") return false;
   if (url.pathname.startsWith("/_next/static/")) return true;
   return ["font", "image", "script", "style", "worker"].includes(request.destination);
 }
