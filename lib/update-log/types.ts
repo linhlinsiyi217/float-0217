@@ -81,45 +81,50 @@ export const CATEGORY_TINT: Record<UpdateCategory, string> = {
 };
 
 // ── 影响范围（scope）────────────────────────────────
-// app      应用      = 安卓壳本身（安装包）改了什么，需要重新安装；小圆点：蓝
-// content  页面内容  = 里面的页面和功能，刷新即生效；小圆点：黑
-// global   全局      = 影响所有页面的东西（灵动岛/主题/开屏锁屏）；小圆点：橙
-// prompt   提示词    = AI 提示词、预设、角色写法的更新；小圆点：灰
-// fix      修复      = 修了什么问题；小圆点：红
-// 颜色遵守全局规范：黑白灰为主，蓝/橙/红只做小面积点缀（小圆点）。
+// app      应用功能  = 安卓壳本身（安装包）改了什么，需要重新安装；默认色：蓝 #3478F6
+// content  页面内容  = 里面的页面和功能（书/章节/消息/公告/媒体），刷新即生效；默认色：绿 #34C759
+// global   全局系统  = 状态栏/锁屏/主题/导航等影响所有页面的东西；默认色：紫 #7C5CFC
+// ai       AI 与提示词 = AI 行为、工具、提示词、角色写法的更新；默认色：橙 #FF9500
+// fix      修复与兼容 = 修了什么问题、兼容性与迁移修复；默认色：红 #FF3B30
+// prompt   旧数据的「提示词」键，界面上一并显示为「AI 与提示词」。
+// 颜色遵守全局规范：只做小面积点缀（小圆点/小标签），始终和文字分类一起出现。
 
-export type UpdateScope = "app" | "content" | "global" | "prompt" | "fix";
+export type UpdateScope = "app" | "content" | "global" | "ai" | "prompt" | "fix";
 
 export const SCOPE_LABEL: Record<UpdateScope, string> = {
-  app: "应用",
+  app: "应用功能",
   content: "页面内容",
-  global: "全局",
-  prompt: "提示词",
-  fix: "修复",
+  global: "全局系统",
+  ai: "AI 与提示词",
+  prompt: "AI 与提示词",
+  fix: "修复与兼容",
 };
 
-export const SCOPE_ORDER: UpdateScope[] = ["app", "content", "global", "prompt", "fix"];
+export const SCOPE_ORDER: UpdateScope[] = ["app", "content", "global", "ai", "fix"];
 
 export const SCOPE_COLOR: Record<UpdateScope, string> = {
-  app: "#2F6BFF",
-  content: "#111111",
-  global: "#FF9500",
-  prompt: "#9A9AA0",
+  app: "#3478F6",
+  content: "#34C759",
+  global: "#7C5CFC",
+  ai: "#FF9500",
+  prompt: "#FF9500",
   fix: "#FF3B30",
 };
 
-/** 分类标签的浅色底（与 SCOPE_COLOR 同色系的浅版，用于日志页与弹窗的标签底色） */
+/** 分类标签的底色：用主色的低透明度版本，浅色/深色背景上都能保持低饱和可读 */
 export const SCOPE_TINT: Record<UpdateScope, string> = {
-  app: "#EEF4FF",
-  content: "#F2F2F2",
-  global: "#FFF4E5",
-  prompt: "#F5F5F7",
-  fix: "#FFEEED",
+  app: "rgba(52, 120, 246, 0.14)",
+  content: "rgba(52, 199, 89, 0.16)",
+  global: "rgba(124, 92, 252, 0.14)",
+  ai: "rgba(255, 149, 0, 0.16)",
+  prompt: "rgba(255, 149, 0, 0.16)",
+  fix: "rgba(255, 59, 48, 0.14)",
 };
 
-/** 老数据没有 scope 字段时当作「页面内容」 */
+/** 老数据没有 scope 字段时当作「页面内容」；旧「提示词」键归入「AI 与提示词」 */
 export function normalizeUpdateScope(scope?: UpdateScope): UpdateScope {
-  return scope && scope in SCOPE_LABEL ? scope : "content";
+  if (!scope || !(scope in SCOPE_LABEL)) return "content";
+  return scope === "prompt" ? "ai" : scope;
 }
 
 export type ScopeGroup = { scope: UpdateScope; entries: UpdateEntry[] };

@@ -10,6 +10,78 @@ import type { Release } from "./types";
 
 export const SYSTEM_RELEASES: Release[] = [
   {
+    version: "0.6.19",
+    releaseId: "system-2026-10-24-v0619",
+    date: "2026-10-24",
+    name: "更新系统重构：每次部署都是一次发布",
+    summary: "版本清单新增 releaseId/commitSha/releasedAt，每次生产部署自动生成新发布标识，版本号没变也能检测为新版本；版本清单与更新日志全程缓存绕过；设置 → 更新日志新增手动「检查更新」，支持检查中、已有更新、已是最新、离线、超时、失败与重试；更新公告五类语义色对齐（应用功能蓝/全局系统紫/页面内容绿/AI 与提示词橙/修复与兼容红）；根目录新增 CHANGELOG.md 作为唯一正式发布日志。",
+    entries: [
+      {
+        id: "sys-0619-release-id",
+        category: "feat",
+        scope: "app",
+        app: "系统 · 发布标识",
+        title: "每次部署自动生成新发布标识",
+        items: [
+          "构建时向 app-version.json 注入 releaseId / commitSha / releasedAt / changelogFile / entries",
+          "releaseId = webVersion + commitSha，每次部署必然变化，优先于 commitSha、webVersion、versionCode 比较",
+          "versionName 不变也能检测为新版本，不再漏报",
+        ],
+      },
+      {
+        id: "sys-0619-cache-bypass",
+        category: "feat",
+        scope: "global",
+        app: "系统 · 缓存绕过",
+        title: "版本清单与更新日志缓存绕过",
+        items: [
+          "/app-version.json 与 /CHANGELOG.md 服务端返回 no-store",
+          "网页拉取叠加 no-cache 头与 ?check= 时间戳参数",
+          "Service Worker 显式排除这两个文件，更新检测永远拿当前部署的标识",
+        ],
+      },
+      {
+        id: "sys-0619-manual-check",
+        category: "feat",
+        scope: "app",
+        app: "设置 · 检查更新",
+        title: "手动「检查更新」入口",
+        items: [
+          "设置 → 更新日志顶部新增检查更新卡片",
+          "支持检查中、已有更新、已是最新、离线、超时、失败与重试七种状态",
+          "与更新公告弹窗共用同一套拉取与比较逻辑，状态互相独立",
+        ],
+      },
+      {
+        id: "sys-0619-five-colors",
+        category: "feat",
+        scope: "global",
+        app: "全局 · 五类更新色",
+        title: "五类更新语义色对齐",
+        items: [
+          "应用功能=蓝 #3478F6、全局系统=紫 #7C5CFC、页面内容=绿 #34C759、AI 与提示词=橙 #FF9500、修复与兼容=红 #FF3B30",
+          "标签底色改半透明，浅色/深色主题都可读",
+          "旧数据「提示词」键自动归入「AI 与提示词」",
+        ],
+      },
+      {
+        id: "sys-0619-changelog",
+        category: "feat",
+        scope: "content",
+        app: "系统 · 发布日志",
+        title: "根目录 CHANGELOG.md 唯一正式发布日志",
+        items: [
+          "英文标准文件名，按发布倒序追加，releaseId 与 app-version.json 保持一致",
+          "构建时自动回填真实提交哈希，不再为每次发布新建中文 Markdown 文件",
+        ],
+      },
+    ],
+    pending: [
+      "更新检测链路（清单拉取/比较/弹窗/手动检查）已通过 tsc、生产构建与 check:updates，需要在真机浏览器验证：新部署后首次打开弹一次公告、点「我知道了」后不再弹、手动检查各状态显示正确",
+      "缓存绕过需要在部署后的正式域名上拉 /app-version.json 核对 releaseId/commitSha/releasedAt 与本次部署一致",
+    ],
+  },
+  {
     version: "0.6.18",
     releaseId: "system-2026-10-24-v0618",
     date: "2026-10-24",
