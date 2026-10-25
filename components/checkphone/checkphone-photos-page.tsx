@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useCheckPhoneRefresh } from "@/lib/checkphone-refresh-tracker";
-import { ChevronLeft, RefreshCw, Trash2 } from "lucide-react";
+import { ChevronLeft, RefreshCw, Trash2, Wand2 } from "lucide-react";
+import { CheckPhoneAlbumStudio } from "@/components/checkphone/checkphone-album-studio";
 import { CheckPhoneBilingualText } from "@/components/checkphone/checkphone-bilingual-text";
 import { CheckPhoneDebugErrorCard } from "@/components/checkphone/checkphone-debug-error-card";
 import { ConfirmDialog } from "@/components/ui";
@@ -43,6 +44,7 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
   const [error, setError] = useState<string | null>(null);
   const [debugRawOutput, setDebugRawOutput] = useState<string | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [studioOpen, setStudioOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -168,6 +170,15 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
 
           <div className="cp-unified-header-right">
             <div className="cp-unified-actions">
+              <button
+                type="button"
+                className="cp-unified-btn cp-unified-btn--accent"
+                onClick={() => setStudioOpen(true)}
+                aria-label="Album studio"
+                title="相册创作工坊"
+              >
+                <Wand2 size={16} strokeWidth={2.5} />
+              </button>
               <button type="button" className="cp-unified-btn" onClick={handleRefresh} disabled={loading} aria-label="Refresh">
                 <RefreshCw size={16} strokeWidth={2.5} className={loading ? "cp-spin" : ""} />
               </button>
@@ -190,6 +201,10 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
         </div>
       </header>
 
+      {studioOpen ? (
+        <CheckPhoneAlbumStudio character={character} onClose={() => setStudioOpen(false)} />
+      ) : (
+        <>
       {loading && (
         <div className="cp-refresh-indicator cp-refresh-indicator--floating" aria-live="polite">
           <span className="cp-refresh-indicator-text">正在刷新相册</span>
@@ -376,6 +391,8 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
           onConfirm={handleClear}
           onCancel={() => setConfirmClearOpen(false)}
         />
+      )}
+      </>
       )}
     </div>
   );
