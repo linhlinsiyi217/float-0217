@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ChevronUp } from "lucide-react";
+import { ChevronUp, Flashlight, Camera } from "lucide-react";
 
 import { readLockConfig, readLockWallpaper } from "@/lib/lock-screen";
 import { LockPinPad } from "./lock-pin-pad";
 
-// 模拟锁屏层。
+// 锁屏层。
 //
-// 这是「模拟锁屏」，只为开机的仪式感，不是安全功能；界面上也只这么描述。
+// 这是锁屏，只为开机的仪式感，不是安全功能；界面上也只这么描述。
 // 密码明文存本机 kv，没有任何隐藏的万能密码。
 //
 // 交互：按下 → 往上划过阈值（72px）→ 松手。没密码直接滑出；有密码时钟往上
@@ -156,6 +156,10 @@ export function LockScreenOverlay({ onUnlocked }: LockScreenOverlayProps) {
       onMouseLeave={up}
     >
       {hasWall ? <div className="lock-wall" style={{ backgroundImage: `url("${wall}")` }} /> : null}
+      <div className="lock-statusbar" aria-hidden="true">
+        <span className="lock-statusbar-time">{clock.time}</span>
+        <span className="lock-statusbar-island" />
+      </div>
       <div ref={bodyRef} className="lock-body">
         <div className="lock-time">{clock.time}</div>
         <div className="lock-date">{clock.date}</div>
@@ -164,11 +168,18 @@ export function LockScreenOverlay({ onUnlocked }: LockScreenOverlayProps) {
         <ChevronUp strokeWidth={1.6} />
         <span>上滑解锁</span>
       </div>
+      <div className="lock-quick-actions" aria-label="锁屏快捷入口">
+        <button type="button" className="lock-quick-btn" aria-label="手电筒" onClick={() => { /* 锁屏内不直接改变设备状态，留给上层接入 */ }}>
+          <Flashlight size={20} strokeWidth={1.7} />
+        </button>
+        <button type="button" className="lock-quick-btn" aria-label="相机" onClick={() => { /* 同上，避免误打开相机 */ }}>
+          <Camera size={20} strokeWidth={1.7} />
+        </button>
+      </div>
       {padOpen ? (
         <LockPinPad
           mode="inline"
-          title="输入密码"
-          sub="模拟锁屏 · 4 位数字"
+          title="解锁"
           onVerify={value => value === pin}
           onDone={() => slideOut()}
           onCancel={() => {

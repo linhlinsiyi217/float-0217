@@ -313,8 +313,32 @@ function getMascotProtocolEnd(text: string, startIndex: number): number | null {
     const toolCallEnd = findToolCallEnd(text, startIndex);
     if (toolCallEnd != null) return toolCallEnd;
 
-    const closeBracket = text.indexOf("]", startIndex);
-    return closeBracket >= 0 ? closeBracket + 1 : null;
+    // 只有「获取指令/获取工具」标签（无括号参数）允许用 ] 收尾；
+    // 「执行动作/工具调用」必须括号闭合才算完整，否则返回 null 由调用方决定等待还是当正文输出
+    if (peekMascotProtocolHeaderKind(text, startIndex) === "fetch") {
+        const closeBracket = text.indexOf("]", startIndex);
+        return closeBracket >= 0 ? closeBracket + 1 : null;
+    }
+    return null;
+}
+
+/** 判断协议块头部类型：fetch = 获取指令/获取工具（无括号），call = 执行动作/工具调用（带括号参数）。 */
+function peekMascotProtocolHeaderKind(text: string, startIndex: number): "fetch" | "call" | null {
+    const slice = text.slice(startIndex);
+    const match = /^\[[^\[\]\n]{0,160}?(获取指令|获取工具|执行动作|工具调用)\s*[:：]/.exec(slice);
+    if (!match) return null;
+    return match[1] === "获取指令" || match[1] === "获取工具" ? "fetch" : "call";
+}
+
+/** call 型头部在 ( 之前先遇到 ] 或换行，说明不是真工具调用（真调用格式是 [..执行动作:名称(参数)]）。 */
+function isDefinitelyNotToolCall(text: string, startIndex: number): boolean {
+    const limit = Math.min(text.length, startIndex + 200);
+    for (let i = startIndex + 1; i < limit; i += 1) {
+        const ch = text[i];
+        if (ch === "(" || ch === "（") return false;
+        if (ch === "]" || ch === "\n") return true;
+    }
+    return false;
 }
 
 function peekMascotProtocolToolName(text: string, startIndex: number): string | null {
@@ -380,7 +404,23 @@ function createMascotTextDisplayFilter(
 
             const specialEnd = getMascotProtocolEnd(buffer, specialStart);
             if (specialEnd == null) {
-                if (final) processedIndex = buffer.length;
+                if (final) {
+                    const isThinkBlock = /^<\s*(think|thinking)\b/i.test(buffer.slice(specialStart));
+                    if (!isThinkBlock) {
+                        // 到流结束仍未闭合：除 think 推理块外一律当普通文本输出，
+                        // 避免误判的 "[" 或截断的工具块吞掉正文
+                        await emitText(buffer.slice(processedIndex));
+                    }
+                    processedIndex = buffer.length;
+                    return;
+                }
+                // 流式中途早释：call 型头部若确定不是真工具调用（( 前先遇到 ] 或换行），
+                // 把 "[ " 当普通文本输出并继续前进，避免长时间 hold 住后续正文
+                if (isDefinitelyNotToolCall(buffer, specialStart)) {
+                    await emitText(buffer.slice(processedIndex, specialStart + 1));
+                    processedIndex = specialStart + 1;
+                    continue;
+                }
                 return;
             }
             processedIndex = specialEnd;

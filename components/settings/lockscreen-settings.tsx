@@ -5,7 +5,6 @@ import { Image as ImageIcon, RefreshCw, Trash2 } from "lucide-react";
 
 import {
   LOCK_IDLE_OPTIONS,
-  LOCK_PIN_LEN,
   LOCK_WALL_MAX,
   LOCK_WALL_QUALITY,
   readLockConfig,
@@ -24,7 +23,7 @@ import { LockPinPad } from "../lock-pin-pad";
 
 // 锁屏与开屏设置。每一项都是即时生效、即时落盘，所以没有「保存」按钮。
 //
-// 这是模拟锁屏，只为开机的仪式感，不是安全功能 —— 界面上也只这么描述，
+// 这是锁屏设置，只为开机的仪式感，不是安全功能 —— 界面上也只这么描述，
 // 不宣传能保护隐私；密码明文存本机，也没有任何隐藏的万能密码。
 
 const IDLE_LABELS: Record<number, string> = {
@@ -131,7 +130,7 @@ export function LockScreenSettings({ onNotice }: { onNotice?: (msg: string) => v
         <div className="flex flex-col gap-2">
           <div className="ui-group-card !flex-row !items-center justify-between">
             <div className="flex flex-col gap-0.5 min-w-0 pr-3">
-              <span className="menu-label">{config.pin ? "已设置 4 位数字密码" : "未设置密码"}</span>
+              <span className="menu-label">{config.pin ? "已设置密码" : "未设置密码"}</span>
               <span className="menu-desc">
                 {config.pin ? "上滑输入密码才可解锁。" : "只设上滑也能解锁，密码是可选的。"}
               </span>
@@ -252,7 +251,7 @@ export function LockScreenSettings({ onNotice }: { onNotice?: (msg: string) => v
 
       <div className="ui-group-card">
         <span className="menu-desc">
-          这是模拟锁屏，只为开机的仪式感，不是安全功能；密码保存在本机。
+          锁屏是开机的仪式感，不是安全功能；密码保存在本机。
         </span>
       </div>
 
@@ -260,7 +259,7 @@ export function LockScreenSettings({ onNotice }: { onNotice?: (msg: string) => v
         <LockPinPad
           mode="overlay"
           title={padStep === 0 ? (config.pin ? "输入新密码" : "设置密码") : "再次输入"}
-          sub={padStep === 0 ? `${LOCK_PIN_LEN} 位数字` : "确认一遍，防止手滑"}
+          sub={padStep === 0 ? undefined : "确认一遍，防止手滑"}
           step={padStep}
           onVerify={value => (padStep === 0 ? true : value === firstPin)}
           onDone={value => {

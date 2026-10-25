@@ -1,4 +1,4 @@
-/* ===== 模拟锁屏 ===== */
+/* ===== 锁屏 ===== */
 /* 两处共用：layout 内联脚本注入的静态首帧 DOM（跳过开屏动画时锁屏就是第一帧）
    与 React 的锁屏层。类名与结构保持一致，接班时才不会闪。 */
 
@@ -167,7 +167,7 @@
   display: flex;
   justify-content: center;
   gap: 16px;
-  margin: 16px 0 18px;
+  margin: 16px 0 6px;
 }
 
 .lock-dots i {
@@ -196,6 +196,28 @@
   52% { transform: translateX(-6px); }
   70% { transform: translateX(5px); }
   86% { transform: translateX(-3px); }
+}
+
+/* 错误提示文字：抖动期间显示，平时占位但不可见，避免高度跳变 */
+.lock-pad-bad {
+  min-height: 16px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: #c0392b;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.lock-pad-bad.is-show {
+  opacity: 0.92;
+  transform: translateY(0);
+}
+
+.lock-layer.has-wall .lock-pad-bad {
+  color: #ff8b7a;
 }
 
 .lock-keys {
@@ -274,4 +296,103 @@
   .lock-hint svg {
     animation: none;
   }
+}
+
+/* ===== iOS26 风格锁屏顶部状态栏与底部快捷入口 ===== */
+/* 顶部状态栏：左上角时间，灵动岛由全局状态栏层接管，这里只留位置避免被时钟覆盖 */
+.lock-statusbar {
+  position: absolute;
+  top: max(calc(env(safe-area-inset-top, 0px) + 6px), 10px);
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 22px;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  opacity: 0.78;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.lock-statusbar-time {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+}
+
+.lock-statusbar-island {
+  width: 88px;
+  height: 26px;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.78);
+  /* 灵动岛实体留给全局 dynamic-island 层覆盖；这里只是占位形状，不抢点击 */
+  pointer-events: none;
+}
+
+.lock-layer.has-wall .lock-statusbar-island {
+  background: rgba(0, 0, 0, 0.88);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/* 底部快捷入口：手电筒 + 相机，分布在底部两侧，跟"上滑解锁"提示不抢 */
+.lock-quick-actions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: max(calc(env(safe-area-inset-bottom, 0px) + 22px), 28px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 26px;
+  z-index: 2;
+}
+
+.lock-quick-btn {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.32);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 6px 18px rgba(0, 0, 0, 0.18);
+  transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.4, 1), background 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.lock-quick-btn:hover {
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.lock-quick-btn:active {
+  transform: scale(0.9);
+  background: rgba(0, 0, 0, 0.5);
+}
+
+/* 没壁纸时（浅色背景）快捷按钮反色，保证对比度 */
+.lock-layer:not(.has-wall) .lock-quick-btn {
+  background: rgba(255, 255, 255, 0.55);
+  color: #1a1a1a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 4px 12px rgba(20, 27, 52, 0.1);
+}
+
+.lock-layer:not(.has-wall) .lock-quick-btn:hover {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.lock-layer:not(.has-wall) .lock-quick-btn:active {
+  background: rgba(23, 75, 255, 0.1);
+}
+
+/* 解锁提示给底部快捷入口让位 */
+.lock-layer .lock-hint {
+  bottom: max(calc(env(safe-area-inset-bottom, 0px) + 80px), 86px);
 }

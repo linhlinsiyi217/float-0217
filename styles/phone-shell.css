@@ -1056,7 +1056,7 @@
   pointer-events: none;
 }
 
-/* ── 模拟锁屏：复用同一台 Float 手机屏幕，不覆盖成另一套应用 ── */
+/* ── 锁屏：复用同一台 Float 手机屏幕，不覆盖成另一套应用 ── */
 .phone-lock-screen {
   position: absolute;
   inset: 0;
