@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LOCK_PIN_LEN } from "@/lib/lock-screen";
 
-// 4 位数字键盘。锁屏页（贴底 inline）与锁屏设置（全屏浮层 overlay）共用同一套。
+// 数字键盘。锁屏页（贴底 inline）与锁屏设置（全屏浮层 overlay）共用同一套。
 //
 // 输满 4 位就交 onVerify 校验：通过只锁键不拆层，收尾（滑出/淡出）归 onDone
 // 那边定 —— 解锁那一路要让键盘跟着整页一起滑出去，拆早了就是

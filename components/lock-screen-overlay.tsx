@@ -6,9 +6,9 @@ import { ChevronUp, Flashlight, Camera } from "lucide-react";
 import { readLockConfig, readLockWallpaper } from "@/lib/lock-screen";
 import { LockPinPad } from "./lock-pin-pad";
 
-// 模拟锁屏层。
+// 锁屏层。
 //
-// 这是「模拟锁屏」，只为开机的仪式感，不是安全功能；界面上也只这么描述。
+// 这是锁屏，只为开机的仪式感，不是安全功能；界面上也只这么描述。
 // 密码明文存本机 kv，没有任何隐藏的万能密码。
 //
 // 交互：按下 → 往上划过阈值（72px）→ 松手。没密码直接滑出；有密码时钟往上
@@ -179,8 +179,7 @@ export function LockScreenOverlay({ onUnlocked }: LockScreenOverlayProps) {
       {padOpen ? (
         <LockPinPad
           mode="inline"
-          title="输入密码"
-          sub="模拟锁屏 · 4 位数字"
+          title="解锁"
           onVerify={value => value === pin}
           onDone={() => slideOut()}
           onCancel={() => {

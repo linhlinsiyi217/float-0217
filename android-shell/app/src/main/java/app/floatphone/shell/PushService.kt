@@ -48,6 +48,13 @@ class PushService : Service() {
         private const val CH_CALLS = "shell_calls"
         private const val NOTIF_FG_ID = 1
         private var running = false
+        /** 上一次 keepalive 通知文案。必须放 companion（静态）里：
+         *  onTaskRemoved 的 3 秒闹钟把 Service 拉起来时是全新实例，实例变量会归零，
+         *  已连接状态下通知文案就会闪回「等待连接…」甚至「站点不可达」，
+         *  锁屏顶部于是反复闪这一行。跨实例保留即可完全避免。 */
+        @Volatile private var lastKeepAliveText: String? = null
+        /** 曾经成功连上过长连接。决定重建后的初始文案，不要无脑写「等待连接…」。 */
+        @Volatile private var everConnected = false
 
         fun start(context: Context) {
             if (running) return
@@ -73,9 +80,8 @@ class PushService : Service() {
     private var msgSeq = 2
     private var notifId = 100
     private var shellSubRegistered = false
-    /** 上一次 keepalive 通知文案。同文案不重复 notify()，避免系统反复刷新通知
-     *  触发"通知栏闪一下"或国产 ROM 把它当成新通知弹一次 heads-up。 */
-    private var lastKeepAliveText: String? = null
+    /** 最近一次拿配置失败的原因，用于决定通知文案与重试间隔。null = 上次成功。 */
+    private var lastFailKind: FetchFail? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -83,7 +89,10 @@ class PushService : Service() {
         super.onCreate()
         running = true
         createChannels()
-        startForeground(NOTIF_FG_ID, buildKeepAliveNotification("等待连接…"))
+        // 重建时沿用上一次文案：已连接就还是「已连接」，绝不闪回「等待连接…」
+        val initial = lastKeepAliveText ?: if (everConnected) "已连接，等待角色消息" else "正在连接…"
+        lastKeepAliveText = initial
+        startForeground(NOTIF_FG_ID, buildKeepAliveNotification(initial))
         KeepAlive.scheduleJob(this)
         thread(name = "shell-push-loop") { connectionLoop() }
     }
@@ -119,12 +128,21 @@ class PushService : Service() {
     private fun connectionLoop() {
         var backoffSec = 5L
         while (!stopped) {
-            val config = fetchConfig()
-            if (config == null) {
-                // fetchConfig 已经按真实原因细分了 keepalive 文案，这里不要再无脑覆盖；
-                // 同状态 60s 一次，updateKeepAlive 内部还有去重，避免反复刷新通知。
-                sleepSec(60); continue
+            var config = fetchConfig()
+            // 站点不可达常常只是切网/回源的瞬时抖动：先静默重试一次，
+            // 真连上了就根本不往常驻通知上写「站点不可达」，锁屏顶部也就不会闪这行字。
+            if (config == null && lastFailKind == FetchFail.SiteUnreachable) {
+                sleepSec(3)
+                if (stopped) break
+                config = fetchConfig()
             }
+            if (config == null) {
+                updateKeepAlive(failText(lastFailKind))
+                // 网络类失败缩短到 15s 再试，登录/配置类要等用户操作，维持 60s
+                sleepSec(if (lastFailKind == FetchFail.SiteUnreachable) 15L else 60L)
+                continue
+            }
+            everConnected = true
             updateKeepAlive("已连接，等待角色消息")
             val closedNormally = runSocket(config)
             if (stopped) break
@@ -133,6 +151,13 @@ class PushService : Service() {
             backoffSec = (backoffSec * 2).coerceAtMost(120)
             if (closedNormally) backoffSec = 5
         }
+    }
+
+    /** 把失败原因翻译成常驻通知文案。 */
+    private fun failText(kind: FetchFail?): String = when (kind) {
+        FetchFail.NotLoggedIn -> "未登录，请在主应用里登录账号"
+        FetchFail.NotConfigured -> "在线服务未配置，请先到设置 → 在线服务"
+        else -> "站点不可达，正在重试…"
     }
 
     private data class PushConfig(val supabaseUrl: String, val anonKey: String, val userId: String)
@@ -147,26 +172,22 @@ class PushService : Service() {
     }
 
     /** 借 WebView 的登录 Cookie 调站点接口获取连接参数。
-     *  失败时返回 FetchFail 具体子类，让 connectionLoop 走对应文案，不再无脑合并。 */
-    private fun fetchConfig(): PushConfig? = fetchConfigDetailed().let { result ->
-        when (result) {
-            is PushConfig -> result
-            is FetchFail -> {
-                // 把失败原因翻译成 keepalive 文案；updateKeepAlive 内部去重，
-                // 同状态反复刷新只刷一次，避免每 60s 都触发系统通知刷新。
-                updateKeepAlive(when (result) {
-                    FetchFail.NotLoggedIn -> "未登录，请在主应用里登录账号"
-                    FetchFail.SiteUnreachable -> "站点不可达，正在重试…"
-                    FetchFail.NotConfigured -> "在线服务未配置，请先到设置 → 在线服务"
-                })
-                null
-            }
-            // fetchConfigDetailed 返回 Any，Kotlin 编译器无法穷尽校验；
-            // 理论上不会走到这里（runCatching 保证只返回上述两类），兜底按站点不可达处理。
-            else -> {
-                updateKeepAlive("站点不可达，正在重试…")
-                null
-            }
+     *  失败时记下具体原因（lastFailKind）并返回 null，由 connectionLoop 决定
+     *  是否写通知、隔多久重试——这样瞬时抖动不会直接冒到锁屏顶部。 */
+    private fun fetchConfig(): PushConfig? = when (val result = fetchConfigDetailed()) {
+        is PushConfig -> {
+            lastFailKind = null
+            result
+        }
+        is FetchFail -> {
+            lastFailKind = result
+            null
+        }
+        // fetchConfigDetailed 返回 Any，Kotlin 编译器无法穷尽校验；
+        // 理论上不会走到这里（runCatching 保证只返回上述两类），兜底按站点不可达处理。
+        else -> {
+            lastFailKind = FetchFail.SiteUnreachable
+            null
         }
     }
 
@@ -373,6 +394,7 @@ class PushService : Service() {
             .setContentTitle("小手机")
             .setContentText(text)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .setContentIntent(contentIntent())
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .build()
