@@ -403,12 +403,13 @@ export function MainApp() {
           <MediaMaintenanceScheduler />
           {/* 壳推送订阅的兜底注册：壳原生那次失败是静默的，这里可验证地补一次 */}
           <ShellPushRegistrar />
+          {/* 锁屏层（z 200）在开屏层（z 210）底下：开屏淡出直接揭示锁屏或主屏。
+              挂在 MusicProvider 内：锁屏音乐卡片要读统一播放器状态。 */}
+          {overlay === "lock" ? (
+            <LockScreenOverlay onUnlocked={() => setOverlay("none")} />
+          ) : null}
         </MusicProvider>
       </main>
-      {/* 锁屏层（z 200）在开屏层（z 210）底下：开屏淡出直接揭示锁屏或主屏 */}
-      {overlay === "lock" ? (
-        <LockScreenOverlay onUnlocked={() => setOverlay("none")} />
-      ) : null}
       {overlay === "splash" && !splashGone ? (
         <SplashSequence
           progress={bootPct}

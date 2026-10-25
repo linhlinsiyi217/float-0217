@@ -7512,3 +7512,22 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
 }
+
+/* ── 歌词卡片：音乐分享卡带歌词的形态 ── */
+
+.chat-music-share-lyric {
+  padding: 12px 12px 2px;
+  font-size: 13px;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  color: var(--c-music-accent, #a8c5bc);
+  word-break: break-word;
+}
+
+.chat-music-share-lyric-mark {
+  display: block;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 18px;
+  line-height: 0.6;
+  opacity: 0.7;
+}

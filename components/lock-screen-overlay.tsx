@@ -5,6 +5,7 @@ import { ChevronUp } from "lucide-react";
 
 import { readLockConfig, readLockWallpaper } from "@/lib/lock-screen";
 import { LockPinPad } from "./lock-pin-pad";
+import { LockMusicCard } from "./music/lock-music-card";
 
 // 模拟锁屏层。
 //
@@ -159,6 +160,7 @@ export function LockScreenOverlay({ onUnlocked }: LockScreenOverlayProps) {
       <div ref={bodyRef} className="lock-body">
         <div className="lock-time">{clock.time}</div>
         <div className="lock-date">{clock.date}</div>
+        <LockMusicCard />
       </div>
       <div className="lock-hint">
         <ChevronUp strokeWidth={1.6} />
