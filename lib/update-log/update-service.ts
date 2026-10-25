@@ -29,6 +29,8 @@ export type UpdateCheckResult =
 
 const ACK_KEY = "ai_phone_remote_release_ack_v1";
 const FETCH_TIMEOUT_MS = 8_000;
+/** 成功后 30s 内复用同一份结果：页面切换、锁屏进入、重渲染都不再打新请求 */
+const RESULT_TTL_MS = 30_000;
 
 function isValidManifest(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -62,20 +64,46 @@ function toManifest(raw: Record<string, unknown>): RemoteManifest | null {
   };
 }
 
-/** 带缓存绕过的清单拉取：no-store + no-cache 头 + ?check= 时间戳三重保险 */
-export async function fetchRemoteManifest(): Promise<RemoteManifest | null> {
+/** 单次拉取的结果分类。把「取消/超时」和「真的连不上」分开，界面才不会误报网络错误。 */
+type ManifestOutcome =
+  | { kind: "ok"; manifest: RemoteManifest }
+  | { kind: "timeout" }
+  | { kind: "unreachable" }
+  | { kind: "http"; status: number }
+  | { kind: "invalid" };
+
+/** 带缓存绕过的清单拉取：no-store + no-cache 头 + ?check= 时间戳三重保险。
+ *  只有超时才 abort；AbortError 一律按「超时/取消」处理，绝不折算成网络不可达。 */
+async function fetchRemoteManifestOnce(): Promise<ManifestOutcome> {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let timedOut = false;
+  const timer = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, FETCH_TIMEOUT_MS);
   try {
     const response = await fetch(`/app-version.json?check=${Date.now()}`, {
       cache: "no-store",
       headers: { "Cache-Control": "no-cache" },
       signal: controller.signal,
     });
-    if (!response.ok) return null;
-    const raw: unknown = await response.json();
-    if (!isValidManifest(raw)) return null;
-    return toManifest(raw);
+    if (!response.ok) return { kind: "http", status: response.status };
+    let raw: unknown;
+    try {
+      raw = await response.json();
+    } catch {
+      return { kind: "invalid" };
+    }
+    if (!isValidManifest(raw)) return { kind: "invalid" };
+    const manifest = toManifest(raw as Record<string, unknown>);
+    return manifest ? { kind: "ok", manifest } : { kind: "invalid" };
+  } catch (error) {
+    // ERR_ABORTED（AbortController 主动取消）属于正常流程：超时或页面卸载，
+    // 不是网络故障，绝不能显示「站点不可达」。
+    if (timedOut || (error instanceof DOMException && error.name === "AbortError")) {
+      return { kind: "timeout" };
+    }
+    return { kind: "unreachable" };
   } finally {
     window.clearTimeout(timer);
   }
@@ -105,25 +133,62 @@ export function acknowledgeRemoteRelease(releaseId: string): void {
   }
 }
 
-/** 手动/自动检查共用的入口。绝不 throw：离线、超时、损坏清单都折算成对应状态。 */
-export async function checkForUpdate(): Promise<UpdateCheckResult> {
+/** 成功结果的短期缓存：避免同一时间多个消费者各打一个请求 */
+let lastSuccess: { at: number; result: UpdateCheckResult } | null = null;
+/** 飞中的唯一请求。同一时间只允许一个版本检查请求在跑 */
+let inflightCheck: Promise<UpdateCheckResult> | null = null;
+
+function outcomeToResult(outcome: ManifestOutcome): UpdateCheckResult {
+  if (outcome.kind === "ok") {
+    const acknowledged = getAcknowledgedRemoteReleaseId();
+    return isNewerManifest(outcome.manifest, acknowledged)
+      ? { state: "available", manifest: outcome.manifest }
+      : { state: "latest", manifest: outcome.manifest };
+  }
+  if (outcome.kind === "timeout") {
+    // 超时/主动取消：不当成网络故障，也不留错误状态
+    return { state: "timeout", manifest: null, message: "检查超时，请重试" };
+  }
+  if (outcome.kind === "http") {
+    return { state: "error", manifest: null, message: `版本清单不可用（HTTP ${outcome.status}），请稍后重试` };
+  }
+  if (outcome.kind === "invalid") {
+    return { state: "error", manifest: null, message: "版本清单格式异常，请稍后重试" };
+  }
+  return { state: "offline", manifest: null, message: "网络不可达，请检查连接后重试" };
+}
+
+export type CheckForUpdateOptions = {
+  /** 手动「检查更新」传 true：跳过后台检查的结果缓存，强制拉一次 */
+  force?: boolean;
+};
+
+/**
+ * 手动/自动检查共用的入口。绝不 throw：离线、超时、损坏清单都折算成对应状态。
+ * 并发去重：同一时间只有一个请求在跑，后到的调用共享同一份结果。
+ */
+export async function checkForUpdate(options?: CheckForUpdateOptions): Promise<UpdateCheckResult> {
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
     return { state: "offline", manifest: null, message: "当前离线，恢复网络后再试" };
   }
-  let manifest: RemoteManifest | null;
-  try {
-    manifest = await fetchRemoteManifest();
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      return { state: "timeout", manifest: null, message: "检查超时，请重试" };
+  // 刚成功拉过：直接复用，页面切换/锁屏进入/重渲染都不会再触发新请求
+  if (!options?.force && lastSuccess && Date.now() - lastSuccess.at < RESULT_TTL_MS) {
+    return lastSuccess.result;
+  }
+  if (inflightCheck) return inflightCheck;
+
+  const run = (async (): Promise<UpdateCheckResult> => {
+    const result = outcomeToResult(await fetchRemoteManifestOnce());
+    // 只有真正拿到清单才算有效结果；超时/失败不缓存，下次仍会重试
+    if (result.state === "available" || result.state === "latest") {
+      lastSuccess = { at: Date.now(), result };
     }
-    return { state: "offline", manifest: null, message: "网络不可达，请检查连接后重试" };
+    return result;
+  })();
+  inflightCheck = run;
+  try {
+    return await run;
+  } finally {
+    if (inflightCheck === run) inflightCheck = null;
   }
-  if (!manifest) {
-    return { state: "error", manifest: null, message: "版本清单不可用或格式异常，请稍后重试" };
-  }
-  const acknowledged = getAcknowledgedRemoteReleaseId();
-  return isNewerManifest(manifest, acknowledged)
-    ? { state: "available", manifest }
-    : { state: "latest", manifest };
 }

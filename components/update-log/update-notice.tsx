@@ -15,6 +15,10 @@ import type { Release, UpdateScope } from "@/lib/update-log/types";
 
 const SLOT_OWNER = "system";
 
+/** 本页面生命周期内是否已经跑过远程检查。
+ *  模块级变量跨组件重建依然有效：页面切换、锁屏进入、重渲染都不会再触发第二次请求。 */
+let remoteCheckStarted = false;
+
 /** 把远程清单转成弹窗用的 Release 结构：条目来自 app-version.json 的 changes 数组 */
 function manifestToRelease(manifest: RemoteManifest): Release {
   const scopeKeys: UpdateScope[] = ["app", "content", "global", "ai", "fix"];
@@ -57,6 +61,8 @@ export function UpdateNotice() {
 
     // 远程检查：等内置弹窗（若在展示）关闭后跑，避免两个弹窗抢同一个展示位
     const runRemoteCheck = async () => {
+      if (remoteCheckStarted) return;
+      remoteCheckStarted = true;
       const result = await checkForUpdate();
       if (cancelled || result.state !== "available") return;
       // 远程 releaseId 与内置日志当前 releaseId 相同：内容就是用户刚确认过的那份，

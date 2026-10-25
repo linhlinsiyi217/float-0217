@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileText, RefreshCw } from "lucide-react";
 
 import { UpdateLogView } from "@/components/update-log/update-log-view";
@@ -32,13 +32,20 @@ export function UpdateLogPage() {
   const [result, setResult] = useState<UpdateCheckState | null>(null);
   const [message, setMessage] = useState("");
   const [remote, setRemote] = useState<RemoteManifest | null>(null);
+  // 页面被切走（卸载）后不再 setState；请求本身由 checkForUpdate 共享，不会被重复发起
+  const mountedRef = useRef(true);
+  useEffect(() => () => {
+    mountedRef.current = false;
+  }, []);
 
   const runCheck = async () => {
     if (checking) return;
     setChecking(true);
     setResult(null);
     setMessage("");
-    const outcome = await checkForUpdate();
+    // 手动检查强制拉一次，跳过 30s 结果复用；请求仍受单例约束，不会重复发起
+    const outcome = await checkForUpdate({ force: true });
+    if (!mountedRef.current) return;
     setChecking(false);
     setResult(outcome.state);
     if (outcome.state === "available") {
@@ -49,6 +56,10 @@ export function UpdateLogPage() {
       // 手动确认「已是最新」的同时对齐远程 releaseId，避免同样的版本反复提示
       acknowledgeRemoteRelease(outcome.manifest.releaseId);
       setMessage(STATE_TEXT.latest);
+    } else if (outcome.state === "timeout") {
+      // 超时/取消属于正常收尾：只提示稍后重试，不写「网络不可达」
+      setRemote(null);
+      setMessage(STATE_TEXT.timeout);
     } else {
       setRemote(null);
       setMessage(outcome.message);
