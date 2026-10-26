@@ -78,7 +78,12 @@ export type KuaichuanWallet = {
     luckyCharm: number;
     totalSpins: number;
     withdrawLog: { at: string; coins: number; note: string }[];
+    /** 转盘中奖历史（最近在前，最多 SPIN_LOG_KEEP 条） */
+    spinLog: { at: string; label: string; coins: number }[];
 };
+
+/** 转盘中奖历史保留条数 */
+export const SPIN_LOG_KEEP = 30;
 
 function todayKey(): string {
     const d = new Date();
@@ -93,8 +98,10 @@ export function loadWallet(freeSpinsPerDay: number = FREE_SPINS_PER_DAY): Kuaich
         if (raw) wallet = JSON.parse(raw);
     } catch { wallet = null; }
     if (!wallet) {
-        wallet = { coins: 0, freeSpinsLeft: daily, spinsDate: todayKey(), luckyCharm: 0, totalSpins: 0, withdrawLog: [] };
+        wallet = { coins: 0, freeSpinsLeft: daily, spinsDate: todayKey(), luckyCharm: 0, totalSpins: 0, withdrawLog: [], spinLog: [] };
     }
+    // 旧存档没有中奖历史：补默认，避免 undefined 顺着往下传
+    if (!Array.isArray(wallet.spinLog)) wallet.spinLog = [];
     // 跨天自动补满免费次数（按当前配置补，改配置次日生效）
     if (wallet.spinsDate !== todayKey()) {
         wallet.spinsDate = todayKey();

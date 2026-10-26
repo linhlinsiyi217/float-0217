@@ -27,6 +27,7 @@ import { simpleLLMCall } from "@/lib/api-helpers";
 import {
     DEFAULT_WHEEL_CONFIG,
     KUAICHUAN_WORLDS,
+    SPIN_LOG_KEEP,
     clearGameSave,
     isValidWheelConfig,
     loadGameSave,
@@ -327,6 +328,19 @@ function KuaichuanWheelPane() {
     // 最大金币段：命运重抽券必中它（不再写死 88，配置改了依然成立）
     const jackpotIndex = segments.reduce((best, s, i) => (s.coins > segments[best].coins ? i : best), 0);
     const jackpotCoins = segments[jackpotIndex].coins;
+    // 转盘修复：扇区背景跟着配置走——以前 CSS 里写死 8 段 45° 渐变，改成 6/10/12 段后
+    // 色块和标签错位、看不出扇区边界。现在按 segments 动态生成 conic-gradient。
+    const wheelBackground = useMemo(() => {
+        const n = segments.length;
+        const step = 100 / n;
+        const colors = segments.map((s, i) => {
+            if (s.coins === jackpotCoins && s.coins > 0) return "#d9a94e"; // 大奖格金色
+            if (s.coins === -1) return "#46356b"; // 「再来一次」紫
+            return i % 2 === 0 ? "#2f2b45" : "#3b3557";
+        });
+        const stops = colors.map((c, i) => `${c} ${i * step}% ${(i + 1) * step}%`).join(", ");
+        return `conic-gradient(${stops})`;
+    }, [segments, jackpotCoins]);
 
     useEffect(() => {
         return () => {
@@ -355,25 +369,34 @@ function KuaichuanWheelPane() {
         };
         // G8 修复：开转瞬间就把最终结果算清并落库——动画期间切页签/退出 App 都不会丢金币。
         // 界面先显示扣掉次数/券的过渡钱包，动画结束后再刷新成结算钱包。
+        // 转盘修复：中奖结果同时记入 spinLog（最近 SPIN_LOG_KEEP 条），刷新后仍在。
         const settled: KuaichuanWallet =
             seg.coins === -1
                 ? { ...nextWallet, freeSpinsLeft: nextWallet.freeSpinsLeft + 1 } // 再来一次：次数原路返还
                 : { ...nextWallet, coins: nextWallet.coins + seg.coins };
-        saveWallet(settled);
+        const settledWithLog: KuaichuanWallet = {
+            ...settled,
+            spinLog: [
+                { at: new Date().toISOString(), label: seg.label, coins: seg.coins },
+                ...(settled.spinLog ?? []),
+            ].slice(0, SPIN_LOG_KEEP),
+        };
+        saveWallet(settledWithLog);
         setWallet(nextWallet);
         setResult(null);
         setSpinning(true);
         setRotation(target);
+        // CSS transition 是 4s，结算 4.1s 触发：动画先停、结算紧随其后，不会提前结束。
         timerRef.current = window.setTimeout(() => {
             timerRef.current = null;
             setSpinning(false);
-            setWallet(settled);
+            setWallet(settledWithLog);
             if (seg.coins === -1) {
                 setResult("再来一次！次数已返还，接着转。");
             } else {
                 setResult(seg.coins === 0 ? "谢谢参与——局里说：穿越也有空窗期。" : `中了 ${seg.label}！金币已入账。`);
             }
-        }, 4200);
+        }, 4100);
     };
 
     const exchangeCharm = () => {
@@ -426,7 +449,7 @@ function KuaichuanWheelPane() {
                 <div className="kc-wheel-pointer" />
                 <div
                     className="kc-wheel"
-                    style={{ transform: `rotate(${rotation}deg)` }}
+                    style={{ transform: `rotate(${rotation}deg)`, background: wheelBackground }}
                     data-spinning={spinning ? "true" : undefined}
                 >
                     {segments.map((seg, i) => {
@@ -454,6 +477,20 @@ function KuaichuanWheelPane() {
                 {spinning ? "转盘中…" : "开转"}
             </button>
             {result && <p className="kc-wheel-result">{result}</p>}
+
+            {wallet.spinLog.length > 0 && (
+                <div className="kc-spinlog">
+                    <div className="kc-spinlog-title">最近中奖</div>
+                    <ul className="kc-spinlog-list">
+                        {wallet.spinLog.slice(0, 8).map((item, i) => (
+                            <li key={`${item.at}-${i}`}>
+                                <span className="kc-spinlog-label">{item.label}</span>
+                                <span className="kc-spinlog-time">{new Date(item.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
 
             <div className="kc-exchange">
                 <div className="kc-exchange-title">提现柜台</div>
