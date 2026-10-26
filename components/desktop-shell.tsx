@@ -13,6 +13,7 @@ import { PhoneSettingsApp, type SettingsSubPage } from "@/components/phone-setti
 import { PhoneChatApp } from "@/components/chat/phone-chat-app";
 import { PhonePlaceholderApp } from "@/components/phone-placeholder-app";
 import MusicApp from "@/components/music/music-app";
+import { StoryPlusApp } from "@/components/storyplus/storyplus-app";
 import MusicPlayer from "@/components/music/music-player";
 import MusicFloat from "@/components/music/music-float";
 import MusicDynamicIsland from "@/components/music/music-dynamic-island";
@@ -4461,6 +4462,17 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
     if (activeApp === "music") {
       return <MusicApp onClose={() => setActiveApp(null)} />;
+    }
+
+    if (activeApp === "storyplus") {
+      return (
+        <StoryPlusApp
+          onClose={() => setActiveApp(null)}
+          onNotice={setNotice}
+          onOpenStoryApp={() => setActiveApp("story")}
+          onOpenChatSession={openChatSessionFromNotice}
+        />
+      );
     }
 
     if (activeApp === "x") {

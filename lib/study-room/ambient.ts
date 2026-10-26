@@ -8,25 +8,10 @@
 // 背景音乐（小手机音乐 / 网易云）还没有真实接口，见 reader-music.ts。
 
 import { getReaderMusicController } from "./reader-music";
+import { createNoiseBuffer, type NoiseKind } from "@/lib/noise-synth";
 
-export type NoiseKind = "rain" | "room" | "white" | "pink" | "brown";
-
-export const NOISE_LABELS: Record<NoiseKind, string> = {
-  rain: "雨声",
-  room: "室内底噪",
-  white: "白噪音",
-  pink: "粉红噪音",
-  brown: "棕噪音",
-};
-
-/** 每种声音一句话说明（面板里显示） */
-export const NOISE_HINTS: Record<NoiseKind, string> = {
-  rain: "偏亮的沙沙声，像窗外小雨",
-  room: "低沉平稳，像空调或室内底噪",
-  white: "各频段一样响，最「嘶」的一种",
-  pink: "高频减弱，比白噪音柔和",
-  brown: "低频最多，像远处的瀑布或风",
-};
+export type { NoiseKind };
+export { NOISE_LABELS, NOISE_HINTS } from "@/lib/noise-synth";
 
 export type AmbientStatus = "idle" | "loading" | "playing" | "paused" | "error";
 
@@ -43,7 +28,7 @@ export type AmbientState = {
 };
 
 const STORE_KEY = "studyroom_ambient_v1";
-/** 生成的噪声本身偏响，按这个系数换算成实际增益 */
+/** 生成噪声本身偏响，按这个系数换算成实际增益 */
 const GAIN_SCALE = 0.35;
 /** 朗读时背景音降到用户设定值的这个比例（具体比例需求未指定，先取适中值） */
 const DUCK_RATIO = 0.35;
@@ -51,11 +36,6 @@ const DUCK_RATIO = 0.35;
 const RAMP = 0.12;
 /** 拖动音量条时的渐变时间常数：足够短，跟手但不出「咔哒」声 */
 const DRAG_RAMP = 0.03;
-/** 每种声音的目标响度（RMS），让切换种类时音量差不多 */
-const NOISE_RMS: Record<NoiseKind, number> = { rain: 0.24, room: 0.22, white: 0.14, pink: 0.2, brown: 0.22 };
-/** 循环缓冲长度（秒）与首尾交叉淡化长度（秒），循环接缝听不出来 */
-const LOOP_SECONDS = 8;
-const SEAM_SECONDS = 0.5;
 
 function clamp01(value: number): number {
   return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 1;
@@ -153,54 +133,6 @@ function applyGain(timeConstant = RAMP): void {
   }
 }
 
-function noiseBuffer(audio: AudioContext, kind: NoiseKind): AudioBuffer {
-  const rate = audio.sampleRate;
-  const length = Math.round(rate * LOOP_SECONDS);
-  const seam = Math.round(rate * SEAM_SECONDS);
-  // 多生成一段，用来和开头交叉淡化，循环回到开头时没有接缝
-  const raw = new Float32Array(length + seam);
-  let last = 0;
-  let b0 = 0, b1 = 0, b2 = 0;
-  for (let i = 0; i < raw.length; i += 1) {
-    const white = Math.random() * 2 - 1;
-    if (kind === "rain") {
-      // 雨：高频偏亮，轻微起伏
-      last = 0.85 * white + 0.15 * last;
-      raw[i] = last;
-    } else if (kind === "room") {
-      // 室内底噪：低频偏多，接近空调声
-      last = 0.97 * last + 0.03 * white;
-      raw[i] = last;
-    } else if (kind === "white") {
-      raw[i] = white;
-    } else if (kind === "pink") {
-      // 粉红噪音：Paul Kellet 三级滤波（每倍频程 -3dB）
-      b0 = 0.99765 * b0 + white * 0.099046;
-      b1 = 0.963 * b1 + white * 0.2965164;
-      b2 = 0.57 * b2 + white * 1.0526913;
-      raw[i] = b0 + b1 + b2 + white * 0.1848;
-    } else {
-      // 棕噪音：带泄漏的积分（每倍频程 -6dB），比室内底噪更沉
-      last = (last + 0.02 * white) / 1.02;
-      raw[i] = last;
-    }
-  }
-  // 首尾交叉淡化（噪声不相关，用等功率曲线）
-  for (let i = 0; i < seam; i += 1) {
-    const t = i / seam;
-    raw[i] = raw[i] * Math.sin((t * Math.PI) / 2) + raw[length + i] * Math.cos((t * Math.PI) / 2);
-  }
-  // 按目标响度归一，切换种类时音量差不多
-  let sum = 0;
-  for (let i = 0; i < length; i += 1) sum += raw[i] * raw[i];
-  const rms = Math.sqrt(sum / length) || 1;
-  const scale = NOISE_RMS[kind] / rms;
-  const buffer = audio.createBuffer(1, length, rate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < length; i += 1) data[i] = Math.max(-1, Math.min(1, raw[i] * scale));
-  return buffer;
-}
-
 function teardown(): void {
   try {
     source?.stop();
@@ -254,7 +186,7 @@ export async function playNoise(kind: NoiseKind): Promise<void> {
       return;
     }
     const node = audio.createBufferSource();
-    node.buffer = noiseBuffer(audio, kind);
+    node.buffer = createNoiseBuffer(audio, kind);
     node.loop = true;
     const level = audio.createGain();
     level.gain.value = targetGain();
