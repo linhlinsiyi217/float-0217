@@ -21,6 +21,7 @@ import { loadDiaryEntries } from "./diary-entry-storage";
 import type { DiaryEntry, DiaryEntryBlock } from "./diary-entry-types";
 import { loadNoteWallProjectionEntries } from "./notewall-memory";
 import { loadXiaohongshuProjectionEntries } from "./xiaohongshu-memory";
+import { loadStudyRoomForumProjectionEntries } from "./study-room/forum-memory";
 import { formatXiaohongshuShareForPrompt } from "./chat-share";
 import { formatStudyRoomShareForPrompt } from "./study-room/share-card";
 import { loadBlackMarketTheaterProjectionEntries } from "./black-market-storage";
@@ -58,8 +59,8 @@ function formatPhotoDirectiveForPrompt(msg: ChatMessage): string {
 
 export type NativeTimelineEntry = {
     id: string;
-    sourceApp: "chat" | "moments" | "story" | "vn" | "map" | "game" | "diary" | "xiaohongshu" | "interview_magazine" | "cocreate" | "checkphone" | "custom_app";
-    sourceDetail?: "direct" | "group" | "system" | "story" | "chat_offline" | "game" | "diary_entry" | "notewall" | "xiaohongshu" | "black_market_theater" | "interview_issue" | "interview_shared_issue" | "cocreate_project" | "checkphone" | "custom_app_event"; // chat sub-type: 1:1 vs group chat vs system note
+    sourceApp: "chat" | "moments" | "story" | "vn" | "map" | "game" | "diary" | "xiaohongshu" | "interview_magazine" | "cocreate" | "checkphone" | "custom_app" | "studyroom_forum";
+    sourceDetail?: "direct" | "group" | "system" | "story" | "chat_offline" | "game" | "diary_entry" | "notewall" | "xiaohongshu" | "black_market_theater" | "interview_issue" | "interview_shared_issue" | "cocreate_project" | "checkphone" | "custom_app_event" | "studyroom_forum_reply"; // chat sub-type: 1:1 vs group chat vs system note
     authorType?: "user" | "character" | "npc"; // who authored this entry
     postAuthorType?: "user" | "character"; // for moments: who owns the parent post
     sessionId?: string;
@@ -819,6 +820,26 @@ export function loadNativeTimeline(
             content: formatStoredPromptEventContent(cocreateEntry.content, {
                 label: "共创",
                 timestamp: cocreateEntry.timestamp,
+                timeAware,
+                timestampOptions,
+            }),
+        });
+    }
+
+    // ── Study room forum projections（G15 书房点评—角色记忆）──
+    const studyRoomForumEntries = loadStudyRoomForumProjectionEntries(characterId, {
+        afterTimestamp: options?.afterTimestamp,
+    });
+    for (const forumEntry of studyRoomForumEntries) {
+        entries.push({
+            id: forumEntry.id,
+            sourceApp: "studyroom_forum",
+            sourceDetail: "studyroom_forum_reply",
+            authorType: "character",
+            timestamp: forumEntry.timestamp,
+            content: formatStoredPromptEventContent(renderUserNameMacro(forumEntry.content, userName), {
+                label: "书房书友圈",
+                timestamp: forumEntry.timestamp,
                 timeAware,
                 timestampOptions,
             }),
