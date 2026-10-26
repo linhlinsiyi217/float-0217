@@ -515,3 +515,109 @@
     text-overflow: ellipsis;
     animation: kc-pop 0.3s ease;
 }
+
+/* ── 转盘配置面板（G8 修复：扇区/每日次数可配置）── */
+.kc-config-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    border: 1px solid var(--kc-line);
+    border-radius: 999px;
+    background: var(--kc-panel-2);
+    color: var(--kc-dim);
+    font-size: 11px;
+    line-height: 1;
+    padding: 6px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.kc-config-toggle:disabled { opacity: 0.45; cursor: default; }
+.kc-config-toggle:not(:disabled):active { transform: scale(0.94); }
+
+.kc-wheel-config {
+    margin: 10px 0 2px;
+    padding: 10px 12px;
+    border: 1px solid var(--kc-line);
+    border-radius: 14px;
+    background: var(--kc-panel);
+}
+.kc-config-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--kc-amber);
+}
+.kc-config-close {
+    border: 0;
+    background: transparent;
+    color: var(--kc-faint);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 4px 6px;
+}
+.kc-config-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0;
+}
+.kc-config-idx {
+    width: 18px;
+    text-align: right;
+    font-size: 11px;
+    color: var(--kc-faint);
+    flex: none;
+}
+.kc-config-input {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--kc-line);
+    border-radius: 10px;
+    background: var(--kc-panel-2);
+    color: var(--kc-text);
+    font-size: 12px;
+    padding: 7px 10px;
+    outline: none;
+}
+.kc-config-input:focus { border-color: var(--kc-violet); }
+.kc-config-num { flex: none; width: 84px; text-align: right; }
+.kc-config-meta {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--kc-dim);
+}
+.kc-config-note {
+    margin: 8px 0 0;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--kc-faint);
+}
+.kc-config-error {
+    margin: 6px 0 0;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #ff8f8f;
+}
+.kc-config-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+.kc-config-save,
+.kc-config-reset {
+    flex: 1;
+    border: 0;
+    border-radius: 12px;
+    padding: 9px 0;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.kc-config-save { background: var(--kc-amber); color: #221a08; }
+.kc-config-reset { background: var(--kc-panel-2); color: var(--kc-dim); border: 1px solid var(--kc-line); }
+.kc-config-save:active { transform: scale(0.97); }
+.kc-config-reset:active { transform: scale(0.97); }

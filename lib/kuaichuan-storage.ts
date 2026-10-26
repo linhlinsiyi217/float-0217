@@ -4,11 +4,71 @@
 import { kvGet, kvSet, kvRemove, registerKvMigration } from "./kv-db";
 
 const WALLET_KEY = "ai_phone_kuaichuan_wallet_v1";
+const WHEEL_CONFIG_KEY = "ai_phone_kuaichuan_wheel_config_v1";
 const GAME_KEY_PREFIX = "ai_phone_kuaichuan_game_";
 registerKvMigration(WALLET_KEY);
+registerKvMigration(WHEEL_CONFIG_KEY);
 
-/** 每日免费转盘次数 */
+/** 每日免费转盘次数（默认值，可在转盘页配置） */
 export const FREE_SPINS_PER_DAY = 5;
+
+// ── 转盘配置（G8 修复：不再写死在组件里，落 kv 可编辑）──
+
+export type WheelSegmentConfig = {
+    /** 扇区显示文案 */
+    label: string;
+    /** 金币值；-1 表示「再来一次」（返还一次机会），其余为入账金币数 */
+    coins: number;
+};
+
+export type WheelConfig = {
+    segments: WheelSegmentConfig[];
+    /** 每日免费次数 */
+    freeSpinsPerDay: number;
+};
+
+export const DEFAULT_WHEEL_CONFIG: WheelConfig = {
+    segments: [
+        { label: "金币 +8", coins: 8 },
+        { label: "金币 +15", coins: 15 },
+        { label: "金币 +28", coins: 28 },
+        { label: "谢谢参与", coins: 0 },
+        { label: "金币 +8", coins: 8 },
+        { label: "金币 +50", coins: 50 },
+        { label: "金币 +88", coins: 88 },
+        { label: "再来一次", coins: -1 },
+    ],
+    freeSpinsPerDay: FREE_SPINS_PER_DAY,
+};
+
+/** 配置合法性：4-16 段、label 非空、coins 为 -10000~10000 的整数、每日 1-20 次 */
+export function isValidWheelConfig(cfg: unknown): cfg is WheelConfig {
+    if (!cfg || typeof cfg !== "object") return false;
+    const c = cfg as WheelConfig;
+    if (!Array.isArray(c.segments) || c.segments.length < 4 || c.segments.length > 16) return false;
+    if (!Number.isInteger(c.freeSpinsPerDay) || c.freeSpinsPerDay < 1 || c.freeSpinsPerDay > 20) return false;
+    return c.segments.every(
+        (s) =>
+            s && typeof s.label === "string" && s.label.trim().length > 0 && s.label.length <= 12 &&
+            typeof s.coins === "number" && Number.isInteger(s.coins) && s.coins >= -10000 && s.coins <= 10000,
+    );
+}
+
+export function loadWheelConfig(): WheelConfig {
+    try {
+        const raw = kvGet(WHEEL_CONFIG_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (isValidWheelConfig(parsed)) return parsed;
+        }
+    } catch { /* 损坏配置回默认 */ }
+    return { ...DEFAULT_WHEEL_CONFIG, segments: DEFAULT_WHEEL_CONFIG.segments.map((s) => ({ ...s })) };
+}
+
+export function saveWheelConfig(cfg: WheelConfig): void {
+    if (!isValidWheelConfig(cfg)) return;
+    kvSet(WHEEL_CONFIG_KEY, JSON.stringify(cfg));
+}
 
 export type KuaichuanWallet = {
     coins: number;
@@ -25,19 +85,20 @@ function todayKey(): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function loadWallet(): KuaichuanWallet {
+export function loadWallet(freeSpinsPerDay: number = FREE_SPINS_PER_DAY): KuaichuanWallet {
+    const daily = Number.isInteger(freeSpinsPerDay) && freeSpinsPerDay > 0 ? freeSpinsPerDay : FREE_SPINS_PER_DAY;
     let wallet: KuaichuanWallet | null = null;
     try {
         const raw = kvGet(WALLET_KEY);
         if (raw) wallet = JSON.parse(raw);
     } catch { wallet = null; }
     if (!wallet) {
-        wallet = { coins: 0, freeSpinsLeft: FREE_SPINS_PER_DAY, spinsDate: todayKey(), luckyCharm: 0, totalSpins: 0, withdrawLog: [] };
+        wallet = { coins: 0, freeSpinsLeft: daily, spinsDate: todayKey(), luckyCharm: 0, totalSpins: 0, withdrawLog: [] };
     }
-    // 跨天自动补满免费次数
+    // 跨天自动补满免费次数（按当前配置补，改配置次日生效）
     if (wallet.spinsDate !== todayKey()) {
         wallet.spinsDate = todayKey();
-        wallet.freeSpinsLeft = FREE_SPINS_PER_DAY;
+        wallet.freeSpinsLeft = daily;
     }
     return wallet;
 }
@@ -128,8 +189,35 @@ export function loadGameSave(worldId: string): KuaichuanGameSave | null {
     } catch { return null; }
 }
 
+// ── 文游存档历史上限（G8 修复：存档不再无限膨胀）──
+/** history 总条数超过这个值就压缩，防止 localStorage 被单档撑爆 */
+export const MAX_GAME_HISTORY = 160;
+/** 压缩后保留最近多少条 */
+export const KEEP_RECENT_HISTORY = 120;
+
+/**
+ * 压缩过长历史：保留第一条（系统开场白）+ 一条归档说明 + 最近 KEEP_RECENT_HISTORY 条。
+ * rounds 不变（它记录的是真实推进轮数）。
+ */
+export function compressGameHistory(history: KuaichuanGameMessage[], rounds: number): KuaichuanGameMessage[] {
+    if (history.length <= MAX_GAME_HISTORY) return history;
+    const dropped = history.length - 1 - KEEP_RECENT_HISTORY;
+    const archiver: KuaichuanGameMessage = {
+        role: "assistant",
+        content: `【前情压缩】为了控制存档体积，中间约 ${dropped} 轮（共 ${rounds} 轮）的细节已从本机归档移除；任务目标与最近进展保留。`,
+    };
+    return [history[0], archiver, ...history.slice(-KEEP_RECENT_HISTORY)];
+}
+
 export function saveGameSave(save: KuaichuanGameSave): void {
-    kvSet(GAME_KEY_PREFIX + save.worldId, JSON.stringify({ ...save, updatedAt: new Date().toISOString() }));
+    kvSet(
+        GAME_KEY_PREFIX + save.worldId,
+        JSON.stringify({
+            ...save,
+            history: compressGameHistory(save.history, save.rounds),
+            updatedAt: new Date().toISOString(),
+        }),
+    );
 }
 
 export function clearGameSave(worldId: string): void {

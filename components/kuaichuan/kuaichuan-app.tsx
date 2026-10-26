@@ -17,6 +17,7 @@ import {
     RefreshCw,
     RotateCcw,
     Send,
+    Settings2,
     Sparkles,
     Ticket,
 } from "lucide-react";
@@ -24,15 +25,21 @@ import {
 import { resolveForumApiConfig } from "@/lib/study-room/forum";
 import { simpleLLMCall } from "@/lib/api-helpers";
 import {
-    FREE_SPINS_PER_DAY,
+    DEFAULT_WHEEL_CONFIG,
     KUAICHUAN_WORLDS,
     clearGameSave,
+    isValidWheelConfig,
     loadGameSave,
     loadWallet,
+    loadWheelConfig,
     saveGameSave,
     saveWallet,
+    saveWheelConfig,
+    type KuaichuanGameMessage,
     type KuaichuanGameSave,
     type KuaichuanWallet,
+    type WheelConfig,
+    type WheelSegmentConfig,
 } from "@/lib/kuaichuan-storage";
 import { loadStickerPacks, type StickerPack } from "@/lib/custom-sticker-storage";
 import { getThemeAssetMap } from "@/lib/theme-storage";
@@ -41,10 +48,11 @@ import {
     getNeteasePlayInfo,
     getNeteaseSongDetail,
     getPersonalizedPlaylists,
-    getPlaylistTracks,
+    getPlaylistTracksDetailed,
     isNeteaseConfigured,
     type NeteasePlaylist,
     type NeteaseSearchResult,
+    type NeteaseTrackListError,
 } from "@/lib/music-service";
 import { useMusicControlsOptional } from "@/lib/music-context";
 import type { MusicTrack } from "@/lib/music-storage";
@@ -97,6 +105,23 @@ export function KuaichuanApp({ onClose }: { onClose: () => void }) {
 }
 
 // ══════════════════════ 文游 ══════════════════════
+
+/**
+ * 文游 prompt 上下文窗口（G8 修复）：不再粗暴取最近 10 条——
+ * 从最新往前取最多 24 条、总字数 ≤4000，至少保留 4 条。
+ * 存档侧的历史上限压缩在 lib/kuaichuan-storage.ts 的 saveGameSave 里做。
+ */
+function buildPromptWindow(history: KuaichuanGameMessage[]): KuaichuanGameMessage[] {
+    const MAX_MSGS = 24;
+    const MAX_CHARS = 4000;
+    const MIN_MSGS = 4;
+    if (history.length <= MAX_MSGS) return history;
+    for (let take = MAX_MSGS; take >= MIN_MSGS; take--) {
+        const slice = history.slice(-take);
+        if (slice.reduce((n, m) => n + m.content.length, 0) <= MAX_CHARS) return slice;
+    }
+    return history.slice(-MIN_MSGS);
+}
 
 function KuaichuanGamePane() {
     const [save, setSave] = useState<KuaichuanGameSave | null>(null);
@@ -167,7 +192,7 @@ function KuaichuanGamePane() {
                 apiConfig,
                 [
                     { role: "system", content: systemPrompt },
-                    ...nextHistory.slice(-10).map((m) => ({ role: m.role, content: m.content })),
+                    ...buildPromptWindow(nextHistory).map((m) => ({ role: m.role, content: m.content })),
                 ],
                 { temperature: 0.9, max_tokens: 600, label: "kuaichuan-game" },
             );
@@ -286,25 +311,22 @@ function KuaichuanGamePane() {
 }
 
 // ══════════════════════ 提现转盘 ══════════════════════
-
-const WHEEL_SEGMENTS = [
-    { label: "金币 +8", coins: 8 },
-    { label: "金币 +15", coins: 15 },
-    { label: "金币 +28", coins: 28 },
-    { label: "谢谢参与", coins: 0 },
-    { label: "金币 +8", coins: 8 },
-    { label: "金币 +50", coins: 50 },
-    { label: "金币 +88", coins: 88 },
-    { label: "再来一次", coins: -1 }, // -1：返还一次机会
-];
-const SEGMENT_ANGLE = 360 / WHEEL_SEGMENTS.length;
+// 扇区与每日次数可配置（G8 修复）：默认值与校验在 lib/kuaichuan-storage.ts，本页「配置」面板里改。
 
 function KuaichuanWheelPane() {
-    const [wallet, setWallet] = useState<KuaichuanWallet>(() => loadWallet());
+    const [wheelConfig, setWheelConfig] = useState<WheelConfig>(() => loadWheelConfig());
+    const [wallet, setWallet] = useState<KuaichuanWallet>(() => loadWallet(loadWheelConfig().freeSpinsPerDay));
     const [rotation, setRotation] = useState(0);
     const [spinning, setSpinning] = useState(false);
     const [result, setResult] = useState<string | null>(null);
+    const [showConfig, setShowConfig] = useState(false);
     const timerRef = useRef<number | null>(null);
+
+    const segments = wheelConfig.segments;
+    const segmentAngle = 360 / segments.length;
+    // 最大金币段：命运重抽券必中它（不再写死 88，配置改了依然成立）
+    const jackpotIndex = segments.reduce((best, s, i) => (s.coins > segments[best].coins ? i : best), 0);
+    const jackpotCoins = segments[jackpotIndex].coins;
 
     useEffect(() => {
         return () => {
@@ -318,44 +340,44 @@ function KuaichuanWheelPane() {
             setResult("今天的免费次数用完了，明天再来。");
             return;
         }
-        // 命运重抽券：强制落在 88 金币大奖格
+        // 命运重抽券：强制落在最大金币段
         const useCharm = wallet.luckyCharm > 0;
-        const targetIndex = useCharm
-            ? WHEEL_SEGMENTS.findIndex((s) => s.coins === 88)
-            : Math.floor(Math.random() * WHEEL_SEGMENTS.length);
+        const targetIndex = useCharm ? jackpotIndex : Math.floor(Math.random() * segments.length);
         const base = rotation - (rotation % 360);
         // 让第 targetIndex 格的中心对准正上方的指针
-        const target = base + 360 * 5 - targetIndex * SEGMENT_ANGLE - SEGMENT_ANGLE / 2;
+        const target = base + 360 * 5 - targetIndex * segmentAngle - segmentAngle / 2;
+        const seg = segments[targetIndex];
         const nextWallet: KuaichuanWallet = {
             ...wallet,
             freeSpinsLeft: wallet.freeSpinsLeft - 1,
             luckyCharm: useCharm ? wallet.luckyCharm - 1 : wallet.luckyCharm,
             totalSpins: wallet.totalSpins + 1,
         };
+        // G8 修复：开转瞬间就把最终结果算清并落库——动画期间切页签/退出 App 都不会丢金币。
+        // 界面先显示扣掉次数/券的过渡钱包，动画结束后再刷新成结算钱包。
+        const settled: KuaichuanWallet =
+            seg.coins === -1
+                ? { ...nextWallet, freeSpinsLeft: nextWallet.freeSpinsLeft + 1 } // 再来一次：次数原路返还
+                : { ...nextWallet, coins: nextWallet.coins + seg.coins };
+        saveWallet(settled);
         setWallet(nextWallet);
-        saveWallet(nextWallet);
         setResult(null);
         setSpinning(true);
         setRotation(target);
         timerRef.current = window.setTimeout(() => {
+            timerRef.current = null;
             setSpinning(false);
-            const seg = WHEEL_SEGMENTS[targetIndex];
-            let settled: KuaichuanWallet;
+            setWallet(settled);
             if (seg.coins === -1) {
-                // 再来一次：次数原路返还
-                settled = { ...nextWallet, freeSpinsLeft: nextWallet.freeSpinsLeft + 1 };
                 setResult("再来一次！次数已返还，接着转。");
             } else {
-                settled = { ...nextWallet, coins: nextWallet.coins + seg.coins };
                 setResult(seg.coins === 0 ? "谢谢参与——局里说：穿越也有空窗期。" : `中了 ${seg.label}！金币已入账。`);
             }
-            saveWallet(settled);
-            setWallet(settled);
         }, 4200);
     };
 
     const exchangeCharm = () => {
-        if (wallet.coins < 100) return;
+        if (wallet.coins < 100 || spinning) return;
         const next: KuaichuanWallet = {
             ...wallet,
             coins: wallet.coins - 100,
@@ -364,7 +386,7 @@ function KuaichuanWheelPane() {
         };
         saveWallet(next);
         setWallet(next);
-        setResult("提现成功：100 金币兑换 1 张命运重抽券，下一抽必中 88 大奖。");
+        setResult(`提现成功：100 金币兑换 1 张命运重抽券，下一抽必中 ${jackpotCoins} 大奖。`);
     };
 
     return (
@@ -376,8 +398,29 @@ function KuaichuanWheelPane() {
                 <span className="kc-wallet-chip">
                     <Ticket size={14} strokeWidth={1.8} /> 重抽券 ×{wallet.luckyCharm}
                 </span>
-                <span className="kc-wallet-chip">今日免费 {wallet.freeSpinsLeft}/{FREE_SPINS_PER_DAY}</span>
+                <span className="kc-wallet-chip">今日免费 {wallet.freeSpinsLeft}/{wheelConfig.freeSpinsPerDay}</span>
+                <button
+                    type="button"
+                    className="kc-config-toggle"
+                    onClick={() => setShowConfig((v) => !v)}
+                    disabled={spinning}
+                    aria-expanded={showConfig ? "true" : undefined}
+                >
+                    <Settings2 size={13} strokeWidth={1.8} /> 配置
+                </button>
             </div>
+
+            {showConfig && (
+                <WheelConfigPanel
+                    config={wheelConfig}
+                    onClose={() => setShowConfig(false)}
+                    onSaved={(cfg) => {
+                        setWheelConfig(cfg);
+                        setWallet(loadWallet(cfg.freeSpinsPerDay));
+                        setShowConfig(false);
+                    }}
+                />
+            )}
 
             <div className="kc-wheel-stage">
                 <div className="kc-wheel-pointer" />
@@ -386,8 +429,8 @@ function KuaichuanWheelPane() {
                     style={{ transform: `rotate(${rotation}deg)` }}
                     data-spinning={spinning ? "true" : undefined}
                 >
-                    {WHEEL_SEGMENTS.map((seg, i) => {
-                        const angle = i * SEGMENT_ANGLE + SEGMENT_ANGLE / 2;
+                    {segments.map((seg, i) => {
+                        const angle = i * segmentAngle + segmentAngle / 2;
                         return (
                             <span
                                 key={i}
@@ -415,13 +458,13 @@ function KuaichuanWheelPane() {
             <div className="kc-exchange">
                 <div className="kc-exchange-title">提现柜台</div>
                 <p className="kc-exchange-note">
-                    金币攒到 100，可提现兑换 1 张「命运重抽券」——下一抽必中 88 金币大奖格。累计已转 {wallet.totalSpins} 次。
+                    金币攒到 100，可提现兑换 1 张「命运重抽券」——下一抽必中 {jackpotCoins} 金币大奖格。累计已转 {wallet.totalSpins} 次。
                 </p>
                 <button
                     type="button"
                     className="kc-exchange-btn"
                     onClick={exchangeCharm}
-                    disabled={wallet.coins < 100}
+                    disabled={spinning || wallet.coins < 100}
                 >
                     100 金币 → 1 张重抽券
                 </button>
@@ -434,6 +477,101 @@ function KuaichuanWheelPane() {
                         ))}
                     </ul>
                 )}
+            </div>
+        </div>
+    );
+}
+
+// ── 转盘配置面板（G8 修复：扇区与每日次数不再写死）──
+
+function WheelConfigPanel({
+    config,
+    onClose,
+    onSaved,
+}: {
+    config: WheelConfig;
+    onClose: () => void;
+    onSaved: (cfg: WheelConfig) => void;
+}) {
+    const [draft, setDraft] = useState<WheelConfig>(() => ({
+        ...config,
+        segments: config.segments.map((s) => ({ ...s })),
+    }));
+    const [error, setError] = useState<string | null>(null);
+
+    const updateSegment = (i: number, patch: Partial<WheelSegmentConfig>) => {
+        setDraft((d) => ({ ...d, segments: d.segments.map((s, idx) => (idx === i ? { ...s, ...patch } : s)) }));
+    };
+
+    const save = () => {
+        const clean: WheelConfig = {
+            segments: draft.segments.map((s) => ({ label: s.label.trim() || "未命名", coins: Math.round(Number(s.coins)) || 0 })),
+            freeSpinsPerDay: Math.round(Number(draft.freeSpinsPerDay)) || 0,
+        };
+        if (!isValidWheelConfig(clean)) {
+            setError("配置不合法：需要 4-16 个扇区、文案 1-12 字、金币 -1~10000 的整数、每日 1-20 次");
+            return;
+        }
+        saveWheelConfig(clean);
+        onSaved(clean);
+    };
+
+    const resetDefault = () => {
+        const def: WheelConfig = { ...DEFAULT_WHEEL_CONFIG, segments: DEFAULT_WHEEL_CONFIG.segments.map((s) => ({ ...s })) };
+        saveWheelConfig(def);
+        onSaved(def);
+    };
+
+    return (
+        <div className="kc-wheel-config">
+            <div className="kc-config-head">
+                <span>转盘配置</span>
+                <button type="button" className="kc-config-close" onClick={onClose} aria-label="收起配置">
+                    收起
+                </button>
+            </div>
+            {draft.segments.map((seg, i) => (
+                <div className="kc-config-row" key={i}>
+                    <span className="kc-config-idx">{i + 1}</span>
+                    <input
+                        className="kc-config-input"
+                        value={seg.label}
+                        maxLength={12}
+                        placeholder="扇区文案"
+                        onChange={(e) => updateSegment(i, { label: e.target.value })}
+                    />
+                    <input
+                        className="kc-config-input kc-config-num"
+                        type="number"
+                        value={seg.coins}
+                        onChange={(e) => {
+                            const v = parseInt(e.target.value, 10);
+                            updateSegment(i, { coins: Number.isFinite(v) ? v : 0 });
+                        }}
+                    />
+                </div>
+            ))}
+            <div className="kc-config-row kc-config-meta">
+                <span>每日免费次数</span>
+                <input
+                    className="kc-config-input kc-config-num"
+                    type="number"
+                    value={draft.freeSpinsPerDay}
+                    onChange={(e) => {
+                        const v = parseInt(e.target.value, 10);
+                        setDraft((d) => ({ ...d, freeSpinsPerDay: Number.isFinite(v) ? v : 0 }));
+                    }}
+                />
+            </div>
+            <p className="kc-config-note">金币填 -1 表示「再来一次」（返还一次机会），其余按数值入账；改次数次日生效。</p>
+            {error && <p className="kc-config-error">{error}</p>}
+            <div className="kc-config-actions">
+                <button type="button" className="kc-config-save" onClick={save}>
+                    保存
+                </button>
+                <button type="button" className="kc-config-reset" onClick={resetDefault}>
+                    恢复默认
+                </button>
             </div>
         </div>
     );
@@ -525,6 +663,8 @@ function KuaichuanMusicPane() {
     const [failed, setFailed] = useState(false);
     const [active, setActive] = useState<NeteasePlaylist | null>(null);
     const [tracks, setTracks] = useState<NeteaseSearchResult[] | null>(null);
+    // G8 修复：区分「需要登录网易云」与「API 不可用」，不再一律当成空歌单
+    const [tracksError, setTracksError] = useState<NeteaseTrackListError | null>(null);
     const [loadingTracks, setLoadingTracks] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
 
@@ -554,35 +694,53 @@ function KuaichuanMusicPane() {
         setActive(playlist);
         setLoadingTracks(true);
         setTracks(null);
-        const list = await getPlaylistTracks(playlist.id).catch(() => []);
-        setTracks(list);
+        setTracksError(null);
+        const { tracks: list, error } = await getPlaylistTracksDetailed(playlist.id);
+        if (error) {
+            setTracksError(error);
+            setTracks([]);
+        } else {
+            setTracks(list);
+        }
         setLoadingTracks(false);
     };
 
     const playSong = async (song: NeteaseSearchResult) => {
-        if (!player) return;
-        const info = await getNeteasePlayInfo(song.id);
-        if (!info.url) {
-            showToast(info.reason || "这首暂时放不了");
+        if (!player) {
+            showToast("全局播放器还没准备好，稍后再试");
             return;
         }
-        const detail = await getNeteaseSongDetail(song.id);
-        const lyrics = await getNeteaseLyrics(song.id).catch(() => "");
-        const track: MusicTrack = {
-            id: `netease_${song.id}`,
-            title: detail?.name || song.name,
-            artist: detail?.artists || song.artists,
-            duration: song.duration / 1000,
-            coverUrl: detail?.coverUrl || song.coverUrl,
-            lyrics,
-            liked: false,
-            addedAt: new Date().toISOString(),
-        };
-        if (!player.queue.some((t) => t.id === track.id)) {
-            player.setQueue([track, ...player.queue]);
+        try {
+            const info = await getNeteasePlayInfo(song.id);
+            if (!info.url) {
+                showToast(info.reason || "这首暂时放不了");
+                return;
+            }
+            const detail = await getNeteaseSongDetail(song.id);
+            const lyrics = await getNeteaseLyrics(song.id).catch(() => "");
+            const track: MusicTrack = {
+                id: `netease_${song.id}`,
+                title: detail?.name || song.name,
+                artist: detail?.artists || song.artists,
+                duration: song.duration / 1000,
+                coverUrl: detail?.coverUrl || song.coverUrl,
+                lyrics,
+                liked: false,
+                addedAt: new Date().toISOString(),
+            };
+            if (!player.queue.some((t) => t.id === track.id)) {
+                player.setQueue([track, ...player.queue]);
+            }
+            // G8 修复：playUrl 返回是否真的起播——失败不再「假装播放成功」
+            const started = await player.playUrl(info.url, track);
+            if (!started) {
+                showToast("播放失败：链接加载不了（可能已失效或被浏览器拦截）");
+                return;
+            }
+            showToast(info.trial ? "VIP 歌曲，试听 30 秒" : `正在播放：${track.title}`);
+        } catch {
+            showToast("播放失败：获取歌曲信息出错，稍后再试");
         }
-        player.playUrl(info.url, track);
-        showToast(info.trial ? "VIP 歌曲，试听 30 秒" : `正在播放：${track.title}`);
     };
 
     if (!isNeteaseConfigured()) {
@@ -620,8 +778,24 @@ function KuaichuanMusicPane() {
                     </div>
                     {loadingTracks ? (
                         <div className="kc-empty"><Loader2 size={18} className="kc-spin" /> 正在拉取歌单歌曲…</div>
+                    ) : tracksError ? (
+                        <div className="kc-empty">
+                            {tracksError.message}
+                            <br />
+                            {tracksError.kind === "auth" ? "到音乐 App 的网易云登录页登录后再回来重试。" : "检查音乐 API 是否在线，稍后重试。"}
+                            <br />
+                            <button
+                                type="button"
+                                className="kc-retry"
+                                onClick={() => {
+                                    if (active) void openPlaylist(active);
+                                }}
+                            >
+                                <RefreshCw size={14} strokeWidth={1.8} /> 重试
+                            </button>
+                        </div>
                     ) : (tracks ?? []).length === 0 ? (
-                        <div className="kc-empty">这个歌单拉不到歌曲，换一个试试。</div>
+                        <div className="kc-empty">这个歌单没有可用歌曲，换一个试试。</div>
                     ) : (
                         <div className="kc-track-list">
                             {(tracks ?? []).map((song) => (
