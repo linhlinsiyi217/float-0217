@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ChevronUp } from "lucide-react";
+import { ChevronUp, Flashlight, Camera } from "lucide-react";
 
 import { readLockConfig, readLockWallpaper } from "@/lib/lock-screen";
 import { LockPinPad } from "./lock-pin-pad";
@@ -156,6 +156,10 @@ export function LockScreenOverlay({ onUnlocked }: LockScreenOverlayProps) {
       onMouseLeave={up}
     >
       {hasWall ? <div className="lock-wall" style={{ backgroundImage: `url("${wall}")` }} /> : null}
+      <div className="lock-statusbar" aria-hidden="true">
+        <span className="lock-statusbar-time">{clock.time}</span>
+        <span className="lock-statusbar-island" />
+      </div>
       <div ref={bodyRef} className="lock-body">
         <div className="lock-time">{clock.time}</div>
         <div className="lock-date">{clock.date}</div>
@@ -163,6 +167,14 @@ export function LockScreenOverlay({ onUnlocked }: LockScreenOverlayProps) {
       <div className="lock-hint">
         <ChevronUp strokeWidth={1.6} />
         <span>上滑解锁</span>
+      </div>
+      <div className="lock-quick-actions" aria-label="锁屏快捷入口">
+        <button type="button" className="lock-quick-btn" aria-label="手电筒" onClick={() => { /* 锁屏内不直接改变设备状态，留给上层接入 */ }}>
+          <Flashlight size={20} strokeWidth={1.7} />
+        </button>
+        <button type="button" className="lock-quick-btn" aria-label="相机" onClick={() => { /* 同上，避免误打开相机 */ }}>
+          <Camera size={20} strokeWidth={1.7} />
+        </button>
       </div>
       {padOpen ? (
         <LockPinPad
