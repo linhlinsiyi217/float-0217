@@ -335,12 +335,21 @@
   margin-top: 2px;
   display: grid;
   grid-template-columns: repeat(4, var(--slot-size));
-  grid-template-rows: repeat(6, minmax(0, 1fr));
+  /* 行数默认 4×6（G9 任务书 4×7 的兼容开关：桌面编辑模式可切 [data-rows="7"]） */
+  grid-template-rows: repeat(var(--home-icon-rows, 6), minmax(0, 1fr));
   column-gap: var(--slot-gap-x);
   row-gap: var(--slot-gap-y);
   min-height: 0;
   justify-content: center;
   padding: 0 0 var(--home-grid-bottom-trim);
+}
+
+/* 4×7 图标密度模式：行距收紧让第 7 行在原纵向空间内排下。
+   小组件坐标体系仍是 6 行制（widget-types GRID_ROWS），第 7 行只有图标可用；
+   widget 自身尺寸公式不变，视觉上相对行高略放大，属预期。 */
+.icon-grid[data-rows="7"] {
+  --home-icon-rows: 7;
+  --home-row-gap-y: 2px;
 }
 
 /* 三种网格模式统一使用 --home-grid-bottom-trim：此前这里硬编码 1px，

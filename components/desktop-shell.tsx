@@ -1457,6 +1457,17 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   // ── Edit mode (long-press drag) ──
   const [editMode, setEditMode] = useState(false);
   const [showWidgetPicker, setShowWidgetPicker] = useState(false);
+  // ── 桌面图标网格密度（G9 任务书 4×7 与现有 4×6 的兼容开关）──
+  // 默认 4×6 不动；编辑模式「网格」按钮可切 4×7，第 7 行只有图标可用
+  //（小组件坐标体系仍是 6 行制，widget-types GRID_ROWS 不参与此开关）。
+  const [iconGridRows, setIconGridRows] = useState<6 | 7>(() => (kvGet("desktop.grid.rows.v1") === "7" ? 7 : 6));
+  const toggleIconGridRows = useCallback(() => {
+    setIconGridRows(prev => {
+      const next = prev === 6 ? 7 : 6;
+      kvSet("desktop.grid.rows.v1", String(next));
+      return next;
+    });
+  }, []);
   // ── 应用卸载 ──
   const [uninstallTarget, setUninstallTarget] = useState<{ id: DesktopIconId; label: string; isCustom: boolean } | null>(null);
   const [uninstalling, setUninstalling] = useState(false);
@@ -5033,6 +5044,15 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                     <button type="button" className="edit-mode-done" onClick={exitEditMode}>
                       完成
                     </button>
+                    <button
+                      type="button"
+                      className="edit-mode-edit"
+                      style={{ left: 16, top: 108 }}
+                      onPointerDown={e => e.stopPropagation()}
+                      onClick={toggleIconGridRows}
+                    >
+                      网格 {iconGridRows === 7 ? "4×7" : "4×6"}
+                    </button>
                     {loadUninstalledApps().size > 0 && (
                       <button
                         type="button"
@@ -5082,6 +5102,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                               if (pageIndex === 0) iconGridRef.current = el;
                             }}
                             className={`icon-grid icon-grid-explicit icon-grid-${pageKey}`}
+                            data-rows={iconGridRows === 7 ? "7" : undefined}
                             aria-label={pageIndex === 0 ? TEXT.ariaDesktopIcons : undefined}
                             style={
                               slotIconWidth || slotIconHeight || slotRowStep
