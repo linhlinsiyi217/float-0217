@@ -56,6 +56,7 @@ import { hydrateVnStorage } from "@/lib/vn-storage";
 import { hydrateSettingsDb } from "@/lib/settings-db";
 import { hydrateDwellingStorage } from "@/lib/dwelling-storage";
 import { hydrateCheckPhoneStorage } from "@/lib/checkphone-storage";
+import { ensureMiyaDeepAppsInstalled } from "@/lib/miya-deep-apps";
 import {
   DOCK_DEFAULT,
   ICONS,
@@ -1720,6 +1721,10 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
       }
       setLayout(createDefaultDesktopIconLayout(hydratedWidgets));
       setDesktopReady(true);
+    }).then(() => {
+      // G12：首启把 Miya 深入 App（备忘/待办/健康/云盘/浏览器/外卖/相册）
+      // 按自定义 App 格式装好并摆上桌面；已装过的自动跳过，可正常卸载。
+      ensureMiyaDeepAppsInstalled();
     });
   }, []);
 
