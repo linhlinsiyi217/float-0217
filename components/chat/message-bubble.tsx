@@ -21,7 +21,7 @@ import remarkGfm from "remark-gfm";
 import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkBreaks from "remark-breaks";
 import { createPortal } from "react-dom";
-import { Blocks, Maximize2, ReceiptText } from "lucide-react";
+import { Blocks, EyeOff, Maximize2, ReceiptText } from "lucide-react";
 import { retryChatGeneratedImage } from "@/lib/generated-image-retry";
 import { hasCharacterReferenceImage, hasUserReferenceImage } from "@/lib/image-generation-service";
 import { GeneratedImageErrorDialog } from "./generated-image-error-dialog";
@@ -139,6 +139,10 @@ export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charNa
             if (msg.mediaType?.startsWith("plugin:")) {
                 return <PluginKindBubble msg={msg} kind={msg.mediaType.slice("plugin:".length)} />;
             }
+            // 悄悄话（G10）：内容蒙雾，轻触气泡才揭开；揭开后与普通气泡一致
+            if (msg.whisper) {
+                return <WhisperTextBubble msg={msg} displayContent={displayContent} onActionSelect={onActionSelect} defaultTranslationExpanded={defaultTranslationExpanded} />;
+            }
             const textBubble = <TextBubble content={displayContent ?? msg.content} onActionSelect={onActionSelect} defaultTranslationExpanded={defaultTranslationExpanded} />;
             return (
                 <>
@@ -155,6 +159,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charNa
         if (prev.msg.content !== next.msg.content) return false;
         if (prev.msg.mediaType !== next.msg.mediaType) return false;
         if (prev.msg.isRetracted !== next.msg.isRetracted) return false;
+        if (prev.msg.whisper !== next.msg.whisper) return false;
         if (prev.msg.isTyping !== next.msg.isTyping) return false;
         if (prev.msg.mediaData?.status !== next.msg.mediaData?.status) return false;
         if (prev.msg.mediaData?.label !== next.msg.mediaData?.label) return false;
@@ -718,6 +723,39 @@ export const BilingualTextBlock = memo(function BilingualTextBlock({
 
 function TextBubble({ content, onActionSelect, defaultTranslationExpanded = false }: { content: string; onActionSelect?: (text: string) => void; defaultTranslationExpanded?: boolean }) {
     return <BilingualTextBlock text={content} onActionSelect={onActionSelect} mode="markdown" defaultExpanded={defaultTranslationExpanded} />;
+}
+
+// 悄悄话气泡（G10）：未揭开时内容整体高斯模糊并盖一层提示，轻触揭开；
+// 揭开后渲染与普通文本气泡完全一致。只影响显示，不影响消息内容与上下文。
+function WhisperTextBubble({ msg, displayContent, onActionSelect, defaultTranslationExpanded }: {
+    msg: ChatMessage;
+    displayContent?: string;
+    onActionSelect?: (text: string) => void;
+    defaultTranslationExpanded?: boolean;
+}) {
+    const [revealed, setRevealed] = useState(false);
+    return (
+        <div className="chat-whisper-wrap" data-revealed={revealed || undefined}>
+            <div className="chat-whisper-content" aria-hidden={!revealed}>
+                <TextBubble
+                    content={displayContent ?? msg.content}
+                    onActionSelect={revealed ? onActionSelect : undefined}
+                    defaultTranslationExpanded={defaultTranslationExpanded}
+                />
+            </div>
+            {!revealed && (
+                <button
+                    type="button"
+                    className="chat-whisper-veil"
+                    onClick={e => { e.stopPropagation(); setRevealed(true); }}
+                    aria-label="轻触查看悄悄话"
+                >
+                    <EyeOff size={13} strokeWidth={1.8} aria-hidden />
+                    <span>悄悄话 · 轻触查看</span>
+                </button>
+            )}
+        </div>
+    );
 }
 
 // ── Red Packet ─────────────────────────────

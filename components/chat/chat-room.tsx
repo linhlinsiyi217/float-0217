@@ -36,6 +36,7 @@ import { CustomAppRunner } from "@/components/app-market/custom-app-runner";
 import { CustomAppForegroundBoundary } from "@/components/app-market/custom-app-failure";
 
 import { ChatSettingsPanel } from "./chat-settings-panel";
+import { ChatMemoryPanel } from "./chat-memory-panel";
 // 通话界面不再由聊天室渲染：已提升到 desktop-shell 的 CallLayer，
 // 这样切会话、回桌面、开别的 App 都不会中断通话。聊天室只负责「发起」；
 // 挂断后的界面刷新由 chat-call-ended 事件回调，角色回应由全局层统一触发。
@@ -54,7 +55,7 @@ import { useKeyboardDismissAutoSend } from "@/components/chat/use-keyboard-dismi
 import { cancelBailoutKey } from "@/lib/push-bailout-client";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import type { UserIdentity } from "@/components/settings/user-identity";
-import { AlertCircle, Blocks, Check, Copy, FileText, ListChecks, ListX, Pencil, PhoneIncoming, PhoneOff, Quote, RotateCcw, Trash2, Undo2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, Wand2, X } from "lucide-react";
+import { AlertCircle, Blocks, Check, Copy, FileText, ListChecks, ListX, Pencil, PhoneIncoming, PhoneOff, Quote, RotateCcw, Trash2, Undo2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, EyeOff, Gift, Languages, Loader2, MoreHorizontal, Wand2, X } from "lucide-react";
 import { applyAssistantTapback, applyGroupAssistantTapback, getGroupTapbacks, getTapbackGlyph, IMESSAGE_TAPBACK_APPLIED_EVENT, IMESSAGE_TAPBACKS_UPDATED_EVENT, isNativeTapbackEmoji, loadIMessageTapbacks, saveIMessageTapbacks, setGroupTapback, type MessageTapback } from "@/lib/chat-tapback";
 import { applyListeningRoomReply } from "@/lib/listen-together";
 import { useGroupMentions } from "./use-group-mentions";
@@ -715,6 +716,10 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     mentionMembers: MentionMember[];
     isGenerating: boolean;
     theaterMode: boolean;
+    /** 悄悄话模式（G10）：开启后发送的消息带 whisper 标记，气泡蒙雾、轻触显示 */
+    whisperMode: boolean;
+    onToggleWhisperMode: () => void;
+    onOpenMemoryPanel: () => void;
     enterToSendEnabled: boolean;
     storyEntryEnabled: boolean;
     quotingMessage: ChatMessage | null;
@@ -750,6 +755,9 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     mentionMembers,
     isGenerating,
     theaterMode,
+    whisperMode,
+    onToggleWhisperMode,
+    onOpenMemoryPanel,
     enterToSendEnabled,
     storyEntryEnabled,
     quotingMessage,
@@ -888,6 +896,9 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     const plusMenuItems = [
         { icon: imessageMenuIcon("offline-mode.jpg"), label: storyEntryEnabled ? "剧情入口" : "线下模式", onClick: () => { onClosePanels(); onToggleOfflineMode(); } },
         { icon: imessageMenuIcon("photo-wall.jpg"), label: "照片墙", onClick: () => onOpenRichModal("photo") },
+        // G10 聊天增强：回忆面板（相册/时间线/打卡）与悄悄话模式
+        { icon: plusGlyph(<><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></>), label: "回忆", onClick: () => { onClosePanels(); onOpenMemoryPanel(); } },
+        { icon: plusGlyph(<><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" /><line x1="1" y1="1" x2="23" y2="23" /></>), label: "悄悄话", active: whisperMode, onClick: () => { onClosePanels(); onToggleWhisperMode(); } },
         { icon: imessageMenuIcon("text-image.jpg"), label: "文字图片", onClick: () => onOpenRichModal("text_photo") },
         { icon: imessageMenuIcon("system-instruction.jpg"), label: "系统指令", onClick: () => onOpenRichModal("system_instruction") },
         { icon: imessageMenuIcon("theater-mode.jpg"), label: "番外指令模式", active: theaterMode, onClick: onToggleTheaterMode },
@@ -950,6 +961,24 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                         onClick={onCloseTheaterMode}
                         aria-label="关闭番外指令模式"
                         title="关闭番外指令模式"
+                    >
+                        <X size={14} strokeWidth={2} />
+                    </button>
+                </div>
+            )}
+            {whisperMode && (
+                <div className="chat-theater-mode-strip" data-whisper="" role="status">
+                    <span className="chat-theater-mode-icon" aria-hidden="true">
+                        <EyeOff size={16} strokeWidth={1.8} />
+                    </span>
+                    <span className="chat-theater-mode-title">悄悄话模式</span>
+                    <span className="chat-whisper-strip-hint">这条消息会被雾盖住，轻触才显示</span>
+                    <button
+                        type="button"
+                        className="chat-theater-mode-close"
+                        onClick={onToggleWhisperMode}
+                        aria-label="关闭悄悄话模式"
+                        title="关闭悄悄话模式"
                     >
                         <X size={14} strokeWidth={2} />
                     </button>
@@ -1348,6 +1377,10 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
     const [isGenerating, setIsGenerating] = useState(false);
     const [offlineMode, setOfflineMode] = useState(false);
     const [theaterMode, setTheaterMode] = useState(() => kvGet(CHAT_THEATER_MODE_PREFIX + session.id) === "1");
+    // 悄悄话模式（G10）：不持久化，仅当前会话本次有效；发送一条后自动关闭
+    const [whisperMode, setWhisperMode] = useState(false);
+    // 回忆面板（G10）：相册 / 时间线 / 打卡
+    const [showMemoryPanel, setShowMemoryPanel] = useState(false);
     const [offlineTurns, setOfflineTurns] = useState<ChatOfflineTurn[]>([]);
     const [offlineVisibleCount, setOfflineVisibleCount] = useState(OFFLINE_INITIAL_LOAD);
     const [pendingOfflineUserText, setPendingOfflineUserText] = useState("");
@@ -4507,7 +4540,10 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                 content: currentText,
                 mediaType: diceOnly ? "dice" : isQuoting ? "quote" : undefined,
                 mediaData: Object.keys(extraMediaData).length ? { ...baseMediaData, ...extraMediaData } : baseMediaData,
+                // 悄悄话（G10）：标记落库，气泡层蒙雾；内容本身不变，角色侧上下文不受影响
+                ...(whisperMode ? { whisper: true } : {}),
             });
+            if (whisperMode) setWhisperMode(false);
 
             setMessages(prev => [...prev, newMsg]);
             if (diceOnly) {
@@ -7547,6 +7583,9 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
 	                mentionMembers={session.isGroup ? groupCharacters.map(c => ({ id: c.id, name: c.name, avatar: resolveChatCharacterAvatar(c) })) : []}
 	                isGenerating={isGenerating}
 	                theaterMode={theaterMode}
+	                whisperMode={whisperMode}
+	                onToggleWhisperMode={() => setWhisperMode(v => !v)}
+	                onOpenMemoryPanel={() => setShowMemoryPanel(true)}
 	                enterToSendEnabled={enterToSendEnabled}
 	                storyEntryEnabled={storyEntryEnabled}
 	                quotingMessage={quotingMessage}
@@ -8122,6 +8161,21 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                         </div>
                     </section>
                 </div>
+            )}
+
+            {/* 回忆面板（G10）：相册 / 时间线 / 打卡，数据派生自本会话消息与记忆库 */}
+            {showMemoryPanel && (
+                <ChatMemoryPanel
+                    session={session}
+                    characterName={character?.name || "对方"}
+                    onClose={() => setShowMemoryPanel(false)}
+                    onCheckInMessage={(content) => {
+                        // 打卡写一条系统消息进会话：落库 + 刷新消息列表，
+                        // 角色后续生成时能在上下文里感知到打卡这件事
+                        const sysMsg = pushChatMessage({ sessionId: session.id, role: "system", content });
+                        setMessages(prev => [...prev, sysMsg]);
+                    }}
+                />
             )}
 
             {/* Chat toast notification (overlay, does not affect layout) */}
