@@ -1313,6 +1313,18 @@
 .sr-spin { animation: sr-spin 0.9s linear infinite; }
 @keyframes sr-spin { to { transform: rotate(360deg); } }
 
+/* 打字机共读：跟随逐字输出的闪烁光标 */
+.sr-coread-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: currentColor;
+  animation: sr-caret-blink 0.8s steps(1) infinite;
+}
+@keyframes sr-caret-blink { 50% { opacity: 0; } }
+
 /* ══════════════════════════════════════════
    独立聊天室：苹果「信息」界面与气泡
    ══════════════════════════════════════════ */

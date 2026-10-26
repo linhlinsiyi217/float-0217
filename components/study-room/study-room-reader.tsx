@@ -28,6 +28,7 @@ import {
   Music2,
   Square,
   X,
+  BookText,
 } from "lucide-react";
 
 import {
@@ -171,6 +172,8 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
   const [showMarkColors, setShowMarkColors] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [aiDrafting, setAiDrafting] = useState(false);
+  // 段落 AI 书评：选中文字后由模型写一段短书评，可编辑后存为批注
+  const [review, setReview] = useState<{ quote: string; paragraphIndex: number; text: string; loading: boolean } | null>(null);
   // 朗读：音色来自宿主角色卡或设备系统语音；断点续播按书记录
   const [ttsOpen, setTtsOpen] = useState(Boolean(openTts));
   const [voices, setVoices] = useState<ReaderVoice[]>([]);
@@ -755,6 +758,73 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
     }
   };
 
+  /** 段落 AI 书评：让模型就这段原文写三到五句短书评，可编辑后存为批注。 */
+  const handleParagraphReview = async () => {
+    const source = selection?.text ?? "";
+    if (!source) {
+      showFlash("没拿到选中的文字，请重新长按选一段");
+      return;
+    }
+    const sourceParagraph = selection?.paragraphIndex ?? 0;
+    const apiConfig = resolveForumApiConfig();
+    if (!apiConfig) {
+      showFlash("还没有配置 API：到「设置 → API 配置」添加一个并设为默认");
+      return;
+    }
+    if (!apiConfig.apiKey || !apiConfig.baseUrl) {
+      showFlash(`API「${apiConfig.name || "默认"}」缺地址或密钥，到「设置 → API 配置」补上`);
+      return;
+    }
+    setReview({ quote: source, paragraphIndex: sourceParagraph, text: "", loading: true });
+    try {
+      const result = await simpleLLMCall(
+        apiConfig,
+        [
+          {
+            role: "user",
+            content: [
+              "你是读者的读书助手。请就下面这段原文写一段简短书评，三到五句。",
+              "从语言、结构或主题里挑一两个角度给出具体看法，不要复述原文，不要空泛吹捧。",
+              "只输出书评本身。",
+              "",
+              source,
+            ].join("\n"),
+          },
+        ],
+        { temperature: 0.7, max_tokens: 500, label: "studyroom-paragraph-review" },
+      );
+      if (result.error || !result.content) throw new Error(result.error || "没有返回内容");
+      const text = result.content.trim();
+      setReview((prev) => (prev ? { ...prev, text, loading: false } : prev));
+      setShowMore(false);
+      clearSelection();
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      // 失败时保留选区，用户可以直接重试
+      setReview(null);
+      showFlash(`AI 书评失败：${reason.slice(0, 60)}`);
+    }
+  };
+
+  /** 把 AI 书评存成一条批注。 */
+  const handleSaveReview = async () => {
+    if (!review) return;
+    const text = review.text.trim();
+    if (!text) return;
+    await saveNote(
+      buildNote({
+        book,
+        chapterIndex,
+        paragraphIndex: review.paragraphIndex,
+        quote: review.quote,
+        content: text,
+      }),
+    );
+    await refreshChapterNotes();
+    setReview(null);
+    showFlash("书评已存为批注");
+  };
+
   const handleExcerpt = async () => {
     if (!selection) return;
     await saveNote(
@@ -1222,7 +1292,7 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
       )}
       {barsHidden && showHint && <div className="sr-reader-hint">轻点正文显示工具栏</div>}
 
-      {selection && !annotate && (
+      {selection && !annotate && !review && (
         <div
           ref={selbarRef}
           className="sr-selbar sr-selbar--anchored"
@@ -1308,6 +1378,9 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
               <button type="button" className="sr-selbar-btn" onClick={() => void handleAiDraft()} disabled={aiDrafting}>
                 {aiDrafting ? <Loader2 size={16} className="sr-spin" /> : <Sparkles size={16} strokeWidth={1.7} />} AI 写作
               </button>
+              <button type="button" className="sr-selbar-btn" onClick={() => void handleParagraphReview()}>
+                <BookText size={16} strokeWidth={1.7} /> AI 书评
+              </button>
             </span>
           )}
         </div>
@@ -1368,6 +1441,40 @@ export function StudyRoomReader({ book, initialChapterIndex, initialParagraphInd
                 disabled={!annotate.draft.trim() && !annotate.emoji}
               >
                 保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {review && (
+        <div className="sr-sheet-mask" onClick={() => setReview(null)}>
+          <div className="sr-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="sr-sheet-quote">{review.quote}</div>
+            <div className="sr-sheet-label">AI 书评</div>
+            {review.loading ? (
+              <p className="sr-note-meta" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Loader2 size={14} className="sr-spin" /> 正在写这段的书评…
+              </p>
+            ) : (
+              <textarea
+                className="sr-sheet-input"
+                value={review.text}
+                rows={5}
+                onChange={(e) => setReview((prev) => (prev ? { ...prev, text: e.target.value } : prev))}
+              />
+            )}
+            <div className="sr-sheet-actions">
+              <button
+                type="button"
+                className="sr-btn sr-btn-primary"
+                onClick={() => void handleSaveReview()}
+                disabled={review.loading || !review.text.trim()}
+              >
+                存为批注
+              </button>
+              <button type="button" className="sr-btn" onClick={() => setReview(null)}>
+                关闭
               </button>
             </div>
           </div>

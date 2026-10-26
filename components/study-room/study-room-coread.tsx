@@ -39,6 +39,9 @@ export function StudyRoomCoread({
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 打字机共读：回复先完整落库，再对最新一条助手气泡本地逐字显示
+  const [typing, setTyping] = useState<{ id: string; shown: string } | null>(null);
+  const typingTimerRef = useRef<number | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -47,17 +50,55 @@ export function StudyRoomCoread({
     setCharacterId((prev) => prev ?? chars[0]?.id ?? null);
   }, []);
 
+  /** 立即结束打字：气泡恢复显示完整回复 */
+  const finishTyping = useCallback(() => {
+    if (typingTimerRef.current !== null) {
+      window.clearInterval(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+    setTyping(null);
+  }, []);
+
+  /** 对最新一条助手回复做逐字渲染（约 30ms 2 个字，正文已完整保存）。 */
+  const startTyping = useCallback((full: string, messageId: string) => {
+    if (typingTimerRef.current !== null) {
+      window.clearInterval(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+    setTyping({ id: messageId, shown: "" });
+    let shown = 0;
+    typingTimerRef.current = window.setInterval(() => {
+      shown = Math.min(full.length, shown + 2);
+      const done = shown >= full.length;
+      setTyping(done ? null : { id: messageId, shown: full.slice(0, shown) });
+      if (done && typingTimerRef.current !== null) {
+        window.clearInterval(typingTimerRef.current);
+        typingTimerRef.current = null;
+      }
+      const body = bodyRef.current;
+      if (body) body.scrollTop = body.scrollHeight;
+    }, 30);
+  }, []);
+
+  // 卸载时清掉打字计时器
+  useEffect(() => {
+    return () => {
+      if (typingTimerRef.current !== null) window.clearInterval(typingTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (!characterId) {
       setSession(null);
       setMessages([]);
       return;
     }
+    finishTyping();
     const next = getCoreadSession(book.id, characterId);
     setSession(next);
     setMessages(loadChatMessages(next.id));
     setError(null);
-  }, [book.id, characterId]);
+  }, [book.id, characterId, finishTyping]);
 
   const scrollToEnd = useCallback(() => {
     const body = bodyRef.current;
@@ -89,6 +130,8 @@ export function StudyRoomCoread({
     const text = input.trim();
     if (!text || !session || !characterId || !chapter || sending) return;
 
+    // 用户中途发言：上一条回复立即显示完整，不打断节奏也不丢内容
+    finishTyping();
     setInput("");
     setError(null);
     setSending(true);
@@ -110,7 +153,8 @@ export function StudyRoomCoread({
       if (raw == null) throw new Error("no-response");
       const { reply } = parseReadingDiscussResponse(raw);
       if (reply) {
-        pushChatMessage({ sessionId: session.id, role: "assistant", content: reply, origin: "reading_discuss" });
+        const message = pushChatMessage({ sessionId: session.id, role: "assistant", content: reply, origin: "reading_discuss" });
+        startTyping(reply, message.id);
       }
       setMessages(loadChatMessages(session.id));
     } catch {
@@ -180,18 +224,28 @@ export function StudyRoomCoread({
               共读只会看到你已经读到的部分，不会剧透后面的内容。
             </div>
           ) : (
-            bubbleRows.map(({ msg, mine, groupStart, groupEnd }) => (
-              <div
-                key={msg.id}
-                className="sr-coread-msg"
-                data-role={msg.role}
-                data-mine={mine ? "true" : "false"}
-                data-group-start={groupStart ? "true" : undefined}
-                data-group-end={groupEnd ? "true" : undefined}
-              >
-                {msg.content}
-              </div>
-            ))
+            bubbleRows.map(({ msg, mine, groupStart, groupEnd }) => {
+              const isTypingTarget = typing !== null && typing.id === msg.id;
+              return (
+                <div
+                  key={msg.id}
+                  className="sr-coread-msg"
+                  data-role={msg.role}
+                  data-mine={mine ? "true" : "false"}
+                  data-group-start={groupStart ? "true" : undefined}
+                  data-group-end={groupEnd ? "true" : undefined}
+                >
+                  {isTypingTarget ? (
+                    <>
+                      {typing.shown}
+                      <span className="sr-coread-caret" />
+                    </>
+                  ) : (
+                    msg.content
+                  )}
+                </div>
+              );
+            })
           )}
           {sending && (
             <div className="sr-coread-msg" data-role="assistant" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
