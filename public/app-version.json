@@ -27,11 +27,16 @@
       "detail": "影响范围五类 key 固定为 app/global/content/ai/fix，默认色蓝 #3478F6、紫 #7C5CFC、绿 #34C759、橙 #FF9500、红 #FF3B30；标签底色改半透明适配浅色/深色主题；旧「提示词」键自动归入「AI 与提示词」"
     }
   ],
-  "releaseId": "2026-10-22-7-cecf689cb64b2f08c175c5d3de571f9b36cf6b48",
-  "commitSha": "cecf689cb64b2f08c175c5d3de571f9b36cf6b48",
-  "releasedAt": "2026-10-27T17:45:04.246Z",
+  "releaseId": "2026-10-22-7-ca4085a763d2e2579f64717fd16913e03ee1ab8b",
+  "commitSha": "ca4085a763d2e2579f64717fd16913e03ee1ab8b",
+  "releasedAt": "2026-10-27T17:52:03.095Z",
   "changelogFile": "/CHANGELOG.md",
   "entries": [
+    {
+      "type": "global",
+      "title": "iOS 26 启动画面与锁屏视觉重构",
+      "detail": "启动页改为黑底系统字体与细进度条；锁屏加入大号时间、顶部状态、组件卡片、底部快捷按钮；密码页改为圆形深色数字键盘；全局字体优先使用 Apple 原生系统字体栈"
+    },
     {
       "type": "app",
       "title": "每次部署生成新发布标识",
