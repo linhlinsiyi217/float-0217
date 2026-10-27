@@ -1,0 +1,390 @@
+/* Claude reference polish for the in-phone workbench.
+ * Scoped to .qa-app-shell so the rest of the phone keeps its existing theme.
+ */
+.qa-app-shell {
+  --qa-ref-canvas: #f7f6f2;
+  --qa-ref-surface: rgba(255, 255, 253, 0.96);
+  --qa-ref-line: rgba(45, 42, 37, 0.12);
+  --qa-ref-text: #2e2b27;
+  --qa-ref-muted: #8c877f;
+  --qa-ref-accent: #d8795b;
+  --qa-ref-accent-soft: rgba(216, 121, 91, 0.12);
+  background: var(--qa-ref-canvas);
+  color: var(--qa-ref-text);
+}
+
+.qa-app-shell .qa-stage {
+  background: var(--qa-ref-canvas);
+}
+
+.qa-app-shell .qa-header {
+  height: calc(var(--qa-header-safe-top) + 58px);
+  padding: var(--qa-header-safe-top) 16px 0;
+}
+
+.qa-app-shell .qa-header::before {
+  background: rgba(247, 246, 242, 0.92);
+  -webkit-backdrop-filter: blur(18px) saturate(1.08);
+  backdrop-filter: blur(18px) saturate(1.08);
+  border-bottom: 1px solid rgba(45, 42, 37, 0.035);
+}
+
+.qa-app-shell .qa-header-control-group {
+  gap: 0;
+  padding: 3px;
+  border: 1px solid var(--qa-ref-line);
+  border-radius: 999px;
+  background: rgba(255, 255, 253, 0.9);
+  box-shadow: 0 3px 14px rgba(45, 42, 37, 0.055), inset 0 1px 0 rgba(255,255,255,0.9);
+}
+
+.qa-app-shell .qa-header-control-group .qa-icon-btn {
+  width: 38px;
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--qa-ref-text);
+  box-shadow: none;
+}
+
+.qa-app-shell .qa-header-control-group .qa-icon-btn:hover,
+.qa-app-shell .qa-header-control-group .qa-icon-btn:focus-visible {
+  background: rgba(45, 42, 37, 0.06);
+}
+
+.qa-app-shell .qa-header-divider {
+  width: 1px;
+  height: 22px;
+  margin: 0 2px;
+  background: rgba(45, 42, 37, 0.12);
+}
+
+.qa-app-shell .qa-header-center {
+  gap: 1px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.qa-app-shell .qa-header-title {
+  color: var(--qa-ref-text);
+  font-size: 18px;
+  font-weight: 680;
+  letter-spacing: -0.02em;
+}
+
+.qa-app-shell .qa-header-sub {
+  color: var(--qa-ref-muted);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+.qa-app-shell .qa-body {
+  padding: 0 18px calc(env(safe-area-inset-bottom, 0px) + 158px);
+  scroll-padding-top: calc(var(--qa-header-safe-top) + 72px);
+}
+
+.qa-app-shell .qa-messages {
+  width: min(720px, 100%);
+  gap: 30px;
+  padding-top: 24px;
+}
+
+.qa-app-shell .qa-msg-user-row {
+  justify-content: flex-end;
+}
+
+.qa-app-shell .qa-msg-user {
+  max-width: min(88%, 620px);
+  padding: 13px 18px;
+  border: 1px solid rgba(45, 42, 37, 0.08);
+  border-radius: 22px 22px 7px 22px;
+  background: var(--qa-ref-surface);
+  color: var(--qa-ref-text);
+  font-size: 15.5px;
+  line-height: 1.62;
+  box-shadow: 0 2px 7px rgba(45, 42, 37, 0.025);
+}
+
+.qa-app-shell .qa-msg-assistant {
+  color: var(--qa-ref-text);
+  font-size: 16px;
+  line-height: 1.76;
+}
+
+.qa-app-shell .qa-msg-assistant .qa-markdown > :first-child {
+  margin-top: 0;
+}
+
+.qa-app-shell .qa-msg-assistant .qa-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.qa-app-shell .qa-msg-actions {
+  opacity: 0.42;
+}
+
+.qa-app-shell .qa-msg-action {
+  width: 31px;
+  height: 31px;
+  border-radius: 999px;
+  color: var(--qa-ref-muted);
+}
+
+.qa-app-shell .qa-reasoning {
+  margin: 0 0 14px;
+  border: 0;
+  border-left: 2px solid rgba(216, 121, 91, 0.7);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.qa-app-shell .qa-reasoning-trigger {
+  min-height: 34px;
+  padding: 4px 0 6px 11px;
+  color: var(--qa-ref-muted);
+  font-size: 13px;
+}
+
+.qa-app-shell .qa-reasoning-label {
+  color: #716a61;
+  font-weight: 650;
+}
+
+.qa-app-shell .qa-reasoning-mark {
+  color: var(--qa-ref-accent);
+}
+
+.qa-app-shell .qa-reasoning-body {
+  padding: 0 10px 8px 11px;
+  color: #817970;
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.qa-app-shell .qa-commit-card {
+  margin: 14px 0 4px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--qa-ref-line);
+  border-radius: 19px;
+  background: var(--qa-ref-surface);
+  box-shadow: 0 5px 18px rgba(45, 42, 37, 0.055);
+}
+
+.qa-app-shell .qa-commit-head {
+  align-items: center;
+  margin: 0;
+  padding: 15px 16px 10px;
+}
+
+.qa-app-shell .qa-commit-title {
+  color: var(--qa-ref-text);
+  font-size: 15px;
+  font-weight: 680;
+}
+
+.qa-app-shell .qa-commit-branch {
+  color: var(--qa-ref-muted);
+  font-size: 11px;
+}
+
+.qa-app-shell .qa-commit-msg {
+  margin: 0;
+  padding: 0 16px 11px;
+  color: #5c5750;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.qa-app-shell .qa-commit-files {
+  max-height: 118px;
+  margin: 0 14px 12px;
+  padding: 9px 11px;
+  border: 1px solid rgba(45, 42, 37, 0.07);
+  border-radius: 12px;
+  background: #f4f1eb;
+  color: #706960;
+  font-size: 11.5px;
+}
+
+.qa-app-shell .qa-commit-actions {
+  min-height: 52px;
+  padding: 9px 14px;
+  border-top: 1px solid rgba(45, 42, 37, 0.08);
+  background: rgba(249, 247, 242, 0.72);
+}
+
+.qa-app-shell .qa-commit-btn {
+  min-height: 34px;
+  padding: 7px 15px;
+  border: 1px solid rgba(45, 42, 37, 0.10);
+  border-radius: 999px;
+  background: #fffefa;
+  color: #6d665d;
+  box-shadow: none;
+  font-size: 12.5px;
+}
+
+.qa-app-shell .qa-commit-btn.is-primary {
+  min-width: 74px;
+  border-color: transparent;
+  background: var(--qa-ref-accent);
+  color: #fff;
+  font-weight: 680;
+  box-shadow: 0 4px 10px rgba(216, 121, 91, 0.22);
+}
+
+.qa-app-shell .qa-commit-btn.is-danger {
+  background: var(--qa-ref-accent-soft);
+  color: #b45d48;
+}
+
+.qa-app-shell .qa-file-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin: 12px 0 3px;
+  padding: 10px;
+  border: 1px solid var(--qa-ref-line);
+  border-radius: 17px;
+  background: var(--qa-ref-surface);
+  box-shadow: 0 5px 18px rgba(45, 42, 37, 0.045);
+}
+
+.qa-app-shell .qa-file-card-main {
+  min-width: 0;
+  gap: 11px;
+  padding: 3px 4px;
+}
+
+.qa-app-shell .qa-file-card-icon {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(216, 121, 91, 0.18);
+  border-radius: 12px;
+  background: #f2e5dc;
+  color: var(--qa-ref-accent);
+}
+
+.qa-app-shell .qa-file-card-name {
+  color: var(--qa-ref-text);
+  font-size: 13.5px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qa-app-shell .qa-file-card-actions {
+  gap: 6px;
+  align-self: center;
+}
+
+.qa-app-shell .qa-file-card-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(45, 42, 37, 0.10);
+  border-radius: 999px;
+  background: #fffefa;
+  color: #777066;
+}
+
+.qa-app-shell .qa-file-card-btn:hover,
+.qa-app-shell .qa-file-card-btn:focus-visible {
+  border-color: rgba(216, 121, 91, 0.30);
+  color: var(--qa-ref-accent);
+  background: var(--qa-ref-accent-soft);
+}
+
+.qa-app-shell .qa-composer-wrap {
+  padding: 16px 14px calc(env(safe-area-inset-bottom, 0px) + 14px);
+  background: linear-gradient(180deg, rgba(247,246,242,0), rgba(247,246,242,.94) 28%, var(--qa-ref-canvas) 66%);
+}
+
+.qa-app-shell .qa-composer {
+  width: min(720px, 100%);
+  max-width: 720px;
+  padding: 13px 13px 11px;
+  border: 1px solid rgba(45, 42, 37, 0.12);
+  border-radius: 26px;
+  background: rgba(255, 255, 253, 0.94);
+  box-shadow: 0 9px 28px rgba(45, 42, 37, 0.085);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+}
+
+.qa-app-shell .qa-composer:focus-within {
+  border-color: rgba(216, 121, 91, 0.30);
+  box-shadow: 0 11px 32px rgba(45, 42, 37, 0.12), 0 0 0 2px rgba(216, 121, 91, 0.08);
+}
+
+.qa-app-shell .qa-composer-input {
+  min-height: 30px;
+  padding: 3px 8px 0;
+  color: var(--qa-ref-text);
+  font-size: 15.5px;
+}
+
+.qa-app-shell .qa-composer-input::placeholder {
+  color: #a7a097;
+}
+
+.qa-app-shell .qa-context-pill,
+.qa-app-shell .qa-model-pill,
+.qa-app-shell .qa-mode-pill {
+  border-color: rgba(45, 42, 37, 0.08);
+  background: #f1efeb;
+  color: #6d665e;
+}
+
+.qa-app-shell .qa-circle-btn {
+  border: 1px solid rgba(45, 42, 37, 0.08);
+  box-shadow: none;
+}
+
+.qa-app-shell .qa-send-btn {
+  background: #aca9a2;
+  color: #fff;
+}
+
+.qa-app-shell .qa-send-btn:not(:disabled) {
+  background: var(--qa-ref-accent);
+  box-shadow: 0 4px 12px rgba(216, 121, 91, 0.22);
+}
+
+.qa-app-shell .qa-attach-btn {
+  background: #f1efeb;
+  color: #716a61;
+}
+
+.qa-app-shell .qa-drawer {
+  left: 0;
+  right: auto;
+  width: 78%;
+  max-width: 360px;
+  border-right: 1px solid rgba(45, 42, 37, 0.10);
+  background: #f0eee8;
+  box-shadow: 8px 0 28px rgba(45, 42, 37, 0.10);
+}
+
+.qa-app-shell .qa-drawer-item {
+  border-radius: 14px;
+}
+
+.qa-app-shell .qa-drawer-item.is-active {
+  background: rgba(255,255,253,0.74);
+  box-shadow: inset 0 0 0 1px rgba(45, 42, 37, 0.06);
+}
+
+@media (max-width: 440px) {
+  .qa-app-shell .qa-header { padding-inline: 12px; }
+  .qa-app-shell .qa-body { padding-left: 15px; padding-right: 15px; }
+  .qa-app-shell .qa-composer-wrap { padding-inline: 12px; }
+  .qa-app-shell .qa-header-title { font-size: 17px; }
+  .qa-app-shell .qa-header-sub { max-width: 24vw; }
+  .qa-app-shell .qa-msg-assistant { font-size: 15.5px; }
+}
