@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronUp, LockKeyhole, Unlock } from "lucide-react";
+import { Camera, ChevronUp, Flashlight, LockKeyhole, Unlock } from "lucide-react";
 
 type PhoneLockScreenProps = {
   onUnlock: () => void;
@@ -58,6 +58,7 @@ export function PhoneLockScreen({ onUnlock }: PhoneLockScreenProps) {
     >
       <div className="phone-lock-wallpaper" aria-hidden="true" />
       <div className="phone-lock-content" style={{ transform: `translateY(${dragY * 0.18}px)` }}>
+        <div className="phone-lock-status"><span>FLOAT</span><span>● ◒ ▰</span></div>
         <div className="phone-lock-topline">
           <LockKeyhole size={15} strokeWidth={1.8} aria-hidden="true" />
           <span>Float</span>
@@ -71,6 +72,9 @@ export function PhoneLockScreen({ onUnlock }: PhoneLockScreenProps) {
             <span>保持你的角色与聊天在这里</span>
           </div>
         </div>
+      </div>
+      <div className="phone-lock-actions" aria-hidden="true">
+        <span><Flashlight size={18} /></span><span><Camera size={18} /></span>
       </div>
       <button type="button" className="phone-lock-unlock" onClick={unlock} aria-label="解锁">
         <span className="phone-lock-unlock-icon"><Unlock size={17} strokeWidth={1.8} /></span>
