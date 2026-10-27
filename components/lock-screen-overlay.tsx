@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ChevronUp } from "lucide-react";
+import { Camera, ChevronUp, Flashlight, LockKeyhole } from "lucide-react";
 
 import { readLockConfig, readLockWallpaper } from "@/lib/lock-screen";
 import { LockPinPad } from "./lock-pin-pad";
@@ -157,8 +157,21 @@ export function LockScreenOverlay({ onUnlocked }: LockScreenOverlayProps) {
     >
       {hasWall ? <div className="lock-wall" style={{ backgroundImage: `url("${wall}")` }} /> : null}
       <div ref={bodyRef} className="lock-body">
+        <div className="lock-top-status" aria-hidden="true">
+          <span className="lock-top-carrier">FLOAT</span>
+          <span className="lock-top-right"><span className="lock-signal" /> <span className="lock-wifi" /> <span className="lock-battery" /></span>
+        </div>
+        <div className="lock-top-lock" aria-hidden="true"><LockKeyhole size={14} strokeWidth={2} /></div>
         <div className="lock-time">{clock.time}</div>
         <div className="lock-date">{clock.date}</div>
+        <div className="lock-widgets" aria-label="锁屏小组件">
+          <div className="lock-widget"><span className="lock-widget-dot" /><span><b>小手机</b><small>角色与聊天已准备好</small></span></div>
+          <div className="lock-widget lock-widget-weather"><b>☼</b><span><strong>晴</strong><small>24°</small></span></div>
+        </div>
+      </div>
+      <div className="lock-bottom-actions" aria-hidden="true">
+        <span className="lock-bottom-action"><Flashlight size={20} strokeWidth={2} /></span>
+        <span className="lock-bottom-action"><Camera size={20} strokeWidth={2} /></span>
       </div>
       <div className="lock-hint">
         <ChevronUp strokeWidth={1.6} />
