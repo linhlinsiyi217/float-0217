@@ -5,7 +5,7 @@ Float-0217 的唯一正式发布日志（人类可读）。机器读取版本见
 新发布倒序追加在最上面；`<commit-sha>` 占位符在构建时由 `scripts/sync-app-version.mjs` 回填。
 
 ## [1.2.1] - 2026-10-24
-Release ID: `2026-10-22-7-<commit-sha>`
+Release ID: `2026-10-22-7-263368d37468e76969215d46768359fa8f8f6acd`
 
 ### app
 - title: 更新系统重构：每次部署自动生成新发布标识

@@ -1,7 +1,7 @@
 {
-  "versionCode": 10201,
-  "versionName": "1.2.1",
-  "apkUrl": "https://github.com/linhlinsiyi217/float-0217/releases/download/v1.2.1/app-release.apk",
+  "versionCode": 10202,
+  "versionName": "1.2.2",
+  "apkUrl": "https://github.com/linhlinsiyi217/float-0217/releases/download/v1.2.2/app-release.apk",
   "force": false,
   "webVersion": "2026-10-22-7",
   "summary": "更新系统重构：每次生产部署自动生成新的发布标识（releaseId = webVersion + commitSha），即使版本号没变也能检测为新版本；版本清单与更新日志走缓存绕过（no-store + no-cache + 时间戳参数，Service Worker 显式排除）；设置 → 更新日志新增手动「检查更新」，支持检查中、已有更新、已是最新、离线、超时、失败与重试；更新公告五类语义色对齐（应用功能蓝 / 全局系统紫 / 页面内容绿 / AI 与提示词橙 / 修复与兼容红）。",
@@ -27,9 +27,9 @@
       "detail": "影响范围五类 key 固定为 app/global/content/ai/fix，默认色蓝 #3478F6、紫 #7C5CFC、绿 #34C759、橙 #FF9500、红 #FF3B30；标签底色改半透明适配浅色/深色主题；旧「提示词」键自动归入「AI 与提示词」"
     }
   ],
-  "releaseId": "2026-10-22-7-ed427f56c250ad6a164ac3106e9da3522e0b4a95",
-  "commitSha": "ed427f56c250ad6a164ac3106e9da3522e0b4a95",
-  "releasedAt": "2026-10-24T06:29:32.616Z",
+  "releaseId": "2026-10-22-7-263368d37468e76969215d46768359fa8f8f6acd",
+  "commitSha": "263368d37468e76969215d46768359fa8f8f6acd",
+  "releasedAt": "2026-10-27T04:01:15.449Z",
   "changelogFile": "/CHANGELOG.md",
   "entries": [
     {
