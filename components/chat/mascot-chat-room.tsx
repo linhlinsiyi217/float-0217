@@ -941,6 +941,9 @@ export function MascotChatRoom({ onBack, onDeleted }: MascotChatRoomProps) {
                     -webkit-user-select: none;
                     user-select: none;
                 }
+                .mascot-tool-result-card[data-tool-state="failed"] .chat-sys-msg {
+                    color: #d93025;
+                }
                 .mascot-tool-result-card[data-active] {
                     overflow: visible;
                 }
@@ -1037,9 +1040,10 @@ export function MascotChatRoom({ onBack, onDeleted }: MascotChatRoomProps) {
                         const label = msg.displayText || msg.text || msg.toolDisplayName || msg.toolName || "工具";
                         const shownName = msg.toolDisplayName || msg.toolName || "工具";
                         const running = msg.toolSuccess === undefined;
+                        const failed = msg.toolSuccess === false;
                         const toolSummary = running
                             ? `正在调用 ${shownName}…`
-                            : `${shownName}${label && label !== shownName ? `：${label.slice(0, 80)}${label.length > 80 ? "…" : ""}` : ""}`;
+                            : `${failed ? "未成功 · " : "已完成 · "}${shownName}${label && label !== shownName ? `：${label.slice(0, 80)}${label.length > 80 ? "…" : ""}` : ""}`;
                         return (
                             <div key={`${rawIndex}-${msg.createdAt || ""}`} className="chat-msg-wrapper" data-role="system">
                                 <div
@@ -1055,6 +1059,7 @@ export function MascotChatRoom({ onBack, onDeleted }: MascotChatRoomProps) {
                                         openMascotContextMenu(rawIndex, { x: event.clientX, y: event.clientY });
                                     }}
                                     {...(activeMascotMessageIndex === rawIndex ? { "data-active": "" } : {})}
+                                    data-tool-state={running ? "running" : failed ? "failed" : "done"}
                                 >
                                     {renderMascotContextMenu(rawIndex, msg.role)}
                                     <div className="chat-sys-msg relative truncate" title={label}>

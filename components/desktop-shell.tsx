@@ -15,7 +15,7 @@ import { PhonePlaceholderApp } from "@/components/phone-placeholder-app";
 import MusicApp from "@/components/music/music-app";
 import MusicPlayer from "@/components/music/music-player";
 import MusicFloat from "@/components/music/music-float";
-import MusicDynamicIsland from "@/components/music/music-dynamic-island";
+import DynamicIsland from "@/components/island/dynamic-island";
 import MiniAppWindow from "@/components/music/mini-app-window";
 import { PhoneCalendarApp } from "@/components/calendar-app";
 import { PhoneQaApp } from "@/components/phone-qa-app";
@@ -116,6 +116,8 @@ import { DebugPromptPanel } from "@/components/debug-prompt-panel";
 import { QuickActionFloat } from "@/components/quick-action-float";
 import { CHAT_MESSAGE_PUSHED_EVENT, CHAT_REQUEST_REPLY_EVENT, findChatSessionById, hydrateChatStorage, loadChatSessions, loadChatMessages, pushChatMessage, resolveChatCharacterAvatar, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { publishIslandNotification } from "@/lib/island-notify";
+import { setIslandIncomingCall } from "@/lib/island-center";
+import { installBackNavigation } from "@/lib/back-navigation";
 import { loadNotificationPrefs } from "@/lib/notification-prefs";
 import { loadStatusbarCss, STATUSBAR_CSS_EVENT } from "@/lib/statusbar-css";
 import { playBannerSound, armAudioUnlock } from "@/lib/banner-sound";
@@ -1352,6 +1354,24 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   const [incomingCall, setIncomingCall] = useState<{
     sessionId: string; type: "voice" | "video"; charName: string; charAvatar: string | null; isGroup?: boolean;
   } | null>(null);
+  const incomingCallHandlersRef = useRef<{ accept: () => void; decline: () => void }>({ accept: () => {}, decline: () => {} });
+  // 来电同步进灵动岛状态中心：岛上显示来电者并可直接接听 / 拒接
+  useEffect(() => {
+    if (!incomingCall) {
+      setIslandIncomingCall(null);
+      return;
+    }
+    setIslandIncomingCall({
+      sessionId: incomingCall.sessionId,
+      name: incomingCall.charName,
+      avatar: incomingCall.charAvatar || "",
+      kind: incomingCall.type,
+      isGroup: !!incomingCall.isGroup,
+      accept: () => incomingCallHandlersRef.current.accept(),
+      decline: () => incomingCallHandlersRef.current.decline(),
+    });
+    return () => setIslandIncomingCall(null);
+  }, [incomingCall]);
   // 桌面来电横幅显示期间循环振动（开关在聊天主页"语音/视频来电振动"）
   // + 循环来电铃声（角色专属提示音优先，其余在"全局聊天信息 → 提示音"）
   useEffect(() => {
@@ -1362,6 +1382,15 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   }, [incomingCall]);
   // 全局聊天提示音（新消息/发送消息）：监听消息落库事件，按各会话配置播放（角色专属优先于全局）
   useEffect(() => installChatSoundListener(), []);
+  // 全局返回键：浏览器返回、安卓系统返回统一按「弹窗 → 应用内上一级 → 主屏」处理（lib/back-navigation.ts）
+  const backStateRef = useRef({ activeApp: null as string | null, locked: false });
+  backStateRef.current = { activeApp, locked: isLocked };
+  useEffect(() => installBackNavigation({
+    getRoot: () => (backStateRef.current.locked ? null : shellRef.current),
+    getActiveApp: () => backStateRef.current.activeApp,
+    closeApp: () => setActiveApp(null),
+    notify: (text) => setNotice(text),
+  }), []);
   const [chatMessageNotice, setChatMessageNotice] = useState<{
     sessionId: string;
     title: string;
@@ -2777,6 +2806,12 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
       ? false
       : (isShellEnv || !draftTheme.hideTopBar);
   const islandVisible = statusBarVisible && draftTheme.islandMode !== "off";
+  // 系统状态栏模式下手机壳状态栏被 CSS 隐藏（phone-shell.css 的 pwa-display-mode 规则），岛实际不可见
+  const islandRendered = () => {
+    if (typeof document === "undefined") return true;
+    const bar = shellRef.current?.querySelector<HTMLElement>(".phone-status-bar");
+    return !bar || getComputedStyle(bar).display !== "none";
+  };
 
   // Mini chat window state
   const [showMiniChat, setShowMiniChat] = useState(false);
@@ -2993,7 +3028,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
       if (!prefs.bannerEnabled && !isDemo) return; // 站内横幅关着（demo 预览照常弹）
 
       // 灵动岛开着：通知状态走岛（岛点击直达会话，通知优先于音乐），不再弹独立横幅
-      if (islandVisible && !isDemo && !detail.isTest) {
+      if (islandVisible && islandRendered() && !isDemo && !detail.isTest) {
         publishIslandNotification({
           sessionId: detail.sessionId,
           title: displayTitle,
@@ -4703,6 +4738,55 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
       : null;
   }
 
+  // 来电：桌面横幅与灵动岛共用同一套接听 / 拒接处理
+  const declineIncomingCall = () => {
+    if (!incomingCall) return;
+    const call = incomingCall;
+    const callLabel = call.type === "voice" ? "语音通话" : "视频通话";
+    playChatSoundOnce("hangup", findChatSessionById(call.sessionId)); // 拒接也是结束通话：播挂断音
+    pushChatMessage({
+      sessionId: call.sessionId,
+      role: "user",
+      content: `[我拒绝了${callLabel}]`,
+    });
+    setIncomingCall(null);
+    // Trigger AI reply after declining — fire event for chat-room, plus background fallback
+    window.dispatchEvent(new CustomEvent("call-declined", { detail: { sessionId: call.sessionId } }));
+    const sessions = loadChatSessions();
+    const sess = sessions.find(s => s.id === call.sessionId);
+    if (sess) {
+      const sid = call.sessionId;
+      kvSet("chat-generating:" + sid, JSON.stringify({ startedAt: Date.now() }));
+      const msgs = loadChatMessages(sid);
+      generateChatCompletion(sess, msgs, { appTags: ["chat", "text"] }).then(cr => { const text = flattenCompletionResult(cr);
+        const { parts, stateValues } = parseAIResponse(text, []);
+        for (const p of parts) {
+          if (p.mediaType === "voice_call" || p.mediaType === "video_call") continue;
+          pushChatMessage({ sessionId: sid, role: "assistant", content: p.content, mediaType: p.mediaType, mediaData: p.mediaData });
+        }
+        scheduleFollowUp(sid, 0, stateValues);
+      }).catch(() => {}).finally(() => {
+        kvRemove("chat-generating:" + sid);
+        window.dispatchEvent(new CustomEvent("chat-bg-complete", { detail: { sessionId: sid } }));
+      });
+    }
+  };
+  const acceptIncomingCall = () => {
+    if (!incomingCall) return;
+    const call = incomingCall;
+    setIncomingCall(null);
+    setActiveApp("chat" as IconId);
+    setChatInitSessionId(call.sessionId);
+    // Wait for chat-room to mount, then trigger the call screen
+    // __fromBar prevents desktop-shell handler from re-showing the bar
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("ai-call-trigger", {
+        detail: { sessionId: call.sessionId, type: call.type, __fromBar: true },
+      }));
+    }, 600);
+  };
+  incomingCallHandlersRef.current = { accept: acceptIncomingCall, decline: declineIncomingCall };
+
   return (
     <>
       <section
@@ -4747,9 +4831,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
               >
                 <StatusClock />
                 <div className="status-island">
-                  {/* The black capsule is the phone's existing simulated Dynamic Island.
-                      MusicDynamicIsland only renders the live activity that expands from it. */}
-                  {islandVisible ? <MusicDynamicIsland /> : null}
+                  {/* 手机壳自带的黑胶囊；内容由全局状态中心驱动（components/island/dynamic-island.tsx） */}
+                  {islandVisible ? <DynamicIsland /> : null}
                 </div>
                 <div className="status-right" aria-hidden>
                   <svg viewBox="0 0 72 51" className="status-signal" fill="currentColor">
@@ -4896,7 +4979,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
               ) : null}
 
               {/* Incoming call bar — global overlay */}
-              {incomingCall && (
+              {/* 灵动岛开着时来电显示在岛上，这里只在岛关闭时兜底 */}
+              {incomingCall && !(islandVisible && islandRendered()) && (
                 <div className="incoming-call-bar">
                   <div className="incoming-call-bar-info">
                     {incomingCall.charAvatar ? (
@@ -4916,37 +5000,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                   <div className="incoming-call-bar-actions">
                     <button
                       className="incoming-call-bar-btn incoming-call-bar-decline"
-                      onClick={() => {
-                        const call = incomingCall;
-                        const callLabel = call.type === "voice" ? "语音通话" : "视频通话";
-                        playChatSoundOnce("hangup", findChatSessionById(call.sessionId)); // 拒接也是结束通话：播挂断音
-                        pushChatMessage({
-                          sessionId: call.sessionId,
-                          role: "user",
-                          content: `[我拒绝了${callLabel}]`,
-                        });
-                        setIncomingCall(null);
-                        // Trigger AI reply after declining — fire event for chat-room, plus background fallback
-                        window.dispatchEvent(new CustomEvent("call-declined", { detail: { sessionId: call.sessionId } }));
-                        const sessions = loadChatSessions();
-                        const sess = sessions.find(s => s.id === call.sessionId);
-                        if (sess) {
-                          const sid = call.sessionId;
-                          kvSet("chat-generating:" + sid, JSON.stringify({ startedAt: Date.now() }));
-                          const msgs = loadChatMessages(sid);
-                          generateChatCompletion(sess, msgs, { appTags: ["chat", "text"] }).then(cr => { const text = flattenCompletionResult(cr);
-                            const { parts, stateValues } = parseAIResponse(text, []);
-                            for (const p of parts) {
-                              if (p.mediaType === "voice_call" || p.mediaType === "video_call") continue;
-                              pushChatMessage({ sessionId: sid, role: "assistant", content: p.content, mediaType: p.mediaType, mediaData: p.mediaData });
-                            }
-                            scheduleFollowUp(sid, 0, stateValues);
-                          }).catch(() => {}).finally(() => {
-                            kvRemove("chat-generating:" + sid);
-                            window.dispatchEvent(new CustomEvent("chat-bg-complete", { detail: { sessionId: sid } }));
-                          });
-                        }
-                      }}
+                      onClick={declineIncomingCall}
                     >
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" />
@@ -4955,19 +5009,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                     </button>
                     <button
                       className="incoming-call-bar-btn incoming-call-bar-accept"
-                      onClick={() => {
-                        const call = incomingCall;
-                        setIncomingCall(null);
-                        setActiveApp("chat" as IconId);
-                        setChatInitSessionId(call.sessionId);
-                        // Wait for chat-room to mount, then trigger the call screen
-                        // __fromBar prevents desktop-shell handler from re-showing the bar
-                        setTimeout(() => {
-                          window.dispatchEvent(new CustomEvent("ai-call-trigger", {
-                            detail: { sessionId: call.sessionId, type: call.type, __fromBar: true },
-                          }));
-                        }, 600);
-                      }}
+                      onClick={acceptIncomingCall}
                     >
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />

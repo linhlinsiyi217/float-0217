@@ -293,7 +293,7 @@ export function StudyRoomSplash({ onDone }: StudyRoomSplashProps) {
         </button>
         <h1 className="sr-splash-title">书房</h1>
         {/* 固定小标题：按项目要求用品牌名，不写宣传语 */}
-        <p className="sr-splash-brand">LinH Pocket YI</p>
+        <p className="sr-splash-brand">FLOT</p>
       </div>
     </div>
   );

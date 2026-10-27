@@ -140,13 +140,20 @@ expectWiring(
     /latestSystemRelease\(\)[^{]*\{\s*return SYSTEM_RELEASE_LIST\[0\]/.test(systemTs),
   "lib/update-log/system.ts：总日志与当前发布必须来自 composeGlobalReleases(SYSTEM_RELEASES, STUDYROOM_RELEASES)",
 );
+// 实时检查后，线上新一版由 update-service 的同一个发布列表提供（底层仍是 SYSTEM_RELEASE_LIST），
+// 公告用 getLatestRelease()、日志页用 useReleaseList()，两边读同一份。
+const serviceTs = read("lib/update-log/update-service.ts");
 expectWiring(
-  /from "@\/lib\/update-log\/system"/.test(noticeTsx) && /latestSystemRelease\(\)/.test(noticeTsx),
-  "全局弹窗（update-notice.tsx）必须读 lib/update-log/system 的 latestSystemRelease()",
+  /from "\.\/system"/.test(serviceTs) && /SYSTEM_RELEASE_LIST/.test(serviceTs) && /export function useReleaseList\(/.test(serviceTs) && /export function getLatestRelease\(/.test(serviceTs),
+  "lib/update-log/update-service.ts：发布列表必须基于 lib/update-log/system 的 SYSTEM_RELEASE_LIST，并导出 useReleaseList / getLatestRelease",
 );
 expectWiring(
-  /from "@\/lib\/update-log\/system"/.test(logPageTsx) && /releases=\{SYSTEM_RELEASE_LIST\}/.test(logPageTsx),
-  "设置更新日志页必须读 lib/update-log/system 的 SYSTEM_RELEASE_LIST",
+  /from "@\/lib\/update-log\/system"/.test(noticeTsx) && /latestSystemRelease\(\)/.test(noticeTsx) && /getLatestRelease\(\)/.test(noticeTsx),
+  "全局弹窗（update-notice.tsx）必须读 lib/update-log/system 的 latestSystemRelease() 与 update-service 的 getLatestRelease()",
+);
+expectWiring(
+  /from "@\/lib\/update-log\/update-service"/.test(logPageTsx) && /useReleaseList\(\)/.test(logPageTsx) && /releases=\{releases\}/.test(logPageTsx),
+  "设置更新日志页必须用 update-service 的 useReleaseList()（与公告同一个发布列表）",
 );
 expectWiring(popupTsx.includes("查看完整日志") && />\s*<Check[^>]*\/>\s*(?:我)?知道了\s*</.test(popupTsx), "更新弹窗必须有「查看完整日志」和「知道了」两个按钮");
 expectWiring(

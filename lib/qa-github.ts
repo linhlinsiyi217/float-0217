@@ -113,8 +113,9 @@ export type QaGithubFile = { path: string; text: string; size: number; truncated
 /** 读取单个文件内容（base64 解码）。
  *  兼容两种响应形态：标准 contents API（JSON，content 为 base64）与 raw 媒体类型（直接返回源码）。
  *  一律先按文本收下再尝试解包 JSON，绝不直接 response.json()——否则 raw 源码会被当成 JSON 解析而崩溃。 */
-export async function readQaGithubFile(config: QaGithubConfig, path: string, signal?: AbortSignal): Promise<QaGithubFile> {
-    const branch = await resolveBranch(config, signal);
+/** ref：读取指定分支 / 提交上的版本（不填取配置分支或默认分支）。 */
+export async function readQaGithubFile(config: QaGithubConfig, path: string, signal?: AbortSignal, ref?: string): Promise<QaGithubFile> {
+    const branch = ref || (await resolveBranch(config, signal));
     const cleanPath = path.replace(/^\/+/, "");
     const response = await ghFetch(
         config,
@@ -350,4 +351,66 @@ export async function searchQaGithubCode(config: QaGithubConfig, query: string, 
         .slice(0, 30)
         .map((e) => ({ path: e.path }));
     return { hits, mode: "path-fallback" };
+}
+
+// ── 检查状态（只读）：某个提交 / 分支上 GitHub Actions 与外部检查的真实结果 ──
+// 小手机在浏览器里没法自己跑类型检查和构建，这里读的是仓库 CI（Actions、Vercel 等）
+// 对该提交实际跑出来的结果。没有配置 CI 的仓库返回空列表，不编造结果。
+
+export type QaGithubCheck = {
+    name: string;
+    /** queued / in_progress / completed */
+    status: string;
+    /** success / failure / neutral / cancelled / skipped / timed_out / action_required / null（未完成） */
+    conclusion: string | null;
+    url?: string;
+    summary?: string;
+};
+
+export type QaGithubCheckReport = {
+    ref: string;
+    sha: string;
+    checks: QaGithubCheck[];
+    /** 汇总：pending=还在跑；success=全部通过；failure=有失败；none=没有任何检查 */
+    overall: "pending" | "success" | "failure" | "none";
+};
+
+export async function getQaGithubChecks(config: QaGithubConfig, ref?: string, signal?: AbortSignal): Promise<QaGithubCheckReport> {
+    const target = ref || (await resolveBranch(config, signal));
+    const base = `/repos/${config.owner}/${config.repo}/commits/${encodeURIComponent(target)}`;
+    const [runsRes, statusRes] = await Promise.all([
+        ghFetch(config, `${base}/check-runs?per_page=30`, signal),
+        ghFetch(config, `${base}/status`, signal),
+    ]);
+    if (runsRes.status === 404 || statusRes.status === 404) throw new Error(`找不到 ${target}：分支或提交不存在`);
+    if (runsRes.status === 401 || statusRes.status === 401) throw new Error("PAT 无效或已过期");
+    if (runsRes.status === 403 && runsRes.headers.get("x-ratelimit-remaining") === "0") throw new Error("GitHub 请求次数超限，稍后再试或填入 PAT");
+    if (!runsRes.ok && !statusRes.ok) throw new Error(`读取检查状态失败：HTTP ${runsRes.status}`);
+    const checks: QaGithubCheck[] = [];
+    let sha = "";
+    if (runsRes.ok) {
+        const data = (await runsRes.json()) as { check_runs?: Array<{ name: string; status: string; conclusion: string | null; html_url?: string; head_sha?: string; output?: { title?: string; summary?: string } }> };
+        for (const run of data.check_runs ?? []) {
+            sha ||= run.head_sha ?? "";
+            checks.push({ name: run.name, status: run.status, conclusion: run.conclusion, url: run.html_url, summary: run.output?.title || run.output?.summary?.slice(0, 160) });
+        }
+    }
+    if (statusRes.ok) {
+        const data = (await statusRes.json()) as { sha?: string; statuses?: Array<{ context: string; state: string; target_url?: string; description?: string }> };
+        sha ||= data.sha ?? "";
+        for (const item of data.statuses ?? []) {
+            const done = item.state !== "pending";
+            checks.push({
+                name: item.context,
+                status: done ? "completed" : "in_progress",
+                conclusion: done ? (item.state === "success" ? "success" : "failure") : null,
+                url: item.target_url,
+                summary: item.description,
+            });
+        }
+    }
+    const failed = checks.some((c) => c.status === "completed" && c.conclusion && !["success", "neutral", "skipped"].includes(c.conclusion));
+    const running = checks.some((c) => c.status !== "completed");
+    const overall = checks.length === 0 ? "none" : failed ? "failure" : running ? "pending" : "success";
+    return { ref: target, sha, checks, overall };
 }

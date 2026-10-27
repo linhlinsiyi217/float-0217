@@ -9,7 +9,7 @@ import { getQaPageChars } from "./qa-prefs";
 // - 文档没覆盖的问题，agent 会去 GitHub 仓库读源码兜底，所以这里优先沉淀
 //   高频问题和源码里读不出来的运营/使用经验。
 
-export const QA_FAQ_DOC_MD = `# AI 虚拟手机 · 答疑文档
+export const QA_FAQ_DOC_MD = `# FLOT 小手机 · 答疑文档
 
 ## API 与聊天
 

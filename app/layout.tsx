@@ -24,9 +24,9 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  // 用户可见品牌名统一为 LinH Pocket YI（仓库名与部署标识仍为 float-0217）
-  title: "LinH Pocket YI",
-  description: "LinH Pocket YI",
+  // 用户可见品牌名统一为 FLOT（仓库名与部署标识仍为 float-0217）
+  title: "FLOT",
+  description: "FLOT",
 };
 
 export default function RootLayout({
@@ -42,7 +42,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icon-192.png" />
         <link rel="icon" href="/icon-192.png" type="image/png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-title" content="LinH Pocket YI" />
+        <meta name="apple-mobile-web-app-title" content="FLOT" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="mobile-web-app-capable" content="yes" />
         {/* 首帧锁屏决策：跳过开屏动画时锁屏就是第一帧，主 bundle 还没加载就得定 */}

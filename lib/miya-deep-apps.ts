@@ -10,11 +10,29 @@ import {
   CUSTOM_APP_PLACE_DESKTOP_EVENT,
   installCustomApp,
   loadInstalledCustomApps,
+  saveInstalledCustomApps,
 } from "@/lib/custom-app-storage";
 import type { CustomAppManifest, CustomAppPermission } from "@/lib/custom-app-types";
 
 // ── 首次安装标记（存在即不再扫描）──
 const MIYA_DEEP_APPS_FLAG = "miya_deep_apps_installed_v1";
+// 页面顶部改为让出宿主状态栏与胶囊按钮：已装过的旧版本按这个标记刷新一次页面内容
+const MIYA_DEEP_APPS_LAYOUT_FLAG = "miya_deep_apps_layout_v2";
+
+/** 已安装且仍是内置原版（作者 Miya、版本 1.0.0）的页面换成新版，用户改过的不动 */
+function refreshMiyaDeepAppLayout(): void {
+  if (kvGet(MIYA_DEEP_APPS_LAYOUT_FLAG) === "1") return;
+  kvSet(MIYA_DEEP_APPS_LAYOUT_FLAG, "1");
+  const byId = new Map(MIYA_DEEP_APPS.map(def => [def.appId, def]));
+  let changed = false;
+  const apps = loadInstalledCustomApps().map(app => {
+    const def = byId.get(app.id);
+    if (!def || app.author !== "Miya" || app.version !== "1.0.0" || app.entryHtml === def.entryHtml) return app;
+    changed = true;
+    return { ...app, entryHtml: def.entryHtml, updatedAt: new Date().toISOString() };
+  });
+  if (changed) saveInstalledCustomApps(apps);
+}
 
 type MiyaDeepAppDef = {
   appId: string;
@@ -36,7 +54,7 @@ function emojiIconDataUrl(emoji: string, bg: string): string {
 
 const DEEP_CSS = `<style>
   * { box-sizing: border-box; }
-  body { margin: 0; padding: 14px 12px calc(18px + env(safe-area-inset-bottom, 0px)); font-family: system-ui, -apple-system, "PingFang SC", sans-serif; font-size: 13px; background: #f6f2ea; color: #453f34; }
+  body { margin: 0; padding: calc(var(--ai-phone-app-safe-top, 88px) + 4px) 12px calc(18px + env(safe-area-inset-bottom, 0px)); font-family: system-ui, -apple-system, "PingFang SC", sans-serif; font-size: 13px; background: #f6f2ea; color: #453f34; }
   .deep-head { font-size: 16px; font-weight: 700; margin: 2px 2px 12px; display: flex; align-items: center; gap: 8px; }
   .deep-head small { font-size: 11px; color: #8d8272; font-weight: 400; }
   .card { background: #fffdf8; border: 1px solid #e7dfd0; border-radius: 14px; padding: 12px; margin-bottom: 10px; }
@@ -549,7 +567,11 @@ const MIYA_DEEP_APPS: MiyaDeepAppDef[] = [
 
 export function ensureMiyaDeepAppsInstalled(): void {
   if (typeof window === "undefined") return;
-  if (kvGet(MIYA_DEEP_APPS_FLAG) === "1") return;
+  if (kvGet(MIYA_DEEP_APPS_FLAG) === "1") {
+    refreshMiyaDeepAppLayout();
+    return;
+  }
+  kvSet(MIYA_DEEP_APPS_LAYOUT_FLAG, "1");
   kvSet(MIYA_DEEP_APPS_FLAG, "1");
 
   const installedIds = new Set(loadInstalledCustomApps().map(app => app.id));

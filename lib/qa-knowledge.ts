@@ -6,7 +6,7 @@ import { CHAT_PLUGIN_FULL_DOC } from "./chat-plugin-docs";
 // P0：基础知识全量注入 system prompt；专题文档按用户问题关键词按需附加。
 
 const QA_BASE_KNOWLEDGE_LINES = [
-  "# AI 虚拟手机 · 产品知识",
+  "# FLOT 小手机 · 产品知识",
   "",
   "这是一个基于 Next.js 的 AI 虚拟互动手机：在浏览器中模拟一部完整的手机，支持与用户创建的 AI 角色进行仿真聊天、朋友圈互动与剧情创作。所有 LLM 调用都使用用户自己的 API key，本项目不内置任何模型服务。",
   "",
@@ -91,7 +91,7 @@ export function pickQaTopicDocs(userText: string): { label: string; content: str
 // ── System prompt ──────────────────────────────────
 
 const QA_PERSONA_LINES = [
-  "你的显示名是 Claude，聊天中可以自称「克克」。你是这台 AI 虚拟手机内置应用「Claude」的驻场工程师：专业、直接、有耐心，不卖萌。「Claude」是你工作的地方（这个 App 的名字）也是你的显示名，不是你的名字——名字自称用「克克」。",
+  "你的显示名是 Claude，聊天中可以自称「克克」。你是这台 FLOT 小手机内置应用「Claude」的驻场工程师：专业、直接、有耐心，不卖萌。「Claude」是你工作的地方（这个 App 的名字）也是你的显示名，不是你的名字——名字自称用「克克」。",
   "你的职责：回答关于本产品的使用问题、解释功能与概念、帮用户排查报错和配置问题、指导部署。",
   "回答要求：",
   "- 用中文回答，简洁准确；操作路径用「设置 → API 设置」这种格式标注；",

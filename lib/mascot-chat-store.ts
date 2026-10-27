@@ -17,6 +17,7 @@ import {
     type MascotToolContext,
 } from "./mascot-tools";
 import { isMascotPanelOpen } from "./mascot-state";
+import { clearIslandActivity, pushIslandEvent, setIslandActivity } from "./island-center";
 
 const MASCOT_DB_NAME = "AiPhoneMascotDB";
 const MASCOT_DB_VERSION = 2;
@@ -517,6 +518,7 @@ export async function generateMascotReply({
 
     const MAX_ROUNDS = 8;
     abortRequested = false;
+    const failedTools: string[] = [];
     const controller = new AbortController();
     abortController = controller;
     let expandedPackageIds = loadExpandedPackages();
@@ -673,8 +675,19 @@ export async function generateMascotReply({
 
                     // 复用同一上下文，确保多轮工具调用共享角色备份状态。
                     toolCtx.history = workingMessages;
+                    setIslandActivity({
+                        key: "mascot-tool",
+                        kind: "tool",
+                        title: `小卷 · ${displayName}`,
+                        detail: `正在执行「${displayName}」`,
+                        actions: [{ label: "停止", tone: "danger", run: () => stopMascotGeneration() }],
+                    });
                     const result = await executeMascotToolCall(call, toolCtx);
                     if (result.success) mascotFillField({ field: call.name, value: result.data || "" });
+                    else {
+                        failedTools.push(displayName);
+                        pushIslandEvent({ kind: "tool", source: "小卷工具失败", text: displayName, tone: "error", mergeKey: `mascot-fail:${displayName}` });
+                    }
 
                     const resultText = result.success ? (result.data || "完成") : (result.error || "未知错误");
                     const updated = [...workingMessages];
@@ -703,7 +716,13 @@ export async function generateMascotReply({
             publishMessages([...workingMessages, { role: "user", text: "[用户中止了操作]", hidden: false, createdAt: new Date().toISOString() }]);
         }
         if (!isMascotPanelOpen() && typeof window !== "undefined") {
-            window.dispatchEvent(new CustomEvent("global-notice", { detail: abortRequested ? "操作已中止" : "AI助手已完成操作 ✓" }));
+            // 有工具失败时如实说明，不显示「已完成」
+            const notice = abortRequested
+                ? "操作已中止"
+                : failedTools.length > 0
+                    ? `AI助手有 ${failedTools.length} 个操作没有成功：${failedTools.slice(0, 3).join("、")}`
+                    : "AI助手已完成操作 ✓";
+            window.dispatchEvent(new CustomEvent("global-notice", { detail: notice }));
         }
     } catch (err) {
         if ((err as Error).name !== "AbortError" && !abortRequested) {
@@ -715,6 +734,7 @@ export async function generateMascotReply({
     } finally {
         setThinking(false);
         abortController = null;
+        clearIslandActivity("mascot-tool");
     }
 }
 

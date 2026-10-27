@@ -1,6 +1,11 @@
 import { callQaAgent, compactQaContext, formatQaErrorMessage, type QaContextEntry } from "./qa-agent-engine";
 import { QA_TOOLS, formatQaToolSubtitle, type QaCreatedContent, type QaProposedCommit } from "./qa-agent-tools";
 import { loadQaGithubConfig } from "./qa-github";
+import { clearIslandActivity, pushIslandEvent, setIslandActivity } from "./island-center";
+
+// Claude 工坊的工具调用同步到灵动岛：执行中显示工具名，失败推一条事件，本轮结束清掉
+const QA_ISLAND_KEY = "claude-workshop";
+const QA_ISLAND_TARGET = { appId: "qa" };
 import { commitQaFiles, revertQaCommit, type QaCommitResult } from "./qa-github-write";
 
 // ── 答疑 App 会话存储 ─────────────────────────────────
@@ -802,6 +807,14 @@ export async function sendQaMessage(
                     const detail = args && Object.keys(args).length > 0 ? clipForUi(JSON.stringify(args, null, 2)) : undefined;
                     const subtitle = formatQaToolSubtitle(name, args) || undefined;
                     const status: QaToolStatus = { name: toolLabel(name), running: true, detail, subtitle };
+                    setIslandActivity({
+                        key: QA_ISLAND_KEY,
+                        kind: "tool",
+                        title: `Claude · ${status.name}`,
+                        detail: subtitle ? `正在执行「${status.name}」：${subtitle}` : `正在执行「${status.name}」`,
+                        target: QA_ISLAND_TARGET,
+                        actions: [{ label: "停止", tone: "danger", run: () => stopQaGeneration() }],
+                    });
                     toolStatuses = [...toolStatuses, status];
                     segments = [...segments, { kind: "tool", tool: status }];
                     paintAssistant({ tools: toolStatuses, segments }, { force: true, persist: false });
@@ -834,6 +847,24 @@ export async function sendQaMessage(
                                 : seg,
                         );
                     }
+                    if (!success) {
+                        pushIslandEvent({
+                            kind: "tool",
+                            source: "Claude 工具失败",
+                            text: toolLabel(name),
+                            tone: "error",
+                            target: QA_ISLAND_TARGET,
+                            mergeKey: `tool-fail:${toolLabel(name)}`,
+                        });
+                    }
+                    setIslandActivity({
+                        key: QA_ISLAND_KEY,
+                        kind: "tool",
+                        title: "Claude 正在处理",
+                        detail: `「${toolLabel(name)}」${success ? "已完成" : "失败"}，继续生成回复中`,
+                        target: QA_ISLAND_TARGET,
+                        actions: [{ label: "停止", tone: "danger", run: () => stopQaGeneration() }],
+                    });
                     paintAssistant({ tools: toolStatuses, segments }, { force: true, persist: false });
                 },
                 onStageCommit: (proposal) => {
@@ -968,10 +999,19 @@ export async function sendQaMessage(
                 { content: streamedContent, reasoning: streamedReasoning || undefined, tools: finalTools, segments: finalSegments, error: reason, toolDrafting: undefined },
                 { force: true },
             );
+            pushIslandEvent({
+                kind: "tool",
+                source: "Claude 回复中断",
+                text: "进入工坊可以查看原因并重试",
+                tone: "error",
+                target: QA_ISLAND_TARGET,
+                mergeKey: "claude-failed",
+            });
         }
     } finally {
         isGenerating = false;
         if (abortController === controller) abortController = null;
+        clearIslandActivity(QA_ISLAND_KEY);
         emit();
     }
 }
@@ -1027,7 +1067,7 @@ export async function applyQaCommit(msgId: string): Promise<void> {
         patchPendingCommit(found.sessionId, msgId, { status: "canceled", error: "仓库配置已丢失。" });
         return;
     }
-    patchPendingCommit(found.sessionId, msgId, { status: "applying" });
+    patchPendingCommit(found.sessionId, msgId, { status: "applying", error: undefined });
     try {
         const result = await commitQaFiles(config, found.pending.proposal);
         patchPendingCommit(found.sessionId, msgId, { status: "applied", result });
@@ -1048,8 +1088,11 @@ export async function revertQaAppliedCommit(msgId: string): Promise<void> {
     const found = findMsgWithPending(msgId);
     if (!found || found.pending.status !== "applied" || !found.pending.result) return;
     const config = loadQaGithubConfig();
-    if (!config) return;
-    patchPendingCommit(found.sessionId, msgId, { status: "reverting" });
+    if (!config) {
+        patchPendingCommit(found.sessionId, msgId, { error: "仓库配置已丢失，无法撤销。请在「连接仓库」里重新连接后再试。" });
+        return;
+    }
+    patchPendingCommit(found.sessionId, msgId, { status: "reverting", error: undefined });
     try {
         await revertQaCommit(config, found.pending.result);
         patchPendingCommit(found.sessionId, msgId, { status: "reverted" });

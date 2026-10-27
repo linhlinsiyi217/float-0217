@@ -4,53 +4,195 @@
   "apkUrl": "https://github.com/linhlinsiyi217/float-0217/releases/download/v1.2.2/app-release.apk",
   "force": false,
   "webVersion": "2026-10-22-7",
-  "summary": "更新系统重构：每次生产部署自动生成新的发布标识（releaseId = webVersion + commitSha），即使版本号没变也能检测为新版本；版本清单与更新日志走缓存绕过（no-store + no-cache + 时间戳参数，Service Worker 显式排除）；设置 → 更新日志新增手动「检查更新」，支持检查中、已有更新、已是最新、离线、超时、失败与重试；更新公告五类语义色对齐（应用功能蓝 / 全局系统紫 / 页面内容绿 / AI 与提示词橙 / 修复与兼容红）。",
+  "summary": "灵动岛重新做了：音乐、一起听、来电、通话、消息和后台任务都会实时显示在屏幕顶部，点开就能操作。更新公告和更新日志分开写，公告只说重点。返回键统一为先关弹窗、再回上一页、最后回主屏。Claude 工坊能在提交前看改了哪些行，提交后查看检查结果。X 新增角色圈，快穿局转盘结果即时保存。",
   "changes": [
     {
-      "type": "app",
-      "title": "每次部署生成新发布标识",
-      "detail": "构建时向 app-version.json 注入 releaseId / commitSha / releasedAt / changelogFile / entries；releaseId 优先于 commitSha、webVersion 和 versionCode 比较，versionName 不变也能检测出新版本"
+      "type": "global",
+      "category": "feat",
+      "app": "全局 · 灵动岛",
+      "title": "灵动岛实时显示音乐、来电、通话和消息",
+      "detail": "播放音乐时顶部黑条显示方形封面、歌名和跳动的波形；点开可以暂停、继续、切到下一首，或直接打开音乐"
     },
     {
       "type": "global",
-      "title": "版本清单缓存绕过",
-      "detail": "next.config 对 /app-version.json 与 /CHANGELOG.md 返回 no-store；网页拉取叠加 no-cache 头与 ?check= 时间戳参数；Service Worker 显式排除这两个文件，更新检测不再吃旧缓存"
+      "category": "perf",
+      "app": "设置 · 更新公告与日志",
+      "title": "更新公告和更新日志分开写",
+      "detail": "弹出的更新公告只列本次的新增、修复和优化标题，以及影响了哪些应用、需不需要重新安装"
+    },
+    {
+      "type": "global",
+      "category": "fix",
+      "app": "全局 · 返回键",
+      "title": "返回键统一：先关弹窗，再回上一页，最后回主屏",
+      "detail": "手机的返回键和浏览器的返回现在都按同一个顺序：先关掉弹窗或展开的灵动岛，再回到应用里的上一页，在应用首页时回到主屏"
     },
     {
       "type": "fix",
-      "title": "手动检查更新入口",
-      "detail": "设置 → 更新日志顶部新增「检查更新」卡片，与更新公告弹窗共用同一套拉取与比较逻辑但状态独立，支持检查中、已有更新、已是最新、离线、超时、失败与重试"
+      "category": "fix",
+      "app": "Miya 手机 · 日常应用",
+      "title": "Miya 手机里的应用标题不再被顶部挡住",
+      "detail": "备忘、待办、健康等页面的标题移到状态栏和右上角按钮下面，看得见也点得到"
+    },
+    {
+      "type": "app",
+      "category": "feat",
+      "app": "Claude 工坊",
+      "title": "提交前能看改了哪些行，提交后能看检查结果",
+      "detail": "修改提案里每个文件都能展开，逐行对比仓库里现在的版本，绿色是新增、红色是删除"
+    },
+    {
+      "type": "ai",
+      "category": "fix",
+      "app": "聊天 · 小卷",
+      "title": "小卷的操作失败时如实显示",
+      "detail": "每个操作卡片标明「已完成」或「未成功」，失败的显示成红色"
     },
     {
       "type": "global",
-      "title": "五类更新语义色对齐",
-      "detail": "影响范围五类 key 固定为 app/global/content/ai/fix，默认色蓝 #3478F6、紫 #7C5CFC、绿 #34C759、橙 #FF9500、红 #FF3B30；标签底色改半透明适配浅色/深色主题；旧「提示词」键自动归入「AI 与提示词」"
+      "category": "tweak",
+      "app": "全局 · 名称",
+      "title": "界面上统一显示 FLOT 的名字",
+      "detail": "网页标题、添加到主屏幕的名称、更新公告和书房启动画面都显示 FLOT"
+    },
+    {
+      "type": "content",
+      "category": "feat",
+      "app": "X · 角色圈",
+      "title": "X 应用支持角色圈",
+      "detail": "新增「角色圈」栏目：集中查看角色们发布的动态，内容与朋友圈是同一份数据"
+    },
+    {
+      "type": "fix",
+      "category": "fix",
+      "app": "X · 数据保护",
+      "title": "修复清理缓存时可能误删 X 动态和收藏的问题",
+      "detail": "X 的帖子和收藏不再被当成「缓存」：清理缓存时不会误删"
+    },
+    {
+      "type": "content",
+      "category": "feat",
+      "app": "生活模拟",
+      "title": "新增「生活模拟」应用",
+      "detail": "Miya 的日常生活故事落地成可以进入的应用"
+    },
+    {
+      "type": "content",
+      "category": "feat",
+      "app": "Miya 手机",
+      "title": "Miya 的手机新增一批日常应用",
+      "detail": "深入 Miya 的手机后，里面新增备忘、待办、健康、云盘、浏览器、外卖、相册等应用"
+    },
+    {
+      "type": "fix",
+      "category": "fix",
+      "app": "快穿局 · 转盘",
+      "title": "转盘结果即时保存，中途退出不再丢金币",
+      "detail": "转盘开转的一瞬间结果就已保存，中途切换页签或退出应用都不会丢金币"
+    },
+    {
+      "type": "fix",
+      "category": "fix",
+      "app": "音乐 · 在线歌单",
+      "title": "在线歌单播放失败时显示真实原因",
+      "detail": "在线歌单里的歌播放失败时，不再假装播放成功，会显示真实的失败原因"
     }
   ],
-  "releaseId": "2026-10-22-7-263368d37468e76969215d46768359fa8f8f6acd",
-  "commitSha": "263368d37468e76969215d46768359fa8f8f6acd",
-  "releasedAt": "2026-10-27T04:01:15.449Z",
+  "releaseId": "2026-10-22-7-a22125560a61efd88c5c601becfbd8c428367a01",
+  "commitSha": "a22125560a61efd88c5c601becfbd8c428367a01",
+  "releasedAt": "2026-10-27T17:13:18.604Z",
   "changelogFile": "/CHANGELOG.md",
   "entries": [
     {
-      "type": "app",
-      "title": "每次部署生成新发布标识",
-      "detail": "构建时向 app-version.json 注入 releaseId / commitSha / releasedAt / changelogFile / entries；releaseId 优先于 commitSha、webVersion 和 versionCode 比较，versionName 不变也能检测出新版本"
+      "type": "global",
+      "category": "feat",
+      "app": "全局 · 灵动岛",
+      "title": "灵动岛实时显示音乐、来电、通话和消息",
+      "detail": "播放音乐时顶部黑条显示方形封面、歌名和跳动的波形；点开可以暂停、继续、切到下一首，或直接打开音乐"
     },
     {
       "type": "global",
-      "title": "版本清单缓存绕过",
-      "detail": "next.config 对 /app-version.json 与 /CHANGELOG.md 返回 no-store；网页拉取叠加 no-cache 头与 ?check= 时间戳参数；Service Worker 显式排除这两个文件，更新检测不再吃旧缓存"
+      "category": "perf",
+      "app": "设置 · 更新公告与日志",
+      "title": "更新公告和更新日志分开写",
+      "detail": "弹出的更新公告只列本次的新增、修复和优化标题，以及影响了哪些应用、需不需要重新安装"
+    },
+    {
+      "type": "global",
+      "category": "fix",
+      "app": "全局 · 返回键",
+      "title": "返回键统一：先关弹窗，再回上一页，最后回主屏",
+      "detail": "手机的返回键和浏览器的返回现在都按同一个顺序：先关掉弹窗或展开的灵动岛，再回到应用里的上一页，在应用首页时回到主屏"
     },
     {
       "type": "fix",
-      "title": "手动检查更新入口",
-      "detail": "设置 → 更新日志顶部新增「检查更新」卡片，与更新公告弹窗共用同一套拉取与比较逻辑但状态独立，支持检查中、已有更新、已是最新、离线、超时、失败与重试"
+      "category": "fix",
+      "app": "Miya 手机 · 日常应用",
+      "title": "Miya 手机里的应用标题不再被顶部挡住",
+      "detail": "备忘、待办、健康等页面的标题移到状态栏和右上角按钮下面，看得见也点得到"
+    },
+    {
+      "type": "app",
+      "category": "feat",
+      "app": "Claude 工坊",
+      "title": "提交前能看改了哪些行，提交后能看检查结果",
+      "detail": "修改提案里每个文件都能展开，逐行对比仓库里现在的版本，绿色是新增、红色是删除"
+    },
+    {
+      "type": "ai",
+      "category": "fix",
+      "app": "聊天 · 小卷",
+      "title": "小卷的操作失败时如实显示",
+      "detail": "每个操作卡片标明「已完成」或「未成功」，失败的显示成红色"
     },
     {
       "type": "global",
-      "title": "五类更新语义色对齐",
-      "detail": "影响范围五类 key 固定为 app/global/content/ai/fix，默认色蓝 #3478F6、紫 #7C5CFC、绿 #34C759、橙 #FF9500、红 #FF3B30；标签底色改半透明适配浅色/深色主题；旧「提示词」键自动归入「AI 与提示词」"
+      "category": "tweak",
+      "app": "全局 · 名称",
+      "title": "界面上统一显示 FLOT 的名字",
+      "detail": "网页标题、添加到主屏幕的名称、更新公告和书房启动画面都显示 FLOT"
+    },
+    {
+      "type": "content",
+      "category": "feat",
+      "app": "X · 角色圈",
+      "title": "X 应用支持角色圈",
+      "detail": "新增「角色圈」栏目：集中查看角色们发布的动态，内容与朋友圈是同一份数据"
+    },
+    {
+      "type": "fix",
+      "category": "fix",
+      "app": "X · 数据保护",
+      "title": "修复清理缓存时可能误删 X 动态和收藏的问题",
+      "detail": "X 的帖子和收藏不再被当成「缓存」：清理缓存时不会误删"
+    },
+    {
+      "type": "content",
+      "category": "feat",
+      "app": "生活模拟",
+      "title": "新增「生活模拟」应用",
+      "detail": "Miya 的日常生活故事落地成可以进入的应用"
+    },
+    {
+      "type": "content",
+      "category": "feat",
+      "app": "Miya 手机",
+      "title": "Miya 的手机新增一批日常应用",
+      "detail": "深入 Miya 的手机后，里面新增备忘、待办、健康、云盘、浏览器、外卖、相册等应用"
+    },
+    {
+      "type": "fix",
+      "category": "fix",
+      "app": "快穿局 · 转盘",
+      "title": "转盘结果即时保存，中途退出不再丢金币",
+      "detail": "转盘开转的一瞬间结果就已保存，中途切换页签或退出应用都不会丢金币"
+    },
+    {
+      "type": "fix",
+      "category": "fix",
+      "app": "音乐 · 在线歌单",
+      "title": "在线歌单播放失败时显示真实原因",
+      "detail": "在线歌单里的歌播放失败时，不再假装播放成功，会显示真实的失败原因"
     }
   ]
 }

@@ -30,6 +30,8 @@ export type ActiveCall = {
      * 同一会话挂断后再拨时强制重挂组件，不沿用上一次的通话中状态。
      */
     callId: string;
+    /** 本次通话开始时间（灵动岛显示通话时长） */
+    startedAt: number;
 };
 
 let activeCall: ActiveCall | null = null;
@@ -74,6 +76,7 @@ export function startCall(input: {
         ...input,
         minimized: false,
         callId: `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        startedAt: Date.now(),
     };
     emit();
 }

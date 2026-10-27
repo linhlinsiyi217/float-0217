@@ -73,7 +73,7 @@ export function KuaichuanApp({ onClose }: { onClose: () => void }) {
     return (
         <div className="kc-app">
             <header className="kc-header">
-                <button type="button" className="kc-icon-btn" onClick={onClose} aria-label="关闭">
+                <button type="button" className="kc-icon-btn" onClick={onClose} aria-label="返回">
                     <ChevronLeft size={20} strokeWidth={1.8} />
                 </button>
                 <div className="kc-header-title">
