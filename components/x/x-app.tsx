@@ -10,9 +10,15 @@ import { CalendarDays, ChevronLeft, ChevronRight, ImagePlus, PenLine } from "luc
 
 import { loadUserIdentities, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
 import { fileToDataUrl, type UserIdentity } from "@/components/settings/user-identity-editor-sheet";
+import { loadCharacters } from "@/lib/character-storage";
+import { loadChatSessions, resolveChatCharacterAvatar } from "@/lib/chat-storage";
+import { hydrateMomentsStorage, loadMomentPosts, loadAllMomentComments, loadMomentComments, addMomentComment, toggleMomentLike } from "@/lib/moments-storage";
+import type { MomentComment, MomentPost } from "@/lib/moments-types";
 import {
+  defaultXHandle,
   formatXNumber,
   formatXTime,
+  isPostBookmarkedBy,
   isPostLikedBy,
   loadXState,
   makeXPostId,
@@ -22,9 +28,10 @@ import {
   resolveXProfile,
   saveXState,
   stripXAt,
+  togglePostBookmark,
   togglePostLike,
 } from "@/lib/x-storage";
-import type { XPost, XProfile, XState } from "@/lib/x-types";
+import type { XPost, XPostComment, XProfile, XState } from "@/lib/x-types";
 
 type XAppProps = {
   onClose: () => void;
@@ -120,6 +127,22 @@ function renderXContent(content: string) {
   });
 }
 
+/** G14 活人感：由最后聊天时间派生在线文案（纯派生，不落库） */
+function charActiveLabel(updatedAtIso: string): string {
+  const diff = Date.now() - new Date(updatedAtIso).getTime();
+  if (diff < 2 * 60_000) return "刚刚活跃";
+  if (diff < 60 * 60_000) return `${Math.floor(diff / 60_000)} 分钟前活跃`;
+  if (diff < 24 * 60 * 60_000) return `${Math.floor(diff / 3_600_000)} 小时前活跃`;
+  return `${Math.floor(diff / 86_400_000)} 天前活跃`;
+}
+
+/** 朋友圈评论作者显示名（角色/用户/NPC 三种来源，名字落点不同） */
+function momentCommentAuthorLabel(comment: MomentComment, charMeta: Record<string, { name: string }>): string {
+  if (comment.authorType === "character") return charMeta[comment.authorId]?.name || "角色";
+  if (comment.authorType === "npc") return comment.authorName || "路人";
+  return comment.authorName || "我";
+}
+
 function XAvatar({ name, avatarUrl, className }: { name: string; avatarUrl?: string; className?: string }) {
   if (avatarUrl) {
     return <img className={className} src={avatarUrl} alt={name} />;
@@ -138,16 +161,8 @@ const BOTTOM_BAR_ITEMS = [
     defaultSvg: <svg viewBox="0 0 24 24"><g><path d="M10.25 3.75c-3.59 0-6.5 2.91-6.5 6.5s2.91 6.5 6.5 6.5c1.795 0 3.419-.726 4.596-1.904 1.178-1.177 1.904-2.801 1.904-4.596 0-3.59-2.91-6.5-6.5-6.5zm-8.5 6.5c0-4.694 3.806-8.5 8.5-8.5s8.5 3.806 8.5 8.5c0 1.986-.682 3.815-1.824 5.262l4.781 4.781-1.414 1.414-4.781-4.781c-1.447 1.142-3.276 1.824-5.262 1.824-4.694 0-8.5-3.806-8.5-8.5z" /></g></svg>,
     activeSvg: null,
   },
-  {
-    id: "notifications",
-    defaultSvg: <svg viewBox="0 0 24 24"><g><path d="M19.993 9.042C19.48 5.017 16.054 2 11.996 2s-7.49 3.021-7.999 7.051L2.866 18H7.1c.463 2.282 2.481 4 4.9 4s4.435-1.718 4.9-4h4.236l-1.143-8.958zM12 20c-1.306 0-2.417-.835-2.829-2h5.658c-.412 1.165-1.523 2-2.829 2zm-6.866-4l.847-6.698C6.364 6.272 8.941 4 11.996 4s5.627 2.268 6.013 5.295L18.858 16H5.134z" /></g></svg>,
-    activeSvg: null,
-  },
-  {
-    id: "messages",
-    defaultSvg: <svg viewBox="0 0 24 24"><g><path d="M1.998 5.5c0-1.381 1.119-2.5 2.5-2.5h15c1.381 0 2.5 1.119 2.5 2.5v13c0 1.381-1.119 2.5-2.5 2.5h-15c-1.381 0-2.5-1.119-2.5-2.5v-13zm2.5-.5c-.276 0-.5.224-.5.5v2.764l8 5.333 8-5.333V5.5c0-.276-.224-.5-.5-.5h-15zm15.5 5.463l-8 5.334-8-5.334V18.5c0 .276.224.5.5.5h15c.276 0 .5-.224.5-.5v-8.037z" /></g></svg>,
-    activeSvg: null,
-  },
+  // G14：notifications/messages 是 wanwan 迁移残留的摆设按钮（点击只切高亮、
+  // 没有真实页面与数据），按「所有按钮必须有真实点击逻辑」移除，底部栏只留首页与搜索。
 ] as const;
 
 export function XApp({ onClose, onNotice }: XAppProps) {
@@ -156,7 +171,6 @@ export function XApp({ onClose, onNotice }: XAppProps) {
   const [page, setPage] = useState<XPage>("feed");
   const [loginReturnToProfile, setLoginReturnToProfile] = useState(false);
   const [composeText, setComposeText] = useState("");
-  const [activeTab, setActiveTab] = useState<"forYou" | "following">("forYou");
   const [bottomTab, setBottomTab] = useState<string>("home");
   const [draft, setDraft] = useState<{ backgroundImage: string; avatarUrl: string; name: string; handle: string; joinYear: string; joinMonth: string; following: string; followers: string } | null>(null);
 
@@ -312,7 +326,228 @@ export function XApp({ onClose, onNotice }: XAppProps) {
   const swipeBackToFeed = useEdgeSwipeBack(() => setPage("feed"));
   const feedSwipe = useEdgeSwipeBack(onClose);
 
-  const feedVisible = posts.length > 0;
+  // ═══════════ G14：角色圈（活人感）═══════════
+  // 数据全部只读复用统一数据源：动态来自朋友圈（moments-storage），在线状态从
+  // 聊天会话的最后活跃时间纯派生，点赞/评论写回朋友圈同一份数据——不建第二套数据。
+
+  const [activeTab, setActiveTab] = useState<"forYou" | "following" | "characters">("forYou");
+  const [charPosts, setCharPosts] = useState<MomentPost[]>([]);
+  const [charMeta, setCharMeta] = useState<Record<string, { name: string; avatarUrl: string; lastActiveIso: string | null }>>({});
+  const [momentCommentLists, setMomentCommentLists] = useState<Record<string, MomentComment[]>>({});
+  const [momentCommentCounts, setMomentCommentCounts] = useState<Record<string, number>>({});
+  const [openCommentId, setOpenCommentId] = useState<string | null>(null);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
+
+  const refreshCharPosts = useCallback(() => {
+    void hydrateMomentsStorage().then(() => {
+      setCharPosts(loadMomentPosts().filter(p => p.authorType === "character"));
+      // 顺带把每条动态的评论数统计出来（评论和朋友圈共用同一数据源）
+      const counts: Record<string, number> = {};
+      for (const comment of loadAllMomentComments()) {
+        counts[comment.postId] = (counts[comment.postId] || 0) + 1;
+      }
+      setMomentCommentCounts(counts);
+    });
+  }, []);
+
+  const refreshCharMeta = useCallback(() => {
+    // 每个角色最新会话时间 = 活人感的唯一数据源；没有会话就不显示在线状态
+    const latestByContact = new Map<string, string>();
+    for (const session of loadChatSessions()) {
+      const prev = latestByContact.get(session.contactId);
+      if (!prev || session.updatedAt > prev) latestByContact.set(session.contactId, session.updatedAt);
+    }
+    const meta: Record<string, { name: string; avatarUrl: string; lastActiveIso: string | null }> = {};
+    for (const character of loadCharacters()) {
+      meta[character.id] = {
+        name: character.name,
+        avatarUrl: resolveChatCharacterAvatar(character),
+        lastActiveIso: latestByContact.get(character.id) || null,
+      };
+    }
+    setCharMeta(meta);
+  }, []);
+
+  useEffect(() => {
+    refreshCharPosts();
+    refreshCharMeta();
+  }, [refreshCharPosts, refreshCharMeta]);
+
+  // 切到角色圈时刷新一次（聊天/朋友圈数据可能在 X 外发生了变化）
+  useEffect(() => {
+    if (activeTab === "characters") {
+      refreshCharPosts();
+      refreshCharMeta();
+      setMomentCommentLists({});
+      setOpenCommentId(null);
+    }
+  }, [activeTab, refreshCharPosts, refreshCharMeta]);
+
+  const charPostsVisible = useMemo(
+    () =>
+      [...charPosts]
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .filter(p => charMeta[p.authorId]),
+    [charPosts, charMeta]
+  );
+
+  // ═══════════ G14：搜索真实化 + 两个时间线 tab 用真实数据区分 ═══════════
+  // 「正在跟随」= 你创建的身份发的帖（authorKind === "identity"）；
+  // 「为你推荐」= 全部帖子。搜索按关键词过滤当前 tab 的列表（空关键词 = 不过滤）。
+  const keyword = searchText.trim().toLowerCase();
+  const matchedPosts = useMemo(() => {
+    const base = activeTab === "following" ? posts.filter(p => p.authorKind === "identity") : posts;
+    if (!keyword) return base;
+    return base.filter(p =>
+      p.name.toLowerCase().includes(keyword) ||
+      p.handle.toLowerCase().includes(keyword) ||
+      p.content.toLowerCase().includes(keyword)
+    );
+  }, [activeTab, keyword, posts]);
+
+  const matchedCharPosts = useMemo(() => {
+    if (!keyword) return charPostsVisible;
+    return charPostsVisible.filter(p =>
+      (charMeta[p.authorId]?.name || "").toLowerCase().includes(keyword) ||
+      p.content.toLowerCase().includes(keyword)
+    );
+  }, [charMeta, charPostsVisible, keyword]);
+
+  const toggleCharLike = useCallback(
+    (post: MomentPost) => {
+      if (!sessionIdentity) return;
+      // 写回朋友圈同一数据源：在 X 里点的赞，朋友圈里也看得见
+      toggleMomentLike(post.id, "user", sessionIdentity.id);
+      refreshCharPosts();
+    },
+    [refreshCharPosts, sessionIdentity]
+  );
+
+  const openMomentComments = useCallback(
+    (postId: string) => {
+      setMomentCommentLists(prev => ({ ...prev, [postId]: loadMomentComments(postId) }));
+    },
+    []
+  );
+
+  const sendMomentComment = useCallback(
+    (postId: string, text: string) => {
+      const content = text.trim();
+      if (!content || !sessionIdentity) return;
+      addMomentComment({
+        postId,
+        authorType: "user",
+        authorId: sessionIdentity.id,
+        authorName: profile?.name || sessionIdentity.name,
+        content,
+      });
+      setMomentCommentLists(prev => ({ ...prev, [postId]: loadMomentComments(postId) }));
+      setCommentDraft("");
+    },
+    [profile, sessionIdentity]
+  );
+
+  const retweetMoment = useCallback(
+    (post: MomentPost) => {
+      if (!profile || !sessionIdentity) return;
+      const author = charMeta[post.authorId];
+      const excerpt = post.content.length > 80 ? `${post.content.slice(0, 80)}…` : post.content;
+      const quote: XPost = {
+        id: makeXPostId(),
+        authorKind: "identity",
+        authorIdentityId: sessionIdentity.id,
+        name: profile.name,
+        handle: profile.handle,
+        avatarUrl: profile.avatarUrl || "",
+        content: `转发 @${author?.name || "角色"}：${excerpt}`,
+        createdAt: Date.now(),
+        comments: 0,
+        retweets: 0,
+        likes: 0,
+        views: 0,
+      };
+      persist({ ...state, posts: [...state.posts, quote] });
+      onNotice?.(`已把 @${author?.name || "角色"} 的动态转发到时间线`);
+    },
+    [charMeta, onNotice, persist, profile, sessionIdentity, state]
+  );
+
+  // ═══════════ G14：本机帖子交互真实化 ═══════════
+  const toggleBookmark = useCallback(
+    (post: XPost) => {
+      if (!sessionIdentity) return;
+      const next = togglePostBookmark(state, sessionIdentity.id, post.id);
+      persist(next);
+      onNotice?.(isPostBookmarkedBy(next, sessionIdentity.id, post.id) ? "已收藏" : "已取消收藏");
+    },
+    [onNotice, persist, sessionIdentity, state]
+  );
+
+  const sendPostComment = useCallback(
+    (post: XPost, text: string) => {
+      const content = text.trim();
+      if (!content || !profile) return;
+      const comment: XPostComment = { id: makeXPostId(), name: profile.name, text: content, createdAt: Date.now() };
+      persist({
+        ...state,
+        posts: state.posts.map(p =>
+          p.id === post.id
+            ? { ...p, commentsData: [...(p.commentsData || []), comment], comments: p.comments + 1 }
+            : p
+        ),
+      });
+      setCommentDraft("");
+    },
+    [persist, profile, state]
+  );
+
+  const retweetPost = useCallback(
+    (post: XPost) => {
+      if (!profile || !sessionIdentity) return;
+      const excerpt = post.content.length > 80 ? `${post.content.slice(0, 80)}…` : post.content;
+      const quote: XPost = {
+        id: makeXPostId(),
+        authorKind: "identity",
+        authorIdentityId: sessionIdentity.id,
+        name: profile.name,
+        handle: profile.handle,
+        avatarUrl: profile.avatarUrl || "",
+        content: `转发 @${post.name}：${excerpt}`,
+        createdAt: Date.now(),
+        comments: 0,
+        retweets: 0,
+        likes: 0,
+        views: 0,
+      };
+      persist({
+        ...state,
+        posts: [...state.posts, quote, ...state.posts.map(p => (p.id === post.id ? { ...p, retweets: p.retweets + 1 } : p))],
+      });
+      onNotice?.(`已转发 @${post.name} 的帖子`);
+    },
+    [onNotice, persist, profile, sessionIdentity, state]
+  );
+
+  const sharePost = useCallback(
+    async (post: XPost) => {
+      const text = `${post.name}（@${post.handle}）：${post.content}`;
+      try {
+        if (navigator.share) {
+          await navigator.share({ text });
+        } else {
+          await navigator.clipboard.writeText(text);
+          onNotice?.("帖子内容已复制到剪贴板");
+        }
+      } catch {
+        // 用户取消分享不算错误，静默即可
+      }
+    },
+    [onNotice]
+  );
+
+  const formatXIsoTime = useCallback((iso: string) => formatXTime(new Date(iso).getTime() || 0), []);
 
   return (
     <div className="x-app-root">
@@ -398,12 +633,147 @@ export function XApp({ onClose, onNotice }: XAppProps) {
               >
                 正在跟随
               </button>
+              <button
+                className={`x-tab ${activeTab === "characters" ? "active" : ""}`}
+                type="button"
+                onClick={() => setActiveTab("characters")}
+              >
+                角色圈
+              </button>
             </div>
           </div>
 
+          {/* G14：搜索真实化——按关键词过滤当前 tab 的帖子/角色动态 */}
+          {searchOpen && (
+            <div className="x-searchbar">
+              <input
+                className="x-search-input"
+                value={searchText}
+                placeholder="搜索帖子、角色…"
+                onChange={e => setSearchText(e.target.value)}
+                autoFocus
+              />
+              <button
+                className="x-search-cancel"
+                type="button"
+                onClick={() => { setSearchOpen(false); setSearchText(""); setBottomTab("home"); }}
+              >
+                取消
+              </button>
+            </div>
+          )}
+
           <div className="x-feed">
-            {feedVisible ? posts.map(post => {
+            {/* ═══ G14：角色圈——朋友圈动态 + 活人感在线状态，数据全部复用统一数据源 ═══ */}
+            {activeTab === "characters" ? (
+              matchedCharPosts.length > 0 ? matchedCharPosts.map(post => {
+                const meta = charMeta[post.authorId];
+                if (!meta) return null;
+                const liked = sessionIdentity
+                  ? post.likes.some(l => l.authorType === "user" && l.authorId === sessionIdentity.id && !l.chatAccountId)
+                  : false;
+                const comments = momentCommentLists[post.id] || [];
+                const isOpen = openCommentId === post.id;
+                const online = meta.lastActiveIso
+                  ? Date.now() - new Date(meta.lastActiveIso).getTime() < 5 * 60_000
+                  : false;
+                return (
+                  <div className="x-post" key={post.id}>
+                    <div className="x-post-avatar">
+                      <XAvatar name={meta.name} avatarUrl={meta.avatarUrl} />
+                      {online && <span className="x-char-online-dot" aria-label="在线" />}
+                    </div>
+                    <div className="x-post-body">
+                      <div className="x-post-header">
+                        <span className="x-post-name">{meta.name}</span>
+                        <span className="x-post-handle">@{defaultXHandle(meta.name)}</span>
+                        <span className="x-post-dot">·</span>
+                        <span className="x-post-time">{formatXIsoTime(post.createdAt)}</span>
+                        {meta.lastActiveIso && (
+                          <span className={`x-char-active ${online ? "online" : ""}`}>
+                            {online ? "在线" : charActiveLabel(meta.lastActiveIso)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="x-post-content">{renderXContent(post.content)}</div>
+                      {post.photoUrl && <img className="x-char-photo" src={post.photoUrl} alt="动态配图" />}
+                      <div className="x-post-actions">
+                        <button
+                          className="x-post-action comment"
+                          type="button"
+                          aria-expanded={isOpen ? "true" : undefined}
+                          onClick={() => {
+                            if (isOpen) {
+                              setOpenCommentId(null);
+                            } else {
+                              setOpenCommentId(post.id);
+                              setCommentDraft("");
+                              openMomentComments(post.id);
+                            }
+                          }}
+                        >
+                          {POST_ACTION_ICONS.comment}
+                          <span>{formatXNumber(momentCommentCounts[post.id] || 0)}</span>
+                        </button>
+                        <button className="x-post-action retweet" type="button" onClick={() => retweetMoment(post)}>
+                          {POST_ACTION_ICONS.retweet}
+                          <span>转发</span>
+                        </button>
+                        <button
+                          className={`x-post-action like ${liked ? "liked" : ""}`}
+                          type="button"
+                          onClick={() => toggleCharLike(post)}
+                        >
+                          <XHeartSvg solid={liked} />
+                          <span>{formatXNumber(post.likes.length)}</span>
+                        </button>
+                      </div>
+                      {isOpen && (
+                        <div className="x-comment-panel">
+                          <div className="x-comment-input-row">
+                            <input
+                              className="x-comment-input"
+                              value={commentDraft}
+                              placeholder={`评论 ${meta.name} 的动态…`}
+                              onChange={e => setCommentDraft(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === "Enter") sendMomentComment(post.id, commentDraft);
+                              }}
+                            />
+                            <button className="x-comment-send" type="button" onClick={() => sendMomentComment(post.id, commentDraft)}>
+                              发送
+                            </button>
+                          </div>
+                          {comments.length === 0 ? (
+                            <div className="x-comment-empty">还没有评论，来说第一句</div>
+                          ) : (
+                            comments.map(comment => (
+                              <div className="x-comment-item" key={comment.id}>
+                                <span className="x-comment-author">{momentCommentAuthorLabel(comment, charMeta)}</span>
+                                <span className="x-comment-text">{comment.content}</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              }) : (
+                keyword ? (
+                  <div className="x-feed-empty">没有匹配「{searchText.trim()}」的动态</div>
+                ) : (
+                  <div className="x-feed-empty">
+                    角色还没有动态
+                    <br />
+                    <span>先陪 TA 聊聊天，或看看朋友圈</span>
+                  </div>
+                )
+              )
+            ) : matchedPosts.length > 0 ? matchedPosts.map(post => {
               const liked = isPostLikedBy(state, sessionIdentity.id, post.id);
+              const bookmarked = isPostBookmarkedBy(state, sessionIdentity.id, post.id);
+              const isOpen = openCommentId === post.id;
               return (
                 <div className="x-post" key={post.id}>
                   <div className="x-post-avatar">
@@ -422,11 +792,19 @@ export function XApp({ onClose, onNotice }: XAppProps) {
                     </div>
                     <div className="x-post-content">{renderXContent(post.content)}</div>
                     <div className="x-post-actions">
-                      <button className="x-post-action comment" type="button">
+                      <button
+                        className="x-post-action comment"
+                        type="button"
+                        aria-expanded={isOpen ? "true" : undefined}
+                        onClick={() => {
+                          setOpenCommentId(isOpen ? null : post.id);
+                          if (!isOpen) setCommentDraft("");
+                        }}
+                      >
                         {POST_ACTION_ICONS.comment}
                         <span>{formatXNumber(post.comments)}</span>
                       </button>
-                      <button className="x-post-action retweet" type="button">
+                      <button className="x-post-action retweet" type="button" onClick={() => retweetPost(post)}>
                         {POST_ACTION_ICONS.retweet}
                         <span>{formatXNumber(post.retweets)}</span>
                       </button>
@@ -438,22 +816,66 @@ export function XApp({ onClose, onNotice }: XAppProps) {
                         <XHeartSvg solid={liked} />
                         <span>{formatXNumber(post.likes)}</span>
                       </button>
-                      <button className="x-post-action views" type="button">
+                      {/* 浏览量是展示数据，不是操作——改成非按钮，避免假交互 */}
+                      <span className="x-post-action views" title="浏览量">
                         {POST_ACTION_ICONS.views}
                         <span>{formatXNumber(post.views)}</span>
-                      </button>
-                      <button className="x-post-action bookmark" type="button">
+                      </span>
+                      <button
+                        className={`x-post-action bookmark ${bookmarked ? "bookmarked" : ""}`}
+                        type="button"
+                        aria-pressed={bookmarked ? "true" : undefined}
+                        onClick={() => toggleBookmark(post)}
+                      >
                         {POST_ACTION_ICONS.bookmark}
                       </button>
-                      <button className="x-post-action share" type="button">
+                      <button className="x-post-action share" type="button" onClick={() => void sharePost(post)}>
                         {POST_ACTION_ICONS.share}
                       </button>
                     </div>
+                    {isOpen && (
+                      <div className="x-comment-panel">
+                        <div className="x-comment-input-row">
+                          <input
+                            className="x-comment-input"
+                            value={commentDraft}
+                            placeholder={`评论 @${post.handle}…`}
+                            onChange={e => setCommentDraft(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === "Enter") sendPostComment(post, commentDraft);
+                            }}
+                          />
+                          <button className="x-comment-send" type="button" onClick={() => sendPostComment(post, commentDraft)}>
+                            发送
+                          </button>
+                        </div>
+                        {(post.commentsData || []).length === 0 ? (
+                          <div className="x-comment-empty">还没有评论，来说第一句</div>
+                        ) : (
+                          (post.commentsData || []).map(comment => (
+                            <div className="x-comment-item" key={comment.id}>
+                              <span className="x-comment-author">{comment.name}</span>
+                              <span className="x-comment-text">{comment.text}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
             }) : (
-              <div className="x-feed-empty">还没有帖子，点右下角发一条</div>
+              keyword ? (
+                <div className="x-feed-empty">没有匹配「{searchText.trim()}」的帖子</div>
+              ) : activeTab === "following" ? (
+                <div className="x-feed-empty">
+                  你关注的人还没有发帖
+                  <br />
+                  <span>点右下角，用你的身份发第一条</span>
+                </div>
+              ) : (
+                <div className="x-feed-empty">还没有帖子，点右下角发一条</div>
+              )
             )}
           </div>
 
@@ -466,7 +888,17 @@ export function XApp({ onClose, onNotice }: XAppProps) {
               <div
                 key={item.id}
                 className={`x-bottombar-item ${bottomTab === item.id ? "active" : ""}`}
-                onClick={() => setBottomTab(item.id)}
+                onClick={() => {
+                  if (item.id === "search") {
+                    // G14：搜索按钮打开搜索框并实时过滤当前 tab
+                    setSearchOpen(true);
+                    setBottomTab("search");
+                  } else {
+                    setSearchOpen(false);
+                    setSearchText("");
+                    setBottomTab("home");
+                  }
+                }}
               >
                 <span className="icon-default">{item.defaultSvg}</span>
                 {item.activeSvg && <span className="icon-active">{item.activeSvg}</span>}

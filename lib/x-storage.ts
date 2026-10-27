@@ -41,6 +41,7 @@ export function emptyXState(): XState {
     posts: seedPosts(),
     likes: {},
     profiles: {},
+    bookmarks: {},
   };
 }
 
@@ -56,6 +57,8 @@ export function loadXState(): XState {
       posts: Array.isArray(parsed.posts) && parsed.posts.length >= 0 ? parsed.posts : seedPosts(),
       likes: parsed.likes && typeof parsed.likes === "object" ? parsed.likes : {},
       profiles: parsed.profiles && typeof parsed.profiles === "object" ? parsed.profiles : {},
+      // 旧存档没有收藏数据时补空表（G14 兼容）
+      bookmarks: parsed.bookmarks && typeof parsed.bookmarks === "object" ? parsed.bookmarks : {},
     };
     if (!state.posts.length) state.posts = seedPosts();
     return state;
@@ -141,6 +144,19 @@ export function resolveXProfile(state: XState, identity: { id: string; name: str
     };
   }
   return defaultXProfile(identity, createdAt);
+}
+
+/** G14：收藏切换——按身份记录；返回切换后的新 XState（调用方负责持久化） */
+export function togglePostBookmark(state: XState, identityId: string | null, postId: string): XState {
+  if (!identityId) return state;
+  const current = state.bookmarks[identityId] || [];
+  const next = current.includes(postId) ? current.filter(id => id !== postId) : [...current, postId];
+  return { ...state, bookmarks: { ...state.bookmarks, [identityId]: next } };
+}
+
+export function isPostBookmarkedBy(state: XState, identityId: string | null, postId: string): boolean {
+  if (!identityId) return false;
+  return (state.bookmarks[identityId] || []).includes(postId);
 }
 
 export function isPostLikedBy(state: XState, identityId: string | null, postId: string): boolean {
