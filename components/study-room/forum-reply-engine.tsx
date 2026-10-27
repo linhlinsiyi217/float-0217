@@ -8,7 +8,8 @@ import { Loader2, MessageSquare, RotateCw, Square } from "lucide-react";
 
 import { loadUserIdentities } from "@/lib/settings-storage";
 import { avatarDataUrl } from "@/lib/study-room/npc-avatar";
-import { addComment, loadForum, resolveForumApiConfig, toggleLike, type ForumPost, type ForumState, type PendingReply } from "@/lib/study-room/forum";
+import { addComment, findCharacterIdOf, loadForum, resolveForumApiConfig, toggleLike, type ForumPost, type ForumState, type PendingReply } from "@/lib/study-room/forum";
+import { recordStudyRoomForumEvent } from "@/lib/study-room/forum-memory";
 import {
   applyComment,
   clearPostReplies,
@@ -116,6 +117,21 @@ export function useForumReplyEngine({
         if (result.status === "ok") {
           const { body, spoiler } = result;
           mutate((prev) => applyComment(prev, reply, body, spoiler));
+          // G15「书房点评—角色记忆」：这位书友关联真实角色时，把这次回帖写进角色的
+          // 记忆投影；生成失败不记，未关联角色的普通书友不记。
+          const characterId = findCharacterIdOf(npc);
+          if (characterId) {
+            recordStudyRoomForumEvent({
+              characterId,
+              replyId: reply.id,
+              postId: post.id,
+              postKind: post.kind,
+              postTitle: post.title || post.bookTitle || "",
+              npcId: npc.id,
+              npcName: npc.nickname,
+              replyText: body,
+            });
+          }
           setReplyIssue((issue) => (issue?.kind === "no-api" ? null : issue));
         } else if (result.status === "no-api") {
           setReplyIssue({ kind: "no-api" });

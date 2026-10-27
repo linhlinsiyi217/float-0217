@@ -38,6 +38,7 @@ import { hydrateVnStorage } from "@/lib/vn-storage";
 import { hydrateSettingsDb } from "@/lib/settings-db";
 import { hydrateDwellingStorage } from "@/lib/dwelling-storage";
 import { hydrateCheckPhoneStorage } from "@/lib/checkphone-storage";
+import { ensureMiyaDeepAppsInstalled } from "@/lib/miya-deep-apps";
 import {
   DOCK_DEFAULT,
   ICONS,
@@ -240,6 +241,14 @@ const AppMarketApp = dynamic(
 );
 const CustomAppRunner = dynamic(
   () => import("@/components/app-market/custom-app-runner").then(m => ({ default: m.CustomAppRunner })),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const LifesimApp = dynamic(
+  () => import("@/components/lifesim/lifesim-app"),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const KuaichuanApp = dynamic(
+  () => import("@/components/kuaichuan/kuaichuan-app").then(m => ({ default: m.KuaichuanApp })),
   { ssr: false, loading: LazyAppPaneLoading }
 );
 
@@ -1817,6 +1826,10 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
       }
       setLayout(createDefaultDesktopIconLayout(hydratedWidgets));
       setDesktopReady(true);
+    }).then(() => {
+      // G12：首启把 Miya 深入 App（备忘/待办/健康/云盘/浏览器/外卖/相册）
+      // 按自定义 App 格式装好并摆上桌面；已装过的自动跳过，可正常卸载。
+      ensureMiyaDeepAppsInstalled();
     });
   }, []);
 
@@ -4649,6 +4662,14 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
     if (activeApp === "mixology") {
       return <MixologyApp onClose={() => setActiveApp(null)} />;
+    }
+
+    if (activeApp === "lifesim") {
+      return <LifesimApp onClose={() => setActiveApp(null)} />;
+    }
+
+    if (activeApp === "kuaichuan") {
+      return <KuaichuanApp onClose={() => setActiveApp(null)} />;
     }
 
     if (activeApp === "appmarket") {

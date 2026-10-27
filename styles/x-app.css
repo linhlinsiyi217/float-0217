@@ -154,6 +154,49 @@
   fill: var(--x-sub);
 }
 
+/* ===== G14 搜索栏（真实过滤当前 tab） ===== */
+.x-app-root .x-searchbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--x-border);
+  background: var(--x-bg);
+}
+
+.x-app-root .x-search-input {
+  flex: 1;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid var(--x-border);
+  background: var(--x-hover, rgba(231, 233, 234, 0.08));
+  color: var(--x-text);
+  padding: 0 16px;
+  font-size: 15px;
+  min-width: 0;
+}
+
+.x-app-root .x-search-input:focus {
+  outline: none;
+  border-color: var(--x-accent);
+}
+
+.x-app-root .x-search-input::placeholder {
+  color: var(--x-sub);
+}
+
+.x-app-root .x-search-cancel {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  color: var(--x-accent);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* ===== 帖子列表 ===== */
 .x-app-root .x-feed {
   flex: 1;
@@ -188,6 +231,7 @@
   overflow: hidden;
   flex-shrink: 0;
   margin-right: 12px;
+  position: relative; /* G14：角色头像右下角的在线状态小点以它为基准 */
 }
 
 .x-app-root .x-post-avatar img {
@@ -318,6 +362,134 @@
 .x-app-root .x-post-action.bookmark:active,
 .x-app-root .x-post-action.share:active {
   color: var(--x-accent);
+}
+
+/* 浏览量改成非按钮展示（G14：展示数据不做假交互） */
+.x-app-root .x-post-action.views {
+  cursor: default;
+}
+
+/* 收藏高亮（G14：收藏按钮真实化） */
+.x-app-root .x-post-action.bookmark.bookmarked {
+  color: #ffb800;
+}
+
+/* ===== G14 角色圈：活人感徽章 / 动态配图 / 在线点 ===== */
+.x-app-root .x-char-active {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--x-sub);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.x-app-root .x-char-active.online {
+  color: #00ba7c;
+}
+
+.x-app-root .x-char-active.online::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #00ba7c;
+}
+
+.x-char-online-dot {
+  position: absolute;
+  /* .x-post-avatar 有 overflow:hidden，小点完全收在头像右下角内 */
+  right: 0;
+  bottom: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #00ba7c;
+  border: 2px solid var(--x-bg, #fff);
+}
+
+.x-app-root .x-char-photo {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  max-height: 320px;
+  object-fit: cover;
+  border-radius: 16px;
+  margin-top: 10px;
+  border: 1px solid var(--x-border);
+}
+
+/* ===== G14 评论区（本机帖 + 角色圈共用） ===== */
+.x-app-root .x-comment-panel {
+  margin-top: 10px;
+  border-top: 1px solid var(--x-border);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.x-app-root .x-comment-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.x-app-root .x-comment-input {
+  flex: 1;
+  height: 34px;
+  border: 1px solid var(--x-border);
+  border-radius: 999px;
+  padding: 0 14px;
+  font-size: 13px;
+  color: var(--x-text);
+  background: var(--x-hover, rgba(0, 0, 0, 0.03));
+}
+
+.x-app-root .x-comment-input:focus {
+  outline: none;
+  border-color: var(--x-accent);
+}
+
+.x-app-root .x-comment-send {
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: var(--x-accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.x-app-root .x-comment-send:active {
+  opacity: 0.85;
+}
+
+.x-app-root .x-comment-empty {
+  font-size: 12px;
+  color: var(--x-sub);
+  padding: 2px 2px 0;
+}
+
+.x-app-root .x-comment-item {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.x-app-root .x-comment-author {
+  flex-shrink: 0;
+  font-weight: 700;
+  color: var(--x-text);
+}
+
+.x-app-root .x-comment-text {
+  color: var(--x-text);
+  overflow-wrap: anywhere;
 }
 
 /* ===== 头像占位 ===== */
