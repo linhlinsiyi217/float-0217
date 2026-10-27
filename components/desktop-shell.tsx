@@ -20,33 +20,13 @@ import MiniAppWindow from "@/components/music/mini-app-window";
 import { PhoneCalendarApp } from "@/components/calendar-app";
 import { PhoneQaApp } from "@/components/phone-qa-app";
 import { ChatPluginPageBoundary } from "@/components/chat/chat-plugin-page-boundary";
-import { ResourceHubApp } from "@/components/resource-hub/resource-hub-app";
 import "@/lib/qa-error-log";
-import { RealityBridgeApp } from "@/components/reality-bridge-app";
 import { REALITY_BRIDGE_APP_EVENT_NAME, REALITY_BRIDGE_DATA_EVENT } from "@/lib/reality-bridge/types";
-import { DiaryApp } from "@/components/diary/diary-app";
-import { XiaohongshuApp } from "@/components/xiaohongshu/xiaohongshu-app";
-import { XApp } from "@/components/x/x-app";
-import { StoryApp } from "@/components/story/story-app";
-import { VnApp } from "@/components/vn/vn-app";
-import StudyRoomApp from "@/components/study-room/study-room-app";
-import MapApp from "@/components/map/map-app";
-import { DwellingApp } from "@/components/dwelling/dwelling-app";
 import { MascotFloat } from "@/components/mascot/mascot-float";
 import { PerceptionBootstrap } from "@/components/perception/perception-bootstrap";
 import { MascotPreviewHost } from "@/components/mascot/mascot-preview-host";
 import { useMusicControlsOptional } from "@/lib/music-context";
 import { PhoneResourcesApp, type ResourceSubPage } from "@/components/phone-resources-app";
-import { CheckPhoneApp } from "@/components/checkphone/checkphone-app";
-import { ShoppingApp } from "@/components/shopping/shopping-app";
-import { GameHubApp } from "@/components/game/game-hub-app";
-import { MixologyApp } from "@/components/mixology/mixology-app";
-import LifesimApp from "@/components/lifesim/lifesim-app";
-import { KuaichuanApp } from "@/components/kuaichuan/kuaichuan-app";
-import InterviewMagazineApp from "@/components/interview/interview-magazine-app";
-import { CoCreateApp } from "@/components/cocreate/cocreate-app";
-import { AppMarketApp } from "@/components/app-market/app-market-app";
-import { CustomAppRunner } from "@/components/app-market/custom-app-runner";
 import { CustomAppForegroundBoundary } from "@/components/app-market/custom-app-failure";
 import { hydrateKvDb, kvGet, kvSet, kvRemove, kvKeysWithPrefix } from "@/lib/kv-db";
 import { uninstallApp, restoreApp, loadUninstalledApps, isAppUninstalled, hasDataRule, dataLabelFor } from "@/lib/app-uninstall";
@@ -159,6 +139,118 @@ import type { ChatSharePayload } from "@/lib/chat-share";
 import { completePendingMcpOAuthCallback } from "@/lib/tool-executor";
 import { LayoutGrid, LoaderCircle, RefreshCw } from "lucide-react";
 import { PhoneLockScreen } from "@/components/phone-lock-screen";
+import dynamic from "next/dynamic";
+
+// ── 懒加载（G9 性能优化）─────────────────────────────────────────
+// 下面这些重组件 App 只在打开时才渲染，但静态导入会让桌面首屏 bundle
+// 背上全部 App 的代码（剧情引擎、书房、小红书、X、地图……加起来几 MB）。
+// next/dynamic 把每个 App 拆成独立 chunk，首次打开时才下载；打开过一次
+// 后组件常驻内存，行为与静态导入完全一致（保活的三个 App 也不例外，
+// dynamic 返回的组件首次渲染后实例不会卸载）。
+// 命名导出的模块用 .then 取 default；默认导出的直接 import。
+function LazyAppPaneLoading() {
+  return (
+    <div
+      style={{
+        display: "flex",
+        height: "100%",
+        minHeight: 200,
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        color: "#9a8a7a",
+        fontSize: 13,
+      }}
+    >
+      <LoaderCircle size={16} className="animate-spin" aria-hidden />
+      <span>正在打开…</span>
+    </div>
+  );
+}
+
+// 注意：next/dynamic 的 options 必须是内联对象字面量（SWC 约束），
+// 不能提取成共享变量，所以下面每个调用都带一份相同字面量。
+
+const ResourceHubApp = dynamic(
+  () => import("@/components/resource-hub/resource-hub-app").then(m => ({ default: m.ResourceHubApp })),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const RealityBridgeApp = dynamic(
+  () => import("@/components/reality-bridge-app").then(m => ({ default: m.RealityBridgeApp })),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const DiaryApp = dynamic(
+  () => import("@/components/diary/diary-app").then(m => ({ default: m.DiaryApp })),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const XiaohongshuApp = dynamic(
+  () => import("@/components/xiaohongshu/xiaohongshu-app").then(m => ({ default: m.XiaohongshuApp })),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const XApp = dynamic(
+  () => import("@/components/x/x-app").then(m => ({ default: m.XApp })),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const StoryApp = dynamic(
+  () => import("@/components/story/story-app").then(m => ({ default: m.StoryApp })),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const VnApp = dynamic(
+  () => import("@/components/vn/vn-app").then(m => ({ default: m.VnApp })),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const StudyRoomApp = dynamic(
+  () => import("@/components/study-room/study-room-app"),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const MapApp = dynamic(
+  () => import("@/components/map/map-app"),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const DwellingApp = dynamic(
+  () => import("@/components/dwelling/dwelling-app").then(m => ({ default: m.DwellingApp })),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const CheckPhoneApp = dynamic(
+  () => import("@/components/checkphone/checkphone-app").then(m => ({ default: m.CheckPhoneApp })),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const ShoppingApp = dynamic(
+  () => import("@/components/shopping/shopping-app").then(m => ({ default: m.ShoppingApp })),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const GameHubApp = dynamic(
+  () => import("@/components/game/game-hub-app").then(m => ({ default: m.GameHubApp })),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const MixologyApp = dynamic(
+  () => import("@/components/mixology/mixology-app").then(m => ({ default: m.MixologyApp })),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const InterviewMagazineApp = dynamic(
+  () => import("@/components/interview/interview-magazine-app"),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const CoCreateApp = dynamic(
+  () => import("@/components/cocreate/cocreate-app").then(m => ({ default: m.CoCreateApp })),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const AppMarketApp = dynamic(
+  () => import("@/components/app-market/app-market-app").then(m => ({ default: m.AppMarketApp })),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const CustomAppRunner = dynamic(
+  () => import("@/components/app-market/custom-app-runner").then(m => ({ default: m.CustomAppRunner })),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const LifesimApp = dynamic(
+  () => import("@/components/lifesim/lifesim-app"),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
+const KuaichuanApp = dynamic(
+  () => import("@/components/kuaichuan/kuaichuan-app").then(m => ({ default: m.KuaichuanApp })),
+  { ssr: false, loading: LazyAppPaneLoading }
+);
 
 const EMOJI_FONTS = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla"';
 
@@ -1374,6 +1466,17 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   // ── Edit mode (long-press drag) ──
   const [editMode, setEditMode] = useState(false);
   const [showWidgetPicker, setShowWidgetPicker] = useState(false);
+  // ── 桌面图标网格密度（G9 任务书 4×7 与现有 4×6 的兼容开关）──
+  // 默认 4×6 不动；编辑模式「网格」按钮可切 4×7，第 7 行只有图标可用
+  //（小组件坐标体系仍是 6 行制，widget-types GRID_ROWS 不参与此开关）。
+  const [iconGridRows, setIconGridRows] = useState<6 | 7>(() => (kvGet("desktop.grid.rows.v1") === "7" ? 7 : 6));
+  const toggleIconGridRows = useCallback(() => {
+    setIconGridRows(prev => {
+      const next = prev === 6 ? 7 : 6;
+      kvSet("desktop.grid.rows.v1", String(next));
+      return next;
+    });
+  }, []);
   // ── 应用卸载 ──
   const [uninstallTarget, setUninstallTarget] = useState<{ id: DesktopIconId; label: string; isCustom: boolean } | null>(null);
   const [uninstalling, setUninstalling] = useState(false);
@@ -4962,6 +5065,15 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                     <button type="button" className="edit-mode-done" onClick={exitEditMode}>
                       完成
                     </button>
+                    <button
+                      type="button"
+                      className="edit-mode-edit"
+                      style={{ left: 16, top: 108 }}
+                      onPointerDown={e => e.stopPropagation()}
+                      onClick={toggleIconGridRows}
+                    >
+                      网格 {iconGridRows === 7 ? "4×7" : "4×6"}
+                    </button>
                     {loadUninstalledApps().size > 0 && (
                       <button
                         type="button"
@@ -5011,6 +5123,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                               if (pageIndex === 0) iconGridRef.current = el;
                             }}
                             className={`icon-grid icon-grid-explicit icon-grid-${pageKey}`}
+                            data-rows={iconGridRows === 7 ? "7" : undefined}
                             aria-label={pageIndex === 0 ? TEXT.ariaDesktopIcons : undefined}
                             style={
                               slotIconWidth || slotIconHeight || slotRowStep
