@@ -26,7 +26,7 @@ export type MusicState = {
 
 export type MusicActions = {
     playTrack: (track: MusicTrack) => void;
-    playUrl: (url: string, track: MusicTrack) => void; // play from URL (online streams)
+    playUrl: (url: string, track: MusicTrack) => Promise<boolean>; // play from URL (online streams); false = 启动失败（链接失效/被拦截）
     pause: () => void;
     resume: () => void;
     togglePlay: () => void;
@@ -228,16 +228,16 @@ export function MusicProvider({ children }: { children: ReactNode }) {
     }, [loadAndPlay]);
 
     /** Play from a direct URL (for online streaming) */
-    const playUrl = useCallback((url: string, track: MusicTrack) => {
+    const playUrl = useCallback((url: string, track: MusicTrack): Promise<boolean> => {
         const audio = audioRef.current;
-        if (!audio) return;
+        if (!audio) return Promise.resolve(false);
         setFloatDismissed(false);
         cleanupBlobUrl();
         audio.pause();
         audio.src = url;
         setCurrentTrack(track);
         setCurrentTime(0);
-        audio.play().catch(() => {});
+        return audio.play().then(() => true).catch(() => false);
     }, [cleanupBlobUrl]);
 
     const pause = useCallback(() => {
