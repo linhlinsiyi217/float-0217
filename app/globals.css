@@ -30,6 +30,7 @@
 @import "../styles/interview-magazine.css";
 @import "../styles/cocreate.css";
 @import "../styles/qa.css";
+@import "../styles/qa-claude-reference.css";
 @import "../styles/study-room.css";
 @import "../styles/kuaichuan.css";
 @import "../styles/update-log.css";
@@ -51,7 +52,7 @@
   --radius-full: 9999px;
 
   /* 字体大小 (手机 UI 定制尺寸) */
-  --font-size-xs: 12px;  --font-size-sm: 13px;  --font-size-base: 14px;
+  --font-size-xs: 12px;  --font-size-sm: 13px; --font-size-base: 14px;
   --font-size-lg: 17px;  --font-size-xl: 20px;
   --font-size-2xl: 24px; --font-size-3xl: 30px;
 }
