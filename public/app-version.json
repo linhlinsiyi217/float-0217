@@ -27,9 +27,9 @@
       "detail": "影响范围五类 key 固定为 app/global/content/ai/fix，默认色蓝 #3478F6、紫 #7C5CFC、绿 #34C759、橙 #FF9500、红 #FF3B30；标签底色改半透明适配浅色/深色主题；旧「提示词」键自动归入「AI 与提示词」"
     }
   ],
-  "releaseId": "2026-10-22-7-263368d37468e76969215d46768359fa8f8f6acd",
-  "commitSha": "263368d37468e76969215d46768359fa8f8f6acd",
-  "releasedAt": "2026-10-27T04:01:15.449Z",
+  "releaseId": "2026-10-22-7-cecf689cb64b2f08c175c5d3de571f9b36cf6b48",
+  "commitSha": "cecf689cb64b2f08c175c5d3de571f9b36cf6b48",
+  "releasedAt": "2026-10-27T17:45:04.246Z",
   "changelogFile": "/CHANGELOG.md",
   "entries": [
     {
