@@ -27,7 +27,6 @@ const STATE_TEXT: Record<Exclude<UpdateCheckState, "available">, string> = {
 export function UpdateLogPage() {
   const seen = seenSystemReleases();
   const current = SYSTEM_RELEASE_LIST[0];
-  const commit = process.env.NEXT_PUBLIC_BUILD_COMMIT;
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<UpdateCheckState | null>(null);
   const [message, setMessage] = useState("");
@@ -70,8 +69,7 @@ export function UpdateLogPage() {
               点「知道了」后同一次发布不再重复弹。
             </span>
             <span className="menu-desc ts-12 !mt-0">
-              当前版本 {current?.version} · 发布标识 {current?.releaseId}
-              {commit ? ` · 构建 ${commit.slice(0, 7)}` : ""}
+              当前版本 {current?.version} · {current?.date}
             </span>
           </div>
         </div>
@@ -89,7 +87,7 @@ export function UpdateLogPage() {
               {checking
                 ? "正在检查更新…"
                 : result === "available" && remote
-                  ? `发现新版本 ${remote.versionName || remote.webVersion}（${remote.releaseId}）· 重开应用或刷新网页即可加载`
+                  ? `发现新版本 ${remote.versionName || remote.webVersion} · 重开应用或刷新网页即可加载`
                   : result
                     ? message || STATE_TEXT[result as Exclude<UpdateCheckState, "available">]
                     : "手动拉取线上版本清单，与当前部署比对；与更新公告弹窗相互独立"}

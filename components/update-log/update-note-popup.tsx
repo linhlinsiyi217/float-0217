@@ -7,7 +7,6 @@ import {
   CATEGORY_COLOR,
   CATEGORY_LABEL,
   CATEGORY_ORDER,
-  CATEGORY_TINT,
   normalizeUpdateCategory,
   popupEntries,
   releaseHasScope,
@@ -31,13 +30,12 @@ type UpdateNotePopupProps = {
   onHide?: () => void;
 };
 
-/** 紧凑条目：小色标 + 分类文字标签 + 标题，一行内放得下就单行。
- *  标了影响范围的条目用五类小圆点（应用/页面内容/全局/提示词/修复），
- *  老条目保持原来的性质分类（新功能/体验优化/…）。 */
+/** 紧凑条目：分类用高饱和实色标签（新增=绿 / 修复=红 / 优化=蓝）+ 标题 + 所属应用。
+ *  标了影响范围的条目再加一个低饱和的影响范围小标签。 */
 function EntryRow({ entry }: { entry: UpdateEntry }) {
   const category = normalizeUpdateCategory(entry.category);
   return (
-    <li className="updn-row" title={entry.app}>
+    <li className="updn-row">
       <span className="updn-row-top">
         {entry.scope ? (
           <>
@@ -45,23 +43,16 @@ function EntryRow({ entry }: { entry: UpdateEntry }) {
             <span className="updn-tag" style={{ color: SCOPE_COLOR[entry.scope], background: SCOPE_TINT[entry.scope] }}>
               {SCOPE_LABEL[entry.scope]}
             </span>
-            <span className="updn-tag" style={{ color: CATEGORY_COLOR[category], background: CATEGORY_TINT[category] }}>
-              {CATEGORY_LABEL[category]}
-            </span>
           </>
         ) : (
-          <>
-            <i className="updn-dot" style={{ background: CATEGORY_COLOR[category] }} aria-hidden />
-            <span
-              className="updn-tag"
-              style={{ color: CATEGORY_COLOR[category], background: CATEGORY_TINT[category] }}
-            >
-              {CATEGORY_LABEL[category]}
-            </span>
-          </>
+          <i className="updn-dot" style={{ background: CATEGORY_COLOR[category] }} aria-hidden />
         )}
+        <span className="updn-tag updn-tag-solid" style={{ background: CATEGORY_COLOR[category] }}>
+          {CATEGORY_LABEL[category]}
+        </span>
         <span className="updn-row-title">{entry.title}</span>
       </span>
+      <span className="updn-row-app">{entry.app}</span>
     </li>
   );
 }
@@ -163,6 +154,7 @@ export function UpdateNotePopup({ appName, release, onConfirm, onOpenLog, onHide
                         </span>
                         {group.entries.map((entry) => (
                           <div key={entry.id} className="updn-detail-entry">
+                            <span className="updn-detail-app">{entry.app}</span>
                             <span className="updn-detail-title">{entry.title}</span>
                             <ul>
                               {entry.items.map((item, index) => (
@@ -184,6 +176,7 @@ export function UpdateNotePopup({ appName, release, onConfirm, onOpenLog, onHide
                           </span>
                           {entries.map((entry) => (
                             <div key={entry.id} className="updn-detail-entry">
+                              <span className="updn-detail-app">{entry.app}</span>
                               <span className="updn-detail-title">{entry.title}</span>
                               <ul>
                                 {entry.items.map((item, index) => (

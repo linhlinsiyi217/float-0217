@@ -16,8 +16,9 @@ export type RemoteManifest = {
   versionCode: number;
   webVersion: string;
   summary: string;
-  /** 与 app-version.json 的 changes 同构：{ type, title, detail } */
-  entries: Array<{ type: string; title: string; detail: string }>;
+  /** 与 app-version.json 的 changes 同构：{ type, title, detail, category?, app? }。
+   *  category/app 可选：写上后公告分类与所属应用和内置日志同一版保持一致。 */
+  entries: Array<{ type: string; title: string; detail: string; category?: string; app?: string }>;
 };
 
 export type UpdateCheckState = "available" | "latest" | "offline" | "timeout" | "error";
@@ -48,6 +49,8 @@ function toManifest(raw: Record<string, unknown>): RemoteManifest | null {
       type: typeof item.type === "string" ? item.type : "app",
       title: typeof item.title === "string" ? item.title : "",
       detail: typeof item.detail === "string" ? item.detail : "",
+      category: typeof item.category === "string" ? item.category : undefined,
+      app: typeof item.app === "string" ? item.app : undefined,
     }))
     .filter((item) => item.title);
   return {

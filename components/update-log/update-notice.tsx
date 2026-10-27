@@ -15,9 +15,12 @@ import type { Release, UpdateScope } from "@/lib/update-log/types";
 
 const SLOT_OWNER = "system";
 
-/** 把远程清单转成弹窗用的 Release 结构：条目来自 app-version.json 的 changes 数组 */
+/** 把远程清单转成弹窗用的 Release 结构：条目来自 app-version.json 的 changes 数组。
+ *  changes 与内置日志同一版保持同标题同分类（category/app 可选字段缺失时回退默认），
+ *  保证远程路径弹出的内容和设置里的更新日志是同一份发布记录。 */
 function manifestToRelease(manifest: RemoteManifest): Release {
   const scopeKeys: UpdateScope[] = ["app", "content", "global", "ai", "fix"];
+  const categoryKeys = ["feat", "fix", "perf", "tweak", "privacy"] as const;
   return {
     version: manifest.versionName || manifest.webVersion || "",
     releaseId: manifest.releaseId,
@@ -26,9 +29,11 @@ function manifestToRelease(manifest: RemoteManifest): Release {
     summary: manifest.summary,
     entries: manifest.entries.map((item, index) => ({
       id: `remote-${manifest.releaseId}-${index}`,
-      category: "feat",
+      category: categoryKeys.includes(item.category as (typeof categoryKeys)[number])
+        ? (item.category as (typeof categoryKeys)[number])
+        : "feat",
       scope: scopeKeys.includes(item.type as UpdateScope) ? (item.type as UpdateScope) : "app",
-      app: "系统发布",
+      app: item.app || "系统发布",
       title: item.title,
       items: item.detail ? [item.detail] : [],
     })),
@@ -41,8 +46,9 @@ function manifestToRelease(manifest: RemoteManifest): Release {
  *
  * 两条触发路径，互不重复、共用同一个展示位：
  * 1. 内置日志（lib/update-log/system-data.ts，随部署打包）：有未读 releaseId 就弹；
- * 2. 远程清单（/app-version.json，带缓存绕过实时拉取）：远程 releaseId 与本地
- *    已确认的不同就弹——内置数据没换但部署内容变了时也能检测到新版本。
+ * 2. 远程清单（/app-version.json，带缓存绕过实时拉取）：远程版本号与内置日志
+ *    当前版本不同才弹——内置数据没换但线上部署了更新的版本时也能检测到。
+ *    同一版本只算一次发布：远程清单与内置日志版本号相同时，确认过一次就不再弹。
  *
  * 只有点「我知道了」才记录已读；「查看完整日志」和 Esc 只是暂时收起，下次打开还会弹。
  * 确认时把同批的书房版本一起记为已读，进书房不会再弹一遍同样的内容。
@@ -59,9 +65,12 @@ export function UpdateNotice() {
     const runRemoteCheck = async () => {
       const result = await checkForUpdate();
       if (cancelled || result.state !== "available") return;
-      // 远程 releaseId 与内置日志当前 releaseId 相同：内容就是用户刚确认过的那份，
-      // 不再重复弹（内置确认已覆盖）。
-      if (result.manifest.releaseId === latestSystemRelease().releaseId) {
+      const latest = latestSystemRelease();
+      // 远程清单描述的就是内置日志当前这一版（版本号相同）：内容是同一份发布记录，
+      // releaseId 只是「同一次发布」的不同标识，用户确认过内置公告就不再重复弹。
+      const sameVersion =
+        result.manifest.versionName === latest.version || result.manifest.webVersion === latest.version;
+      if (result.manifest.releaseId === latest.releaseId || (sameVersion && hasSeenSystemRelease(latest.releaseId))) {
         acknowledgeRemoteRelease(result.manifest.releaseId);
         return;
       }

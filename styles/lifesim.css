@@ -25,7 +25,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px 8px;
+  /* 顶部偏移只算一次：给全局状态栏让位（48px / PWA 系统安全区） */
+  padding: calc(var(--page-header-safe-top, max(48px, env(safe-area-inset-top, 48px))) + 2px) 12px 8px;
 }
 
 .ls-back {

@@ -25,11 +25,13 @@
 }
 
 /* ── 头部 ── */
+/* 顶部偏移只算一次：用 :root 上的 --page-header-safe-top（48px 状态栏 / PWA 系统安全区）
+   给全局状态栏让位，标题行不再被状态栏盖住。 */
 .kc-header {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 14px 10px;
+    padding: var(--page-header-safe-top, max(48px, env(safe-area-inset-top, 48px))) 14px 10px;
     border-bottom: 1px solid var(--kc-line);
 }
 .kc-header-title {
