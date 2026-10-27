@@ -10,10 +10,9 @@
   flex-direction: column;
   align-items: center;
   overflow: hidden;
-  color: #1a1a1a;
-  background:
-    radial-gradient(120% 90% at 50% 0%, #f6f7fa 0%, #edeff5 52%, #e2e6f0 100%);
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  color: #f5f5f7;
+  background: #000;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", system-ui, sans-serif;
   transition: transform 0.36s cubic-bezier(0.32, 0.72, 0.24, 1), opacity 0.36s ease;
   will-change: transform;
 }
@@ -37,6 +36,8 @@
   color: #ffffff;
 }
 
+.lock-layer:not(.has-wall) .lock-wall { display: none; }
+
 .lock-layer.has-wall .lock-wall {
   opacity: 1;
 }
@@ -56,9 +57,74 @@
   flex-direction: column;
   align-items: center;
   width: 100%;
-  margin-top: max(13vh, 84px);
+  margin-top: max(11vh, 76px);
   transition: transform 0.26s cubic-bezier(0.32, 0.72, 0.24, 1), opacity 0.26s ease;
 }
+
+.lock-top-status {
+  position: absolute;
+  top: max(calc(env(safe-area-inset-top, 0px) + 10px), 14px);
+  left: 22px;
+  right: 22px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  opacity: .9;
+}
+
+.lock-top-right { display: inline-flex; align-items: center; gap: 7px; }
+.lock-signal { width: 16px; height: 10px; border-radius: 2px; background: linear-gradient(90deg, currentColor 20%, transparent 20% 28%, currentColor 28% 48%, transparent 48% 56%, currentColor 56% 76%, transparent 76% 84%, currentColor 84%); opacity: .9; }
+.lock-wifi { width: 15px; height: 10px; border: 2px solid currentColor; border-top-color: transparent; border-left-color: transparent; border-radius: 0 0 13px 0; transform: rotate(45deg); opacity: .85; }
+.lock-battery { width: 20px; height: 10px; border: 1.5px solid currentColor; border-radius: 3px; position: relative; }
+.lock-battery::after { content: ""; position: absolute; right: -4px; top: 2px; width: 2px; height: 5px; border-radius: 0 2px 2px 0; background: currentColor; }
+.lock-battery::before { content: ""; position: absolute; inset: 2px 3px 2px 2px; border-radius: 1px; background: currentColor; }
+.lock-top-lock { margin-bottom: 17px; opacity: .94; }
+
+.lock-widgets {
+  display: flex;
+  gap: 10px;
+  width: min(88vw, 340px);
+  margin-top: 28px;
+}
+
+.lock-widget {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 17px;
+  background: rgba(28, 28, 30, .72);
+  border: 1px solid rgba(255,255,255,.12);
+  backdrop-filter: blur(18px) saturate(1.2);
+  text-align: left;
+}
+.lock-widget b { display: block; font-size: 12px; font-weight: 600; }
+.lock-widget small { display: block; margin-top: 2px; font-size: 10px; opacity: .62; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lock-widget-dot { width: 9px; height: 9px; border-radius: 50%; background: #30d158; box-shadow: 0 0 0 4px rgba(48,209,88,.13); flex: 0 0 auto; }
+.lock-widget-weather { flex: 0 0 92px; justify-content: center; }
+.lock-widget-weather > b { font-size: 24px; font-weight: 300; color: #ffd60a; }
+.lock-widget-weather strong { display: block; font-size: 12px; font-weight: 600; }
+
+.lock-bottom-actions {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  bottom: max(calc(38px + env(safe-area-inset-bottom, 0px)), 44px);
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.lock-bottom-action { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: rgba(28,28,30,.78); border: 1px solid rgba(255,255,255,.14); backdrop-filter: blur(16px); }
+
+.lock-layer.is-pad .lock-widgets,
+.lock-layer.is-pad .lock-top-status,
+.lock-layer.is-pad .lock-top-lock,
+.lock-layer.is-pad .lock-bottom-actions { opacity: 0; }
 
 /* 键盘顶起：时钟让位往上走，键盘从底下补位 —— 同一个方向，才不突兀 */
 .lock-layer.is-pad .lock-body {
@@ -74,35 +140,34 @@
 }
 
 .lock-time {
-  font-family: "Instrument Serif", Georgia, "Times New Roman", serif;
-  font-weight: 400;
-  font-size: clamp(72px, 21vw, 108px);
+  font-family: inherit;
+  font-weight: 300;
+  font-size: clamp(74px, 22vw, 104px);
   line-height: 1;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.07em;
   font-variant-numeric: tabular-nums;
 }
 
 .lock-date {
-  margin-top: 10px;
-  font-size: 14px;
-  font-weight: 400;
-  letter-spacing: 0.12em;
-  opacity: 0.72;
+  margin-top: 9px;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  opacity: 0.92;
 }
 
 .lock-hint {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: max(calc(30px + env(safe-area-inset-bottom, 0px)), 34px);
+  bottom: max(calc(11px + env(safe-area-inset-bottom, 0px)), 16px);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 7px;
-  font-size: 12.5px;
-  letter-spacing: 0.3em;
-  text-indent: 0.3em;
-  opacity: 0.62;
+  font-size: 12px;
+  letter-spacing: -0.01em;
+  opacity: 0.72;
   pointer-events: none;
 }
 
@@ -125,21 +190,18 @@
   right: 0;
   bottom: 0;
   z-index: 3;
-  padding: 22px 26px calc(26px + env(safe-area-inset-bottom, 0px));
-  border-radius: 28px 28px 0 0;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 -18px 44px rgba(20, 27, 52, 0.16);
-  backdrop-filter: blur(22px);
+  padding: 18px 26px calc(26px + env(safe-area-inset-bottom, 0px));
+  border-radius: 30px 30px 0 0;
+  background: rgba(0, 0, 0, 0.62);
+  box-shadow: 0 -18px 44px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(28px) saturate(1.25);
   -webkit-backdrop-filter: blur(22px);
   opacity: 0;
   transform: translate3d(0, 26px, 0);
   transition: opacity 0.24s ease, transform 0.24s cubic-bezier(0.32, 0.72, 0.24, 1);
 }
 
-.lock-layer.has-wall .lock-pad {
-  background: rgba(22, 26, 38, 0.5);
-  color: #fff;
-}
+.lock-layer.has-wall .lock-pad { background: rgba(0, 0, 0, 0.5); color: #fff; }
 
 .lock-pad.is-in {
   opacity: 1;
@@ -152,27 +214,27 @@
 }
 
 .lock-pad-title {
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: -0.02em;
 }
 
 .lock-pad-sub {
   margin-top: 3px;
   font-size: 12px;
-  opacity: 0.62;
+  opacity: 0.56;
 }
 
 .lock-dots {
   display: flex;
   justify-content: center;
-  gap: 16px;
-  margin: 16px 0 18px;
+  gap: 13px;
+  margin: 17px 0 19px;
 }
 
 .lock-dots i {
-  width: 11px;
-  height: 11px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   border: 1.5px solid currentColor;
   opacity: 0.42;
@@ -201,8 +263,8 @@
 .lock-keys {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  max-width: 320px;
+  gap: 12px 16px;
+  max-width: 304px;
   margin: 0 auto;
 }
 
@@ -212,38 +274,34 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 62px;
+  height: 66px;
   padding: 0;
   border: none;
-  border-radius: 22px;
-  /* 液态玻璃（任务 2 的质感）：半透明白 + 一层模糊 + 顶缘内高光；按键固定 12 颗，性能没压力 */
-  background: rgba(255, 255, 255, 0.55);
-  backdrop-filter: blur(14px) saturate(1.4);
+  border-radius: 50%;
+  background: rgba(52, 52, 54, 0.82);
+  backdrop-filter: blur(10px) saturate(1.1);
   -webkit-backdrop-filter: blur(14px) saturate(1.4);
   color: inherit;
   font-family: inherit;
   cursor: pointer;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 1px 4px rgba(20, 27, 52, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 4px rgba(0, 0, 0, 0.18);
   transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.4, 1), background 0.15s ease;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
 }
 
 .lock-layer.has-wall .lock-key,
-.lock-layer.has-wall .lock-key-fn {
-  background: rgba(255, 255, 255, 0.14);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 1px 4px rgba(0, 0, 0, 0.18);
-}
+.lock-layer.has-wall .lock-key-fn { background: rgba(45, 45, 47, 0.78); }
 
 .lock-key:active,
 .lock-key-fn:active {
   transform: scale(0.94);
-  background: rgba(23, 75, 255, 0.1);
+  background: rgba(10, 132, 255, 0.3);
 }
 
 .lock-key b {
-  font-size: 24px;
-  font-weight: 400;
+  font-size: 26px;
+  font-weight: 300;
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
@@ -251,7 +309,7 @@
 .lock-key s {
   margin-top: 3px;
   font-size: 9px;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.08em;
   text-decoration: none;
   opacity: 0.5;
 }
@@ -259,7 +317,7 @@
 .lock-key-fn {
   font-size: 13px;
   font-weight: 500;
-  letter-spacing: 0.06em;
+  letter-spacing: -0.01em;
   background: transparent;
   box-shadow: none;
   opacity: 0.78;
