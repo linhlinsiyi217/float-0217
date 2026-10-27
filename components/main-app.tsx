@@ -33,8 +33,6 @@ const BUILTIN_FONT_URLS = [
   "/fonts/huiwen.woff2",
   "/fonts/huiwen.woff2",
   "/fonts/special-elite.woff2",
-  "/fonts/splash/instrument-serif-regular-400.woff2",
-  "/fonts/splash/instrument-serif-italic-400.woff2",
   "/fonts/splash/inter-300.woff2",
   "/fonts/splash/inter-400.woff2",
   "/fonts/splash/inter-500.woff2",
@@ -68,8 +66,6 @@ const BUILTIN_FONT_URLS = [
 ] as const;
 
 const BUILTIN_FONT_LOAD_SPECS = [
-  '400 1em "Instrument Serif"',
-  'italic 400 1em "Instrument Serif"',
   '300 1em "Inter"',
   '400 1em "Inter"',
   '500 1em "Inter"',
