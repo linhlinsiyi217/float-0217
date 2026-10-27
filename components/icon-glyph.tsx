@@ -41,6 +41,7 @@ import {
   mdiGlassCocktail,
   mdiStorefrontOutline,
   mdiAt,
+  mdiWeatherSunny,
   mdiDoorOpen,
 } from "@mdi/js";
 
@@ -80,6 +81,7 @@ const MDI_PATHS: Record<IconId, string> = {
   characters: mdiAccount,
   dwelling: mdiHome,
   realitybridge: mdiBridge,
+  lifesim: mdiWeatherSunny,
   kuaichuan: mdiDoorOpen,
 };
 

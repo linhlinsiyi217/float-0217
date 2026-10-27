@@ -31,6 +31,7 @@ export type IconId =
   | "realitybridge"
   | "qa"
   | "mixology"
+  | "lifesim"
   | "kuaichuan";
 
 // 桌面文件夹：以 folder: 前缀的 id 伪装成图标占一个格子参与拖拽/换页，
@@ -72,7 +73,7 @@ export const PAGE_2_DEFAULT: IconId[] = [
 ];
 
 // 第三页默认图标：右半边 2×2 排布（左半边留给日历组件），位置见 createDefaultDesktopIconLayout
-export const PAGE_3_DEFAULT: IconId[] = ["worldbuilder", "qa", "resource_hub", "realitybridge", "mixology", "kuaichuan"];
+export const PAGE_3_DEFAULT: IconId[] = ["worldbuilder", "qa", "resource_hub", "realitybridge", "mixology", "lifesim", "kuaichuan"];
 
 export const DOCK_DEFAULT: IconId[] = ["settings", "theme", "resources", "characters"];
 
@@ -129,5 +130,6 @@ export const ICONS: Record<IconId, IconMeta> = {
   },
   qa: { id: "qa", label: "Claude", tone: "var(--c-icon-qa, #4a505c99)", placeholder: false },
   mixology: { id: "mixology", label: "独家特调", tone: "var(--c-icon-violet)", placeholder: false },
+  lifesim: { id: "lifesim", label: "生活模拟", tone: "var(--c-icon-teal)", placeholder: false },
   kuaichuan: { id: "kuaichuan", label: "快穿局", tone: "var(--c-icon-amber)", placeholder: false },
 };
