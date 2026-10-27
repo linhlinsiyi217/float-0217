@@ -111,27 +111,27 @@ type WorkshopMenuItem = {
 };
 
 const WORKSHOP_CONTEXT_ITEMS: WorkshopMenuItem[] = [
-  { label: "线上美化", hint: "引用已保存的线上美化文件", insert: "请引用本机内容中的「线上美化」来完成下面的任务。" },
-  { label: "线下美化", hint: "引用已保存的线下美化文件", insert: "请引用本机内容中的「线下美化」来完成下面的任务。" },
-  { label: "心声", hint: "引用我的心声设定", insert: "请引用本机内容中的「心声」来完成下面的任务。" },
-  { label: "角色卡", hint: "引用当前角色卡", insert: "请引用本机内容中的「角色卡」来完成下面的任务。" },
-  { label: "世界书", hint: "引用当前世界书", insert: "请引用本机内容中的「世界书」来完成下面的任务。" },
-  { label: "聊天片段", hint: "引用已保存的聊天片段", insert: "请引用本机内容中的「聊天片段」来完成下面的任务。", dot: true },
-  { label: "仓库帖子", hint: "引用已保存的仓库帖子", insert: "请引用本机内容中的「仓库帖子」来完成下面的任务。", dot: true },
+  { label: "线上美化", hint: "本机已保存的聊天气泡样式。点击后会在输入框插入一句引导，发送后 Claude 会读取这份样式作为回复时使用的视觉参考", insert: "请引用本机内容中的「线上美化」来完成下面的任务。" },
+  { label: "线下美化", hint: "本机已保存的应用整体界面样式。点击后会让 Claude 读取这份样式作为修改或重构界面时的参考", insert: "请引用本机内容中的「线下美化」来完成下面的任务。" },
+  { label: "心声", hint: "我的心声设定（角色在说话时附加的内心独白）。点击后会让 Claude 读取我的心声作为回复时的内心活动参考", insert: "请引用本机内容中的「心声」来完成下面的任务。" },
+  { label: "角色卡", hint: "当前激活的角色卡（人设、性格、说话方式等）。点击后会让 Claude 读取角色卡作为回复时的口吻与人设参考", insert: "请引用本机内容中的「角色卡」来完成下面的任务。" },
+  { label: "世界书", hint: "当前世界书设定（世界观、地点、设定词条）。点击后会让 Claude 读取世界书作为回复时的世界观参考", insert: "请引用本机内容中的「世界书」来完成下面的任务。" },
+  { label: "聊天片段", hint: "已单独保存的历史聊天片段。点击后会让 Claude 读取这段记录作为上下文参考", insert: "请引用本机内容中的「聊天片段」来完成下面的任务。", dot: true },
+  { label: "仓库帖子", hint: "已保存的 GitHub 仓库发帖记录。点击后会让 Claude 读取这些帖子作为素材或讨论对象", insert: "请引用本机内容中的「仓库帖子」来完成下面的任务。", dot: true },
 ];
 
 const WORKSHOP_SKILL_ITEMS: WorkshopMenuItem[] = [
-  { label: "线上美化", insert: "请使用 Claude 技能「线上美化」处理下面的内容。" },
-  { label: "线下美化", insert: "请使用 Claude 技能「线下美化」处理下面的内容。" },
-  { label: "心声", insert: "请使用 Claude 技能「心声」处理下面的内容。" },
-  { label: "角色卡", insert: "请使用 Claude 技能「角色卡」处理下面的内容。" },
-  { label: "世界书", insert: "请使用 Claude 技能「世界书」处理下面的内容。" },
-  { label: "看图取色", insert: "请使用 Claude 技能「看图取色」处理下面的内容。", dot: true },
-  { label: "检查报错", insert: "请使用 Claude 技能「检查报错」处理下面的内容。", dot: true },
-  { label: "润色人设", insert: "请使用 Claude 技能「润色人设」处理下面的内容。", dot: true },
-  { label: "出夜间版", insert: "请使用 Claude 技能「出夜间版」处理下面的内容。", dot: true },
-  { label: "拆成世界书", insert: "请使用 Claude 技能「拆成世界书」处理下面的内容。", dot: true },
-  { label: "翻译", insert: "请使用 Claude 技能「翻译」处理下面的内容。", dot: true },
+  { label: "线上美化", hint: "让 Claude 用「线上美化」技能处理你接下来要给的内容（生成新的聊天气泡样式并写回本机）", insert: "请使用 Claude 技能「线上美化」处理下面的内容。" },
+  { label: "线下美化", hint: "让 Claude 用「线下美化」技能处理你接下来要给的内容（生成新的应用界面样式并写回本机）", insert: "请使用 Claude 技能「线下美化」处理下面的内容。" },
+  { label: "心声", hint: "让 Claude 用「心声」技能处理你的角色或内容（生成符合人设的内心独白）", insert: "请使用 Claude 技能「心声」处理下面的内容。" },
+  { label: "角色卡", hint: "让 Claude 用「角色卡」技能根据你提供的设定生成一张新的角色卡", insert: "请使用 Claude 技能「角色卡」处理下面的内容。" },
+  { label: "世界书", hint: "让 Claude 用「世界书」技能根据你提供的设定生成一份新的世界书", insert: "请使用 Claude 技能「世界书」处理下面的内容。" },
+  { label: "看图取色", hint: "上传一张图，让 Claude 提取主色调与配色方案，结果会写到本机主题预设", insert: "请使用 Claude 技能「看图取色」处理下面的内容。", dot: true },
+  { label: "检查报错", hint: "把当前页面或代码交给 Claude，让它自己排查报错并给出修复方案", insert: "请使用 Claude 技能「检查报错」处理下面的内容。", dot: true },
+  { label: "润色人设", hint: "让 Claude 润色现有角色的人设文字，结果会写回当前角色卡", insert: "请使用 Claude 技能「润色人设」处理下面的内容。", dot: true },
+  { label: "出夜间版", hint: "让 Claude 基于现有界面或样式生成一份夜间深色版本，结果会写回本机美化文件", insert: "请使用 Claude 技能「出夜间版」处理下面的内容。", dot: true },
+  { label: "拆成世界书", hint: "把一段长文本交给 Claude，让它拆解成世界书词条并写回当前世界书", insert: "请使用 Claude 技能「拆成世界书」处理下面的内容。", dot: true },
+  { label: "翻译", hint: "让 Claude 翻译你给的文本，结果会保留在对话里；书源翻译请用书房里的翻译功能", insert: "请使用 Claude 技能「翻译」处理下面的内容。", dot: true },
 ];
 
 // ── 代码块（语言标签 + 一键复制）─────────────────────

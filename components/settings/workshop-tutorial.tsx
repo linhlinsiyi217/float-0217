@@ -8,6 +8,7 @@ import {
     groupQaTools,
     inferQaToolKind,
     QA_TOOL_KIND_LABEL,
+    QA_TOOL_DOCS,
     type QaToolKind,
 } from "@/lib/qa-tool-docs";
 
@@ -156,6 +157,7 @@ export function WorkshopTutorialPage({ onClose }: { onClose: () => void }) {
                                 <div className="workshop-tut-cards">
                                     {group.tools.map(tool => {
                                         const kind = inferQaToolKind(tool.name, tool.description);
+                                        const doc = QA_TOOL_DOCS[tool.name];
                                         return (
                                             <article key={tool.name} className="workshop-tut-card">
                                                 <header className="workshop-tut-card-head">
@@ -165,6 +167,16 @@ export function WorkshopTutorialPage({ onClose }: { onClose: () => void }) {
                                                     </span>
                                                 </header>
                                                 <p className="workshop-tut-desc">{tool.description}</p>
+                                                {doc?.use && (
+                                                    <p className="workshop-tut-use">
+                                                        <strong>什么时候用：</strong>{doc.use}
+                                                    </p>
+                                                )}
+                                                {doc?.example && (
+                                                    <p className="workshop-tut-example">
+                                                        <strong>例子：</strong>{doc.example}
+                                                    </p>
+                                                )}
                                             </article>
                                         );
                                     })}
