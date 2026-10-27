@@ -1075,9 +1075,9 @@
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
-  padding: 58px 22px 32px;
+  padding: 44px 22px 30px;
   color: #fff;
-  background: rgba(12, 16, 28, .72);
+  background: #000;
   isolation: isolate;
   animation: phone-lock-in .24s ease-out both;
 }
@@ -1110,6 +1110,8 @@
   transition: transform .18s ease-out;
 }
 
+.phone-lock-status { position: absolute; top: 14px; left: 20px; right: 20px; display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; letter-spacing: .06em; opacity: .86; }
+
 .phone-lock-topline {
   display: inline-flex;
   align-items: center;
@@ -1121,9 +1123,10 @@
 }
 
 .phone-lock-time {
-  font-size: clamp(56px, 18vw, 76px);
-  font-weight: 500;
-  letter-spacing: -.055em;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+  font-size: clamp(64px, 20vw, 86px);
+  font-weight: 300;
+  letter-spacing: -.07em;
   line-height: .92;
   font-variant-numeric: tabular-nums;
   text-shadow: 0 2px 18px rgba(0, 0, 0, .18);
@@ -1131,8 +1134,9 @@
 
 .phone-lock-date {
   margin-top: 12px;
-  font-size: 14px;
-  letter-spacing: .04em;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -.02em;
   opacity: .88;
 }
 
@@ -1176,6 +1180,9 @@
   backdrop-filter: blur(14px);
   transition: transform .18s ease, background .18s ease;
 }
+
+.phone-lock-actions { position: absolute; left: 22px; right: 22px; bottom: 42px; display: flex; justify-content: space-between; pointer-events: none; }
+.phone-lock-actions span { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: rgba(28,28,30,.82); border: 1px solid rgba(255,255,255,.14); backdrop-filter: blur(16px); }
 
 .phone-lock-unlock:active { transform: scale(.96); background: rgba(255, 255, 255, .2); }
 .phone-lock-unlock-icon { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 50%; background: rgba(255, 255, 255, .16); }
