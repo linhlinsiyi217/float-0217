@@ -2456,16 +2456,28 @@ async function handleReadCharacter(args: Record<string, unknown>): Promise<ToolR
 
 async function handleCreateCharacter(args: Record<string, unknown>): Promise<ToolResult> {
     const { loadCharacters, saveCharacters } = await import("./character-storage");
+    const name = typeof args.name === "string" ? args.name.trim() : "";
+    if (!name) {
+        return {
+            name: "创建角色",
+            success: false,
+            error: "缺少必填参数 name（角色名），本次未写入任何数据。正确格式：[执行动作:创建角色]({\"name\":\"角色名\",\"persona\":\"完整人设\",\"personality\":\"性格简介\"})，persona 里的换行请写成 \\n。",
+        };
+    }
     const chars = loadCharacters();
-    if (chars.find((c) => c.name === args.name)) return { name: "创建角色", success: false, error: "已存在同名角色" };
+    if (chars.find((c) => c.name === name)) {
+        return { name: "创建角色", success: false, error: `已存在同名角色「${name}」，本次未写入。如需修改请改用「更新角色字段」工具` };
+    }
     const now = new Date().toISOString();
+    const persona = typeof args.persona === "string" ? args.persona : "";
+    const personality = typeof args.personality === "string" ? args.personality : "";
     const briefPersona = typeof args.briefPersona === "string" ? args.briefPersona.trim() : "";
     const newChar = {
         id: `char_${Date.now()}`,
-        name: args.name as string,
+        name,
         avatar: null,
-        persona: args.persona as string,
-        personality: args.personality as string,
+        persona,
+        personality,
         briefPersona: briefPersona || undefined,
         briefPersonaUpdatedAt: briefPersona ? now : undefined,
         createdAt: now,
@@ -2473,7 +2485,12 @@ async function handleCreateCharacter(args: Record<string, unknown>): Promise<Too
     };
     chars.push(newChar as typeof chars[number]);
     saveCharacters(chars);
-    return { name: "创建角色", success: true, data: `已创建角色 ${newChar.name} (${newChar.id})${briefPersona ? "，含简量人设" : ""}` };
+    const missing = [persona ? "" : "persona", personality ? "" : "personality"].filter(Boolean);
+    return {
+        name: "创建角色",
+        success: true,
+        data: `已创建角色 ${name} (${newChar.id})${briefPersona ? "，含简量人设" : ""}${missing.length ? `；但缺少 ${missing.join("、")}，请用「更新角色字段」补充` : ""}`,
+    };
 }
 
 async function handleUpdateCharacterField(args: Record<string, unknown>, ctx: MascotToolContext): Promise<ToolResult> {
