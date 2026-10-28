@@ -1,36 +1,170 @@
 {
-  "versionCode": 10203,
-  "versionName": "1.2.3",
-  "apkUrl": "https://github.com/linhlinsiyi217/float-0217/releases/download/v1.2.3/app-release.apk",
+  "versionCode": 10205,
+  "versionName": "1.2.5",
+  "apkUrl": "https://github.com/linhlinsiyi217/float-0217/releases/download/v1.2.5/app-release.apk",
   "force": false,
-  "webVersion": "2026-10-22-7",
-  "summary": "重试回复会保留每一个版本，可以切换比较、保留喜欢的一版；自动回复不用再收起键盘，发完消息停几秒角色就会开始回。",
+  "webVersion": "2026-10-28-1",
+  "summary": "音乐系统与 Y2K 最新版完全同步：一起听、歌曲评论、悬浮播放器都齐了，还能开桌面歌词、把歌词卡片分享到聊天。新装了深谈、剧情、桌宠三个应用，聊天里多了回忆面板、悄悄话、情侣页和聊天转发。锁屏和密码彻底移除，开机直接见桌面，启动画面换回最初那版。",
   "changes": [
     {
-      "type": "content",
-      "title": "重试回复保留历次版本",
-      "detail": "在指令重试窗口里左右切换比较原文和每次重试结果，保留所选版本，也能从旧版本继续重试"
+      "type": "app",
+      "category": "feat",
+      "app": "音乐 · Y2K 同步",
+      "title": "音乐系统与 Y2K 最新版完全同步",
+      "detail": "一起听回来了：可以邀请角色一起听歌，双方进度保持一致，聊天里会收到一起听的邀请卡片"
+    },
+    {
+      "type": "app",
+      "category": "feat",
+      "app": "音乐 · 桌面歌词",
+      "title": "桌面歌词与歌词卡片分享",
+      "detail": "音乐播放时可以在桌面上开着歌词，换歌自动滚动，点一下就能关"
     },
     {
       "type": "content",
-      "title": "发送后自动回复",
-      "detail": "聊天设置里打开「自动回复」后，普通发送再停几秒角色就会回复；「发送并回复」仍立即回复"
+      "category": "feat",
+      "app": "聊天 · 转发",
+      "title": "聊天消息转发批次并入",
+      "detail": "聊天里可以把消息转发给其他角色，转发过去的消息以只读快照气泡显示"
+    },
+    {
+      "type": "content",
+      "category": "feat",
+      "app": "聊天 · 回忆与悄悄话",
+      "title": "回忆面板与悄悄话",
+      "detail": "聊天里可以打开回忆面板，翻看这段关系里的大事记"
+    },
+    {
+      "type": "content",
+      "category": "feat",
+      "app": "聊天 · 社交",
+      "title": "情侣页与相遇页",
+      "detail": "联系人列表新增情侣和相遇页签，可以查看角色关系"
+    },
+    {
+      "type": "app",
+      "category": "feat",
+      "app": "桌面 · 深谈",
+      "title": "新应用「深谈」",
+      "detail": "桌面上多了一个「深谈」应用：深度聊天入口、会话总结、长期记忆"
+    },
+    {
+      "type": "app",
+      "category": "feat",
+      "app": "桌面 · 剧情",
+      "title": "新应用「剧情」",
+      "detail": "HTML 互动剧情：主线引导带你推进故事"
+    },
+    {
+      "type": "app",
+      "category": "feat",
+      "app": "桌面 · 桌宠",
+      "title": "新应用「桌宠」与后台消息",
+      "detail": "桌面上可以养桌宠，它有自己的状态、日程和通知历史"
+    },
+    {
+      "type": "global",
+      "category": "perf",
+      "app": "全局 · 锁屏",
+      "title": "锁屏和密码彻底移除",
+      "detail": "开机不再有锁屏和密码验证，启动后直接进入桌面"
+    },
+    {
+      "type": "global",
+      "category": "fix",
+      "app": "全局 · 开屏",
+      "title": "启动画面换回最初那版",
+      "detail": "开屏恢复成项目最初的样子：吐司落日动画、Klein 蓝标题，看完点按钮进主屏"
+    },
+    {
+      "type": "app",
+      "category": "perf",
+      "app": "设置 · 锁屏入口",
+      "title": "设置里的「锁屏与开屏」入口移除",
+      "detail": "锁屏相关设置页随着锁屏一起删除，设置列表里不再出现"
     }
   ],
-  "releaseId": "2026-10-22-7-b958a07824ba4a284dce663f7be2d864d2c79917",
-  "commitSha": "b958a07824ba4a284dce663f7be2d864d2c79917",
-  "releasedAt": "2026-10-28T03:01:41.557Z",
+  "releaseId": "2026-10-28-1-4dfc6df7f3fc086e3b0d3eb678457720fe9430d3",
+  "commitSha": "4dfc6df7f3fc086e3b0d3eb678457720fe9430d3",
+  "releasedAt": "2026-10-28T08:04:35.472Z",
   "changelogFile": "/CHANGELOG.md",
   "entries": [
     {
-      "type": "content",
-      "title": "重试回复保留历次版本",
-      "detail": "在指令重试窗口里左右切换比较原文和每次重试结果，保留所选版本，也能从旧版本继续重试"
+      "type": "app",
+      "category": "feat",
+      "app": "音乐 · Y2K 同步",
+      "title": "音乐系统与 Y2K 最新版完全同步",
+      "detail": "一起听回来了：可以邀请角色一起听歌，双方进度保持一致，聊天里会收到一起听的邀请卡片"
+    },
+    {
+      "type": "app",
+      "category": "feat",
+      "app": "音乐 · 桌面歌词",
+      "title": "桌面歌词与歌词卡片分享",
+      "detail": "音乐播放时可以在桌面上开着歌词，换歌自动滚动，点一下就能关"
     },
     {
       "type": "content",
-      "title": "发送后自动回复",
-      "detail": "聊天设置里打开「自动回复」后，普通发送再停几秒角色就会回复；「发送并回复」仍立即回复"
+      "category": "feat",
+      "app": "聊天 · 转发",
+      "title": "聊天消息转发批次并入",
+      "detail": "聊天里可以把消息转发给其他角色，转发过去的消息以只读快照气泡显示"
+    },
+    {
+      "type": "content",
+      "category": "feat",
+      "app": "聊天 · 回忆与悄悄话",
+      "title": "回忆面板与悄悄话",
+      "detail": "聊天里可以打开回忆面板，翻看这段关系里的大事记"
+    },
+    {
+      "type": "content",
+      "category": "feat",
+      "app": "聊天 · 社交",
+      "title": "情侣页与相遇页",
+      "detail": "联系人列表新增情侣和相遇页签，可以查看角色关系"
+    },
+    {
+      "type": "app",
+      "category": "feat",
+      "app": "桌面 · 深谈",
+      "title": "新应用「深谈」",
+      "detail": "桌面上多了一个「深谈」应用：深度聊天入口、会话总结、长期记忆"
+    },
+    {
+      "type": "app",
+      "category": "feat",
+      "app": "桌面 · 剧情",
+      "title": "新应用「剧情」",
+      "detail": "HTML 互动剧情：主线引导带你推进故事"
+    },
+    {
+      "type": "app",
+      "category": "feat",
+      "app": "桌面 · 桌宠",
+      "title": "新应用「桌宠」与后台消息",
+      "detail": "桌面上可以养桌宠，它有自己的状态、日程和通知历史"
+    },
+    {
+      "type": "global",
+      "category": "perf",
+      "app": "全局 · 锁屏",
+      "title": "锁屏和密码彻底移除",
+      "detail": "开机不再有锁屏和密码验证，启动后直接进入桌面"
+    },
+    {
+      "type": "global",
+      "category": "fix",
+      "app": "全局 · 开屏",
+      "title": "启动画面换回最初那版",
+      "detail": "开屏恢复成项目最初的样子：吐司落日动画、Klein 蓝标题，看完点按钮进主屏"
+    },
+    {
+      "type": "app",
+      "category": "perf",
+      "app": "设置 · 锁屏入口",
+      "title": "设置里的「锁屏与开屏」入口移除",
+      "detail": "锁屏相关设置页随着锁屏一起删除，设置列表里不再出现"
     }
   ]
 }
