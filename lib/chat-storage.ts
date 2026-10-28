@@ -8,6 +8,7 @@ import {
     dbReplaceContacts, dbReplaceSessions, dbBulkPutMessages,
 } from "./chat-db";
 import { resolveUserIdentity } from "./settings-storage";
+import { clearChatRetryVersions } from "./chat-retry-version-store";
 import { loadCharacters, saveCharacters } from "./character-storage";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { emitChatPluginEvent, runChatPluginTransformSync } from "./chat-plugin-hooks";
@@ -1454,6 +1455,7 @@ export function createGroupSession(groupName: string, participantIds: string[], 
 }
 
 export function deleteChatSession(sessionId: string) {
+    clearChatRetryVersions(sessionId);
     const sessions = loadChatSessions();
     const filtered = sessions.filter(s => s.id !== sessionId);
     saveChatSessions(filtered);
@@ -1914,6 +1916,37 @@ export function deleteChatMessage(messageId: string) {
     dispatchDeletedMessages(deletedMessages);
 }
 
+/**
+ * 切换重试版本：删掉 removeIds，换上 restored 这批已保存的消息。
+ * 只改本地记录，不重放插件、工具或发送副作用；数据库写入失败时缓存保持原样。
+ */
+export async function restoreChatRetryMessages(sessionId: string, removeIds: string[], restored: ChatMessage[]): Promise<void> {
+    if (restored.some(message => message.sessionId !== sessionId)) throw new Error("重试版本不属于当前会话");
+    const ids = new Set(removeIds);
+    const existing = new Map(_messagesCache.map(message => [message.id, message]));
+    if ([...ids].some(id => existing.has(id) && existing.get(id)?.sessionId !== sessionId)
+        || restored.some(message => existing.has(message.id) && existing.get(message.id)?.sessionId !== sessionId)) {
+        throw new Error("重试版本消息冲突");
+    }
+    await chatDb.transaction("rw", chatDb.messages, async () => {
+        if (ids.size) await chatDb.messages.bulkDelete([...ids]);
+        if (restored.length) await chatDb.messages.bulkPut(restored);
+    });
+    const restoredIds = new Set(restored.map(message => message.id));
+    _messagesCache = _messagesCache
+        .filter(message => !ids.has(message.id) && !restoredIds.has(message.id))
+        .concat(restored);
+    reindexSessionMessageOrders(sessionId);
+    const last = getLastVisibleSessionMessage(sessionId);
+    saveChatSessions(loadChatSessions().map(session => session.id === sessionId ? {
+        ...session,
+        lastMessageId: last?.id,
+        lastMessagePreview: last ? getChatMessagePreview(last) : "",
+        ...(last ? { updatedAt: last.createdAt } : {}),
+    } : session));
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("chat-messages-updated", { detail: { sessionId } }));
+}
+
 /** Delete a message and all messages after it in the same session. */
 export function deleteChatMessagesFrom(messageId: string) {
     const targetMsg = _messagesCache.find(m => m.id === messageId);
@@ -2021,6 +2054,7 @@ export function retractChatMessage(messageId: string) {
 }
 
 export function clearChatSessionMessages(sessionId: string) {
+    clearChatRetryVersions(sessionId, "online");
     const deletedMessages = _messagesCache.filter(m => m.sessionId === sessionId);
     _messagesCache = _messagesCache.filter(m => m.sessionId !== sessionId);
     dbDeleteMessagesBySession(sessionId);

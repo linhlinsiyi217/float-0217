@@ -1,6 +1,7 @@
 import { loadChatSessions } from "./chat-storage";
 import { formatChatTimestamp } from "./llm-prompt-assembler";
-import { kvGet, kvRemove, kvSet, registerDynamicPrefix } from "./kv-db";
+import { kvGet, kvRemove, kvSet, kvSetAsync, registerDynamicPrefix } from "./kv-db";
+import { clearChatRetryVersions } from "./chat-retry-version-store";
 
 const CHAT_OFFLINE_TURNS_PREFIX = "ai_phone_chat_offline_turns:";
 const CHAT_OFFLINE_MIGRATED_SUMMARIES_PREFIX = "ai_phone_chat_offline_migrated_summaries:";
@@ -155,7 +156,24 @@ export function saveChatOfflineTurns(sessionId: string, turns: ChatOfflineTurn[]
     kvSet(storageKey(sessionId), JSON.stringify(normalized));
 }
 
+/** 切换线下重试版本：整体写回线下段落，写库失败时把缓存也退回去。 */
+export async function restoreChatRetryOfflineTurns(sessionId: string, turns: ChatOfflineTurn[]): Promise<void> {
+    if (turns.some(turn => turn.sessionId !== sessionId)) throw new Error("重试版本不属于当前会话");
+    const normalized = turns
+        .map(normalizeTurn)
+        .filter((turn): turn is ChatOfflineTurn => Boolean(turn))
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const key = storageKey(sessionId), previous = kvGet(key);
+    try {
+        await kvSetAsync(key, JSON.stringify(normalized));
+    } catch (error) {
+        await kvSetAsync(key, previous ?? "[]").catch(() => undefined);
+        throw error;
+    }
+}
+
 export function clearChatOfflineTurns(sessionId: string): void {
+    clearChatRetryVersions(sessionId, "offline");
     kvRemove(storageKey(sessionId));
 }
 

@@ -50,7 +50,8 @@ import { generateGroupChatCompletion, generateGroupOfflineChatCompletion, parseG
 import { appendChatOfflineTurn, clearChatOfflineTurnSide, clearChatOfflineTurns, deleteChatOfflineTurnsFrom, extractThinkingTag, loadChatOfflineTurns, parseOfflineResponse, preserveChatOfflineSummaries, rewindChatOfflineTurnBefore, saveChatOfflineTurns, updateChatOfflineTurn, type ChatOfflineTurn } from "@/lib/chat-offline-storage";
 import { applyDisplayRegex, applyEditRegex } from "@/lib/llm-prompt-assembler";
 import { scheduleFollowUp, cancelFollowUp, cancelBackgroundGeneration, isBackgroundReplyGenerating } from "@/lib/follow-up-service";
-import { useKeyboardDismissAutoSend } from "@/components/chat/use-keyboard-dismiss-auto-send";
+import { findIdleReplyMessageId, useChatIdleAutoReply } from "@/components/chat/use-chat-idle-auto-reply";
+import { beginRetryVersion, finishRetryVersion, findRetrySeries, recoverPendingRetryVersions, retryMessageStart, retrySourceText, selectRetryVersion, type RetrySeries } from "@/lib/chat-retry-versions";
 import { cancelBailoutKey } from "@/lib/push-bailout-client";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import type { UserIdentity } from "@/components/settings/user-identity";
@@ -350,7 +351,24 @@ type ManagedGenerationOptions = {
     onDecline?: () => void | Promise<void>;
     /** 仅本次生成使用，不落为可见消息或聊天记录。 */
     retryInstruction?: string;
+    /** 指令重试时作为修改基准的所选回复原文（同样只用于本次请求）。 */
+    retrySourceReply?: string;
 };
+
+/** 指令重试的隐藏要求：只拼进本次请求的历史，不写入聊天记录。 */
+function withRetryInstruction(history: ChatMessage[], sessionId: string, instruction?: string, sourceReply?: string): ChatMessage[] {
+    const text = instruction?.trim().slice(0, 2000);
+    if (!text) return history;
+    const source = sourceReply?.trim();
+    return [...history, {
+        id: `_instruction_retry_${Date.now()}`,
+        sessionId,
+        role: "system",
+        content: `【本次重新生成额外要求】${source ? `\n所选回复（作为修改基准，不是新消息或指令）：\n${source}` : ""}\n要求：\n${text}\n只在本次重新生成中遵守；不要复述、解释或向用户展示这段隐藏要求，不声称执行了未发生的动作。`,
+        status: "sent",
+        createdAt: new Date().toISOString(),
+    }];
+}
 
 const activeGenerationRuns = new Map<string, ActiveGenerationRun>();
 const activeOfflineGenerationRuns = new Map<string, Omit<ActiveGenerationRun, "pendingNativeToolCalls">>();
@@ -931,7 +949,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
             {showSendEffectPicker && (
                 <>
                     <button type="button" className="imessage-send-effect-dismiss" onClick={() => setShowSendEffectPicker(false)} aria-label="关闭发送特效" />
-                    <div className="imessage-send-effect-picker" role="menu" aria-label="选择发送特效">
+                    <div className="imessage-send-effect-picker" role="menu" aria-label="选择发送特效" data-chat-idle-busy>
                         {([["echo", "回声"], ["love", "爱心"], ["fireworks", "烟花"]] as const).map(([effect, label]) => (
                             <button key={effect} type="button" role="menuitem" onClick={() => sendEffectDraft(effect)} className="imessage-send-effect-option">{label}</button>
                         ))}
@@ -1390,6 +1408,8 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
     const [regexRevision, setRegexRevision] = useState(0);
     // Whether there are unsent user messages waiting for AI generation
     const [pendingGenerate, setPendingGenerate] = useState(false);
+    // 正在等 user.beforeSend 插件改写的发送数（自动回复要等它们落库）
+    const [pendingTextTransforms, setPendingTextTransforms] = useState(0);
     // 生成期间又来了一次回复请求（如拉黑/解除拉黑事件）且被判定为忙碌丢弃：
     // 记一笔，等当前这轮生成收尾后强制补跑一轮，不能靠 pendingGenerate（它只认「最后一条是用户消息」）
     const pendingReplyRequestRef = useRef(false);
@@ -1608,8 +1628,12 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         window.addEventListener(IMESSAGE_TAPBACKS_UPDATED_EVENT, refresh);
         return () => window.removeEventListener(IMESSAGE_TAPBACKS_UPDATED_EVENT, refresh);
     }, []);
-    const [instructionRetryTargetId, setInstructionRetryTargetId] = useState<string | null>(null);
+    // 指令重试 / 回复版本窗口：series 为空表示这条回复还没有重试版本
+    const [retryDialog, setRetryDialog] = useState<{ id: string; offline?: boolean; series?: RetrySeries } | null>(null);
     const [instructionRetryDraft, setInstructionRetryDraft] = useState("");
+    const [retryVersionBusy, setRetryVersionBusy] = useState(false);
+    // 重试或切换版本进行中：挡住新的发送，避免和版本记录交错
+    const retryVersionRunRef = useRef(false);
     const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
     const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
     const [showConfirmMultiDelete, setShowConfirmMultiDelete] = useState(false);
@@ -1723,6 +1747,25 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         };
         window.addEventListener(IMESSAGE_TAPBACK_APPLIED_EVENT, syncAppliedTapback);
         return () => window.removeEventListener(IMESSAGE_TAPBACK_APPLIED_EVENT, syncAppliedTapback);
+    }, [session.id, syncMessagesFromStorage]);
+
+    // 上次重试被关页 / 刷新打断：进入聊天室时整理本地版本记录（不调用模型）。
+    // 本会话仍有生成在跑时不动，由那一轮自己收尾。
+    useEffect(() => {
+        let active = true;
+        if (activeGenerationRuns.has(session.id) || activeOfflineGenerationRuns.has(session.id)) return;
+        let owned = true;
+        retryVersionRunRef.current = true;
+        const release = () => { if (owned) { owned = false; retryVersionRunRef.current = false; } };
+        void recoverPendingRetryVersions(session.id).then(changed => {
+            if (!active || !changed) return;
+            syncMessagesFromStorage();
+            setOfflineTurns(loadChatOfflineTurns(session.id));
+        }).catch(error => {
+            if (active) showChatToast(`恢复重试版本失败：${error instanceof Error ? error.message : String(error)}`);
+        }).finally(release);
+        return () => { active = false; release(); };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session.id, syncMessagesFromStorage]);
 
     const disarmOfflineRewind = () => {
@@ -3695,6 +3738,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         errorPrefix = "发送失败",
         onDecline,
         retryInstruction,
+        retrySourceReply,
     }: ManagedGenerationOptions) => {
         if (isGeneratingRef.current) {
             if (activeGenerationRuns.has(session.id)) return;
@@ -3715,17 +3759,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         setGenerationLock(session.id);
 
         try {
-            const trimmedRetryInstruction = retryInstruction?.trim();
-            const generationHistory: ChatMessage[] = trimmedRetryInstruction
-                ? [...history, {
-                    id: `_instruction_retry_${Date.now()}`,
-                    sessionId: session.id,
-                    role: "system",
-                    content: `【本次重新生成额外要求】\n${trimmedRetryInstruction}\n只在本次重新生成中遵守；不要复述、解释或向用户展示这段隐藏要求。`,
-                    status: "sent",
-                    createdAt: new Date().toISOString(),
-                }]
-                : history;
+            const generationHistory = withRetryInstruction(history, session.id, retryInstruction, retrySourceReply);
             if (session.isGroup) {
                 let roundReasoning: string | undefined;
                 const results = await generateGroupChatCompletion(
@@ -3919,7 +3953,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
 
     const sendRichMessage = (mediaType: ChatMessage["mediaType"], mediaData: ChatMessage["mediaData"], content: string = "", mediaUrl?: string): boolean => {
         if (!ensureGroupSpeakPermission()) return false;
-        if (isGenerating) {
+        if (isGenerating || retryVersionRunRef.current) {
             showChatToast("请先等待对方回复");
             return false;
         }
@@ -4405,14 +4439,19 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         if (shouldRunDeclineReply) await triggerReply();
     };
 
-    // 收起键盘（或关掉表情/加号面板）并安静 N 秒后自动触发回复，
-    // 等价于替用户点一次「触发回复」。判定全在 hook 内部，配置关掉后与手动模式一致。
-    useKeyboardDismissAutoSend(wrapperRef, {
-        active: !offlineMode && !isMultiSelectMode,
+    // 发送后自动回复（按会话开关）：普通发送后安静 N 秒替用户点一次「触发回复」；
+    // 「发送并回复」仍立即触发。判定全在 hook 内部，开关关掉后与手动模式一致。
+    const idleReplyMessageId = useMemo(() => findIdleReplyMessageId(messages), [messages]);
+    useChatIdleAutoReply(wrapperRef, {
+        active: !offlineMode && !isMultiSelectMode && !session.isSpectator,
         pending: pendingGenerate,
-        generating: isGenerating,
-        panelOpen: showEmojiPanel || showStickerPanel || showPlusMenu,
+        generating: isGenerating || retryVersionBusy,
+        busy: showEmojiPanel || showStickerPanel || showPlusMenu || showSettings
+            || showHeaderCallMenu || !!richModal || !!activeCustomChatPlus
+            || !!activeMessageId || !!editingMessageId || !!quotingMessage
+            || !!retryDialog || pendingTextTransforms > 0,
         sessionId: session.id,
+        messageId: idleReplyMessageId,
         onTrigger: () => { void triggerAIResponse(); },
     });
 
@@ -4467,7 +4506,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
 
     const handleSendText = (text: string, options?: { autoReply?: boolean; mentions?: Array<{ characterId: string; name: string }>; screenEffect?: "echo" | "love" | "fireworks" }): boolean => {
         if (!ensureGroupSpeakPermission()) return false;
-        if (isGenerating) {
+        if (isGenerating || retryVersionRunRef.current) {
             showChatToast("请先等待对方回复");
             return false;
         }
@@ -4527,6 +4566,8 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         // 聊天插件织入点 user.beforeSend：无插件时走原同步路径，
         // 有插件时输入框先清空，改写/取消在异步续体里完成
         if (getChatPluginHookBus().hasHandlers("user.beforeSend")) {
+            // 插件改写完成前不算安静，自动回复不会基于旧上下文触发
+            setPendingTextTransforms(count => count + 1);
             void runChatPluginTransform("user.beforeSend", {
                 text: trimmed,
                 sessionId: session.id,
@@ -4536,7 +4577,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                 if (payload.cancelled) return;
                 const finalText = typeof payload.text === "string" ? payload.text.trim() : trimmed;
                 if (finalText) commitSendText(finalText);
-            });
+            }).finally(() => setPendingTextTransforms(count => Math.max(0, count - 1)));
         } else {
             commitSendText(trimmed);
         }
@@ -4981,20 +5022,71 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         setActiveOfflineTarget(null);
     };
 
-    const handleOfflineRetryFrom = async (turnId: string) => {
-        if (isOfflineGenerating) {
+    /** 打开「指令重试 / 回复版本」窗口；这条回复重试过就带上它的版本组。 */
+    const openRetryDialog = (id: string, offline = false) => {
+        if (isGeneratingRef.current || isOfflineGenerating || retryVersionBusy || retryVersionRunRef.current) {
+            showChatToast("请先等待当前回复结束");
+            return;
+        }
+        let series: RetrySeries | undefined;
+        try { series = findRetrySeries(session.id, id, offline); }
+        catch (error) { showChatToast(error instanceof Error ? error.message : String(error)); }
+        cancelFollowUp(session.id);
+        setActiveMessageId(null);
+        setActiveOfflineTarget(null);
+        setInstructionRetryDraft("");
+        setRetryDialog({ id, offline, series });
+    };
+
+    /** 窗口里左右切换版本：只替换本地记录，不调用模型；取消窗口会保留当前选中的版本。 */
+    const switchRetryVersion = async (index: number) => {
+        const target = retryDialog;
+        if (!target?.series || retryVersionBusy || isGeneratingRef.current || isOfflineGenerating || retryVersionRunRef.current) return;
+        retryVersionRunRef.current = true;
+        setRetryVersionBusy(true);
+        try {
+            const series = await selectRetryVersion(target.series, index);
+            const id = series.versions[index].memberIds[0] ?? target.id;
+            if (target.offline) setOfflineTurns(loadChatOfflineTurns(session.id)); else syncMessagesFromStorage();
+            setRetryDialog({ ...target, id, series });
+        } catch (error) {
+            showChatToast(error instanceof Error ? error.message : String(error));
+        } finally {
+            retryVersionRunRef.current = false;
+            setRetryVersionBusy(false);
+        }
+    };
+
+    const handleOfflineRetryFrom = async (turnId: string, retryInstruction?: string, existing?: RetrySeries) => {
+        if (isOfflineGenerating || retryVersionRunRef.current) {
             showChatToast("线下回复生成中");
             return;
         }
-        const idx = offlineTurns.findIndex(turn => turn.id === turnId);
+        const storedTurns = loadChatOfflineTurns(session.id);
+        const idx = storedTurns.findIndex(turn => turn.id === turnId);
+        if (!existing) {
+            try { existing = findRetrySeries(session.id, turnId, true); } catch { existing = undefined; }
+        }
         if (idx < 0) return;
-        const targetTurn = offlineTurns[idx];
-        const baseTurns = offlineTurns.slice(0, idx);
+        const targetTurn = storedTurns[idx];
+        const baseTurns = storedTurns.slice(0, idx);
         const retryInput = targetTurn.userContent.trim();
         if (!retryInput) {
             showChatToast("这一轮没有可重试的用户输入");
             return;
         }
+
+        // 先把原段落存成版本；存不了也照常重试（与没有版本功能时一致），只提示一次
+        let retrySeries: RetrySeries | null = null;
+        retryVersionRunRef.current = true;
+        try { retrySeries = await beginRetryVersion(session.id, turnId, "offline", existing); }
+        catch (error) { showChatToast(`未能保存重试版本：${error instanceof Error ? error.message : String(error)}`); }
+        if (isOfflineGenerating || loadChatOfflineTurns(session.id).map(turn => turn.id).join("|") !== storedTurns.map(turn => turn.id).join("|")) {
+            retryVersionRunRef.current = false;
+            showChatToast("聊天记录刚刚发生变化，请重新打开重试窗口");
+            return;
+        }
+        const beforeIds = storedTurns.map(turn => turn.id);
 
         cancelFollowUp(session.id);
         setActiveOfflineTarget(null);
@@ -5014,7 +5106,8 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         const isCurrentOfflineRun = () => isOfflineGenerationRunActive(session.id, offlineRunId);
 
         try {
-            const history = buildOfflinePromptHistory(baseTurns, retryInput);
+            const history = withRetryInstruction(buildOfflinePromptHistory(baseTurns, retryInput), session.id, retryInstruction,
+                retrySeries ? retrySourceText(retrySeries, turnId) : targetTurn.assistantContent);
             const onOfflineDelta = (delta: string) => {
                 if (!isCurrentOfflineRun()) return;
                 offlineStreamAccumRef.current += delta;
@@ -5058,10 +5151,20 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
             setOfflineTurns([...baseTurns, saved]);
         } catch (error: any) {
             if (!isCurrentOfflineRun() || isAbortLikeError(error)) return;
-            offlineTextInputRef.current?.setText(retryInput);
+            // 有版本时失败会放回原段落，不再把输入塞回输入框
+            if (!retrySeries) offlineTextInputRef.current?.setText(retryInput);
             showChatToast(`线下重试失败: ${error?.message || String(error)}`, 3000);
         } finally {
-            if (!finishOfflineGenerationRun(session.id, offlineRunId)) return;
+            const finished = finishOfflineGenerationRun(session.id, offlineRunId);
+            // 被新一轮线下生成顶替：由那一轮收尾
+            if (!finished && activeOfflineGenerationRuns.has(session.id)) { retryVersionRunRef.current = false; return; }
+            // 成功存为新版本；失败 / 停止没有新段落则放回原段落
+            if (retrySeries) {
+                try { await finishRetryVersion(retrySeries, beforeIds); setOfflineTurns(loadChatOfflineTurns(session.id)); }
+                catch (error) { showChatToast(`重试版本保存失败：${error instanceof Error ? error.message : String(error)}`); }
+            }
+            retryVersionRunRef.current = false;
+            if (!finished) return;
             setPendingOfflineUserText("");
             offlineGenerationInputRef.current = "";
             setIsOfflineGenerating(false);
@@ -5070,26 +5173,59 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         }
     };
 
-    const handleRetry = async (msgId: string, retryInstruction?: string) => {
-        const msgIndex = messages.findIndex(m => m.id === msgId);
-        if (msgIndex === -1 || messages[msgIndex].role !== "assistant") return;
+    const handleRetry = async (msgId: string, retryInstruction?: string, existing?: RetrySeries) => {
+        if (isGeneratingRef.current || retryVersionRunRef.current) { showChatToast("请先等待当前回复结束"); return; }
+        // 以完整存储为准（可见窗口可能只加载了一部分）
+        const stored = loadChatMessages(session.id);
+        const targetIndex = stored.findIndex(m => m.id === msgId);
+        if (targetIndex === -1 || stored[targetIndex].role !== "assistant") return;
+        if (!existing) {
+            try { existing = findRetrySeries(session.id, msgId); } catch { existing = undefined; }
+        }
+        // 拆分回复 / 群聊整轮及其工具记录一起重试，不留半截
+        const msgIndex = retryMessageStart(stored, msgId, existing);
+        if (msgIndex < 0) return;
 
-        const contextMessages = messages.slice(0, msgIndex);
+        // 先把原回复及之后的内容存成版本；存不了也照常重试（与没有版本功能时一致），只提示一次
+        let retrySeries: RetrySeries | null = null;
+        retryVersionRunRef.current = true;
+        try { retrySeries = await beginRetryVersion(session.id, msgId, "tail", existing); }
+        catch (error) { showChatToast(`未能保存重试版本：${error instanceof Error ? error.message : String(error)}`); }
+        if (isGeneratingRef.current || loadChatMessages(session.id).map(m => m.id).join("|") !== stored.map(m => m.id).join("|")) {
+            retryVersionRunRef.current = false;
+            showChatToast("聊天记录刚刚发生变化，请重新打开重试窗口");
+            return;
+        }
+        const contextMessages = stored.slice(0, msgIndex);
+        const sourceReply = retrySeries ? retrySourceText(retrySeries, msgId) : stored[targetIndex].content;
 
-        // Delete this message and everything after it
-        deleteChatMessagesFrom(msgId);
-        setMessages(prev => prev.slice(0, msgIndex));
+        // Delete the reply (from its first bubble) and everything after it
+        deleteChatMessagesFrom(stored[msgIndex].id);
+        syncMessagesFromStorage();
         setActiveMessageId(null);
 
         // Cancel any pending follow-up for this session
         cancelFollowUp(session.id);
 
-        await runManagedGeneration({
-            history: contextMessages,
-            errorPrefix: "重试失败",
-            onDecline: triggerReply,
-            retryInstruction,
-        });
+        try {
+            await runManagedGeneration({
+                history: contextMessages,
+                errorPrefix: "重试失败",
+                onDecline: triggerReply,
+                retryInstruction,
+                retrySourceReply: sourceReply,
+            });
+            // 成功存为新版本；失败 / 停止没有新回复则放回原回复（失败提示留在后面）。
+            // 若已有新一轮生成接手，先留着 pending，下次进入聊天室再整理。
+            if (retrySeries && !activeGenerationRuns.has(session.id)) {
+                await finishRetryVersion(retrySeries, stored.map(message => message.id));
+                syncMessagesFromStorage();
+            }
+        } catch (error) {
+            showChatToast(`重试版本保存失败：${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+            retryVersionRunRef.current = false;
+        }
     };
 
     const handleRetractMessage = (msgId: string) => {
@@ -5574,6 +5710,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                     <button onClick={() => void handleOfflineRetryFrom(turn.id)} className="ctx-menu-btn ctx-menu-btn-danger">重试以下</button>
                 </div>
                 <div className="flex">
+                    <button onClick={() => openRetryDialog(turn.id, true)} className="ctx-menu-btn">指令重试</button>
                     <button
                         onClick={() => handleOfflineRewindBefore(turn.id, role)}
                         className="ctx-menu-btn ctx-menu-btn-danger"
@@ -5851,7 +5988,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                         <button onClick={() => handleRetractMessage(storedMessageId)} className="ctx-menu-btn"><Undo2 className="imessage-context-icon" aria-hidden="true" /><span>撤回消息</span></button>
                     )}
                     {m.role === "assistant" && (
-                        <button onClick={() => { setInstructionRetryTargetId(storedMessageId); setInstructionRetryDraft(""); setActiveMessageId(null); }} className="ctx-menu-btn"><Wand2 className="imessage-context-icon" aria-hidden="true" /><span>指令重试</span></button>
+                        <button onClick={() => openRetryDialog(storedMessageId)} className="ctx-menu-btn"><Wand2 className="imessage-context-icon" aria-hidden="true" /><span>指令重试</span></button>
                     )}
                     {(hasEcho(m) || hasLove(m) || hasFireworks(m)) && (
                         <button onClick={() => { closeContextMenu(); echo.replay(m.id); }} className="ctx-menu-btn"><Clapperboard className="imessage-context-icon" aria-hidden="true" /><span>重播特效</span></button>
@@ -7802,36 +7939,74 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                 />
             )}
 
-            {instructionRetryTargetId && (
-                <div className="modal-overlay" data-ui="modal" role="dialog" aria-modal="true" aria-label="指令重试" onClick={() => setInstructionRetryTargetId(null)}>
-                    <div className="modal-dialog" onClick={event => event.stopPropagation()}>
-                        <span className="modal-header-title">指令重试</span>
-                        <p className="menu-desc">填写希望下一句怎样改变。内容只作为本次重新生成的隐藏提示词，不会出现在聊天记录里。</p>
-                        <textarea
-                            autoFocus
-                            className="ui-textarea min-h-[110px] w-full"
-                            value={instructionRetryDraft}
-                            onChange={event => setInstructionRetryDraft(event.target.value)}
-                            placeholder="例如：语气更克制，不要道歉；结合刚才的图片主动追问细节"
-                        />
-                        <div className="grid w-full grid-cols-2 gap-2">
-                            <button type="button" className="ui-btn ui-btn-ghost" onClick={() => setInstructionRetryTargetId(null)}>取消</button>
-                            <button
-                                type="button"
-                                className="ui-btn ui-btn-primary"
-                                disabled={!instructionRetryDraft.trim()}
-                                onClick={() => {
-                                    const targetId = instructionRetryTargetId;
-                                    const instruction = instructionRetryDraft.trim();
-                                    setInstructionRetryTargetId(null);
-                                    setInstructionRetryDraft("");
-                                    void handleRetry(targetId, instruction);
-                                }}
-                            >重新生成</button>
+            {retryDialog && (() => {
+                const series = retryDialog.series;
+                const versionIndex = series?.active ?? 0;
+                const versionCount = series?.versions.length ?? 1;
+                const versionText = retrySourceText(series, retryDialog.id)
+                    || (retryDialog.offline
+                        ? offlineTurns.find(turn => turn.id === retryDialog.id)?.assistantContent
+                        : messages.find(message => message.id === retryDialog.id)?.content)
+                    || "";
+                const closeRetryDialog = () => { if (!retryVersionBusy) { setRetryDialog(null); setInstructionRetryDraft(""); } };
+                return (
+                    <div className="modal-overlay" data-ui="modal" role="dialog" aria-modal="true" aria-labelledby="chat-retry-dialog-title"
+                        onClick={closeRetryDialog}
+                        onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); closeRetryDialog(); } }}>
+                        <div className="modal-dialog" onClick={event => event.stopPropagation()}>
+                            <div className="flex w-full items-center justify-between gap-2">
+                                <span id="chat-retry-dialog-title" className="modal-header-title">指令重试</span>
+                                {versionCount > 1 && (
+                                    <div className="flex shrink-0 items-center" role="group" aria-label="回复版本">
+                                        <button type="button" className="grid h-11 w-11 place-items-center rounded-full bg-transparent active:bg-black/5 disabled:opacity-35" aria-label="上一个版本"
+                                            disabled={retryVersionBusy || versionIndex <= 0}
+                                            onClick={() => void switchRetryVersion(versionIndex - 1)}><ChevronLeft size={18} aria-hidden="true" /></button>
+                                        <span className="menu-desc min-w-[36px] text-center tabular-nums" aria-live="polite">{versionIndex + 1}/{versionCount}</span>
+                                        <button type="button" className="grid h-11 w-11 place-items-center rounded-full bg-transparent active:bg-black/5 disabled:opacity-35" aria-label="下一个版本"
+                                            disabled={retryVersionBusy || versionIndex >= versionCount - 1}
+                                            onClick={() => void switchRetryVersion(versionIndex + 1)}><ChevronRight size={18} aria-hidden="true" /></button>
+                                    </div>
+                                )}
+                            </div>
+                            {versionText && (
+                                <div className="w-full max-h-[140px] overflow-auto whitespace-pre-wrap break-words rounded-xl bg-black/[.04] px-3 py-2 ts-13 leading-relaxed"
+                                    aria-label={versionCount > 1 ? `第 ${versionIndex + 1} 个回复版本` : "所选回复"} tabIndex={0}>{versionText}</div>
+                            )}
+                            <p className="menu-desc">填写希望下一句怎样改变。内容只作为本次重新生成的隐藏提示词，不会出现在聊天记录里。</p>
+                            <textarea
+                                autoFocus
+                                className="ui-textarea min-h-[110px] w-full"
+                                value={instructionRetryDraft}
+                                disabled={retryVersionBusy}
+                                maxLength={2000}
+                                onChange={event => setInstructionRetryDraft(event.target.value)}
+                                placeholder="例如：语气更克制，不要道歉；结合刚才的图片主动追问细节"
+                            />
+                            <p className="menu-desc">
+                                {versionCount > 1
+                                    ? "左右切换可比较各次回复，关闭窗口会保留当前选中的版本；重新生成会从这个版本继续。"
+                                    : "重新生成会替换所选回复及之后的内容，原内容保存为版本，可随时切回。"}
+                            </p>
+                            <div className="grid w-full grid-cols-2 gap-2">
+                                <button type="button" className="ui-btn ui-btn-ghost" disabled={retryVersionBusy} onClick={closeRetryDialog}>{versionCount > 1 ? "保留此版本" : "取消"}</button>
+                                <button
+                                    type="button"
+                                    className="ui-btn ui-btn-primary"
+                                    disabled={retryVersionBusy}
+                                    onClick={() => {
+                                        const target = retryDialog;
+                                        const instruction = instructionRetryDraft.trim();
+                                        setRetryDialog(null);
+                                        setInstructionRetryDraft("");
+                                        if (target.offline) void handleOfflineRetryFrom(target.id, instruction, target.series);
+                                        else void handleRetry(target.id, instruction, target.series);
+                                    }}
+                                >{instructionRetryDraft.trim() ? "按要求重新生成" : "直接重试"}</button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
 
             {storyEntryMigrationOpen && (
                 <div className="modal-overlay" data-ui="modal" role="dialog" aria-modal="true" aria-label="迁移旧线下消息" onClick={() => setStoryEntryMigrationOpen(false)}>
