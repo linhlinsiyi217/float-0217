@@ -44,6 +44,7 @@ import {
   mdiWeatherSunny,
   mdiDoorOpen,
   mdiThoughtBubbleOutline,
+  mdiPaw,
 } from "@mdi/js";
 
 type IconGlyphProps = {
@@ -85,6 +86,7 @@ const MDI_PATHS: Record<IconId, string> = {
   lifesim: mdiWeatherSunny,
   kuaichuan: mdiDoorOpen,
   deeptalk: mdiThoughtBubbleOutline,
+  desktoppet: mdiPaw,
 };
 
 export function IconGlyph({ id, className }: IconGlyphProps) {

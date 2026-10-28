@@ -29,6 +29,7 @@ import { PerceptionBootstrap } from "@/components/perception/perception-bootstra
 import { MascotPreviewHost } from "@/components/mascot/mascot-preview-host";
 import { useMusicControlsOptional } from "@/lib/music-context";
 import { PhoneResourcesApp, type ResourceSubPage } from "@/components/phone-resources-app";
+import { DesktopPetApp } from "@/components/desktoppet/desktoppet-app";
 import { CustomAppForegroundBoundary } from "@/components/app-market/custom-app-failure";
 import { hydrateKvDb, kvGet, kvSet, kvRemove, kvKeysWithPrefix } from "@/lib/kv-db";
 import { uninstallApp, restoreApp, loadUninstalledApps, isAppUninstalled, hasDataRule, dataLabelFor } from "@/lib/app-uninstall";
@@ -129,6 +130,7 @@ import { generateChatCompletion, flattenCompletionResult } from "@/lib/chat-engi
 import { parseAIResponse } from "@/lib/rich-message-parser";
 import { requestBackgroundChatReply, scheduleFollowUp } from "@/lib/follow-up-service";
 import { CHAT_MESSAGE_NOTICE_EVENT, CHAT_OPEN_SESSION_EVENT, type ChatMessageNoticeDetail } from "@/lib/chat-notification-events";
+import { recordChatNotice } from "@/lib/notice-history";
 import { startIncomingCallVibration } from "@/lib/call-vibration";
 import { CallLayer } from "@/components/chat/call-layer";
 import { installChatSoundListener, playChatSoundOnce, setMiniChatSoundSessionId, startChatSoundLoop } from "@/lib/chat-sound";
@@ -3012,6 +3014,19 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
       // 固定通知标题：填了就顶替角色名（SOURCE 组）
       const displayTitle = prefs.fixedTitle.trim() || title;
 
+      // G5 通知气泡链底账：能走到这里的通知都会真实弹出（横幅/灵动岛/系统
+      // 通知任一路径），落一条到 notice-history 供「桌宠 → 通知记录」回溯。
+      // 只加记录，不改下面任何路径的分发行为。
+      if (!isDemo && !detail.isTest) {
+        recordChatNotice({
+          sessionId: detail.sessionId,
+          senderName: displayTitle,
+          body: bodyText,
+          avatar,
+          isGroup,
+        });
+      }
+
       // 壳环境：站内横幅整体停用，改发原生系统通知。
       // 第 4 个参数带会话 id：壳点通知时据此直达该会话；旧壳会忽略多余参数。
       if (canSendShellNotification()) {
@@ -4718,6 +4733,16 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
     if (activeApp === "kuaichuan") {
       return <KuaichuanApp onClose={() => setActiveApp(null)} />;
+    }
+
+    if (activeApp === "desktoppet") {
+      return (
+        <DesktopPetApp
+          onClose={() => setActiveApp(null)}
+          onNotice={setNotice}
+          onOpenChatSession={openChatSessionFromNotice}
+        />
+      );
     }
 
     if (activeApp === "appmarket") {

@@ -39,6 +39,7 @@
 @import "../styles/phone-widget.css";
 @import "../styles/lifesim.css";
 @import "../styles/deep-talk.css";
+@import "../styles/desktoppet.css";
 
 @theme {
   /* 间距 (4px 基准) */
