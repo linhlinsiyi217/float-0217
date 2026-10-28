@@ -259,6 +259,7 @@ export type ChatMessage = {
         blacklistUserName?: string;      // 拉黑事件发生时的用户名（用于事件详情与上下文）
         musicTitle?: string;      // 音乐标题
         musicArtist?: string;     // 音乐歌手
+        musicLyric?: string;      // 歌词卡片：随音乐卡片一起分享的那句歌词
         listeningInvite?: {       // 一起听邀请（私聊）
             roomId: string;
             initiator?: "user" | "character";

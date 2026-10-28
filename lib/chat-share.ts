@@ -4,6 +4,14 @@ export type MusicChatSharePayload = {
     artist: string;
 };
 
+/** 歌词卡片：把正在唱的这句歌词做成卡片发进聊天。 */
+export type MusicLyricChatSharePayload = {
+    type: "music_lyric";
+    title: string;
+    artist: string;
+    lyric: string;
+};
+
 export type XiaohongshuNoteChatSharePayload = {
     type: "xiaohongshu_note";
     authorName: string;
@@ -17,7 +25,7 @@ export type XiaohongshuNoteChatSharePayload = {
     tone?: string;
 };
 
-export type ChatSharePayload = MusicChatSharePayload | XiaohongshuNoteChatSharePayload;
+export type ChatSharePayload = MusicChatSharePayload | MusicLyricChatSharePayload | XiaohongshuNoteChatSharePayload;
 
 function compactShareText(value: string | undefined, fallback: string): string {
     const text = (value || "").replace(/\s+/g, " ").trim();

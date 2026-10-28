@@ -21,6 +21,7 @@ import { Headphones } from "lucide-react";
 import { getListeningRoom } from "@/lib/listen-together";
 import { loadListeningLibrary, editListeningPlaylist, songForListeningLibrary, LISTENING_LIBRARY_EVENT } from "@/lib/listening-library";
 import { ListeningPlayerPresence, useListeningPresence } from "./listening-presence";
+import { isDesktopLyricsEnabled, setDesktopLyricsEnabled, DESKTOP_LYRICS_EVENT } from "@/lib/music-lyrics";
 
 const PLAY_MODE_ICONS: Record<PlayMode, { svg: string; label: string }> = {
     sequence: {
@@ -80,6 +81,14 @@ export default function MusicPlayer() {
         const handleBgChange = () => setBgCfg(loadMusicBg());
         window.addEventListener(MUSIC_BG_EVENT, handleBgChange);
         return () => window.removeEventListener(MUSIC_BG_EVENT, handleBgChange);
+    }, []);
+
+    // 桌面歌词开关状态（跨组件广播同步）
+    const [desktopLyricsOn, setDesktopLyricsOn] = useState(() => isDesktopLyricsEnabled());
+    useEffect(() => {
+        const handleLyricsToggle = () => setDesktopLyricsOn(isDesktopLyricsEnabled());
+        window.addEventListener(DESKTOP_LYRICS_EVENT, handleLyricsToggle);
+        return () => window.removeEventListener(DESKTOP_LYRICS_EVENT, handleLyricsToggle);
     }, []);
 
     // kv cache hydrates asynchronously from IndexedDB — the initial read above
@@ -159,6 +168,37 @@ export default function MusicPlayer() {
         if (musicToastTimerRef.current) clearTimeout(musicToastTimerRef.current);
         if (musicLoadingFallbackRef.current) clearTimeout(musicLoadingFallbackRef.current);
     }, []);
+
+    const toggleDesktopLyrics = useCallback(() => {
+        const next = !isDesktopLyricsEnabled();
+        setDesktopLyricsEnabled(next);
+        showMusicToast(next ? "桌面歌词已开启" : "桌面歌词已关闭");
+    }, [showMusicToast]);
+
+    // 歌词分享：把当前这句歌词做成卡片发进聊天
+    // 当前行在调用时从 parsedLyrics + currentTime 实时算，避免依赖后面声明的 activeLyricIdx
+    const shareLyricToChat = useCallback(() => {
+        const lines = parsedLyrics.current;
+        let idx = -1;
+        for (let i = lines.length - 1; i >= 0; i--) {
+            if (player.currentTime >= lines[i].time) { idx = i; break; }
+        }
+        const line = idx >= 0 ? lines[idx]?.text : "";
+        if (!line) {
+            showMusicToast("这句还没开始唱，过一会儿再分享");
+            return;
+        }
+        window.dispatchEvent(new CustomEvent("open-mini-chat", {
+            detail: {
+                share: {
+                    type: "music_lyric",
+                    title: player.currentTrack?.title || "未知歌曲",
+                    artist: player.currentTrack?.artist || "",
+                    lyric: line,
+                },
+            },
+        }));
+    }, [player.currentTime, player.currentTrack, showMusicToast]);
 
     // ── Ambient palette from cover art ──
     const coverUrl = player.currentTrack?.coverUrl;
@@ -488,6 +528,11 @@ export default function MusicPlayer() {
                     </button>
                 </div>
                 <div className="mp-top-actions">
+                    <button className="music-player-ctrl-btn mp-top-btn" onClick={toggleDesktopLyrics} {...(desktopLyricsOn ? { "data-on": "" } : {})} title={desktopLyricsOn ? "关闭桌面歌词" : "开启桌面歌词"}>
+                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M4 6h16M4 12h10" /><path d="M19 15l2 2-2 2M15 17h4" />
+                        </svg>
+                    </button>
                     <button className="music-player-ctrl-btn mp-top-btn" onClick={togglePlayerStyle} title={playerStyle === "vinyl" ? "切换现代样式" : "切换黑胶样式"}>
                         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                             <circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
@@ -672,6 +717,12 @@ export default function MusicPlayer() {
                         <path d="M21 12a8.5 8.5 0 0 1-12.4 7.6L4 21l1.5-4.3A8.5 8.5 0 1 1 21 12z" />
                     </svg>
                     <span>{commentTotal > 0 ? formatCount(commentTotal) : "评论"}</span>
+                </button>
+                <button className="mp-social-btn" onClick={shareLyricToChat} title="分享当前歌词">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                        <path d="M4 5h13M4 10h16M4 15h16M4 20h9" />
+                    </svg>
+                    <span>歌词</span>
                 </button>
                 <button className="mp-social-btn" onClick={openShareViaChat}>
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

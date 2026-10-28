@@ -19,6 +19,7 @@ import MusicPlayer from "@/components/music/music-player";
 import MusicFloat from "@/components/music/music-float";
 import { ListeningGlow } from "@/components/music/listening-glow";
 import DynamicIsland from "@/components/island/dynamic-island";
+import DesktopLyrics from "@/components/music/desktop-lyrics";
 import MiniAppWindow from "@/components/music/mini-app-window";
 import { PhoneCalendarApp } from "@/components/calendar-app";
 import { PhoneQaApp } from "@/components/phone-qa-app";
@@ -1303,6 +1304,7 @@ const MusicShellOverlays = memo(function MusicShellOverlays({
       {musicPlayer?.showFullPlayer && musicPlayer.currentTrack && <MusicPlayer />}
       <MusicFloat hidden={activeApp === "music" || musicPlayer?.showFullPlayer} />
       <ListeningGlow />
+      <DesktopLyrics hidden={activeApp === "music"} />
     </>
   );
 });
