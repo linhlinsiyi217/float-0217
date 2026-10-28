@@ -2,6 +2,8 @@ import type { InternalCapabilityConfig } from "./settings-types";
 import { isAgentComputerConfigured, isContainerComputer } from "./agent-computer";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { loadBridgeDataItems, loadBridgeShortcutActions, parseBridgeActionParameterSchema } from "./reality-bridge/storage";
+import { CHAT_FORWARD_LIST_SCHEMA, CHAT_FORWARD_LIST_TOOL, CHAT_FORWARD_SEND_SCHEMA, CHAT_FORWARD_SEND_TOOL, CHAT_FORWARD_USAGE_GUIDE } from "./chat-forward-protocol";
+import { LISTENING_PLAYLIST_SCHEMA, LISTENING_PLAYLIST_TOOL, LISTENING_RANK_SCHEMA, LISTENING_RANK_TOOL, LISTENING_SUBTOOLS, LISTENING_USAGE_GUIDE } from "./listening-tool-definitions";
 
 const INTERNAL_CAPABILITIES_KEY = "ai_phone_internal_capabilities_v1";
 registerKvMigration(INTERNAL_CAPABILITIES_KEY);
@@ -21,6 +23,8 @@ export const DEVICE_ACTION_CAPABILITY_ID = "device_action";
 export const SYSTEM_CALENDAR_CAPABILITY_ID = "system_calendar";
 export const PHONE_WIDGET_CAPABILITY_ID = "phone_widget";
 export const CHECK_IN_REQUEST_CAPABILITY_ID = "check_in_request";
+export const CHAT_FORWARD_CAPABILITY_ID = "chat_forward";
+export const LISTEN_TOGETHER_CAPABILITY_ID = "listen_together";
 
 /**
  * 内置工具的保留名：用户给现实桥的快捷动作/数据项起名时必须避开。
@@ -44,6 +48,8 @@ export const RESERVED_INTERNAL_TOOL_NAMES: string[] = [
     "稍后主动联系",
     "设置定时醒来",
     "查看全部手机数据",
+    LISTENING_RANK_TOOL,
+    LISTENING_PLAYLIST_TOOL,
 ];
 
 export type InternalToolDefinition = {
@@ -1429,6 +1435,24 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
         createdAt: 0,
         updatedAt: 0,
     },
+    {
+        id: CHAT_FORWARD_CAPABILITY_ID,
+        name: "聊天记录转发",
+        description: "让角色把自己参与过的真实聊天记录合并转发到当前对话，或做成聊天长图发朋友圈（长图以角色为右侧）；也可呈现角色与 NPC 的聊天片段（默认关闭）。",
+        enabled: false,
+        mode: "auto",
+        createdAt: 0,
+        updatedAt: 0,
+    },
+    {
+        id: LISTEN_TOGETHER_CAPABILITY_ID,
+        name: "一起听",
+        description: "让角色查看自己和{{user}}一起听的累计时长排名，并整理当前聊天的共同歌单（新建、改名、找歌入单、收藏当前歌曲、移除）。发起一起听邀请不受这个开关影响。",
+        enabled: true,
+        mode: "auto",
+        createdAt: 0,
+        updatedAt: 0,
+    },
 ];
 
 export function loadInternalCapabilities(): InternalCapabilityConfig[] {
@@ -1582,8 +1606,53 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
             usageGuide: CHECK_IN_REQUEST_USAGE_GUIDE,
         };
     }
+    if (capability.id === CHAT_FORWARD_CAPABILITY_ID) {
+        return {
+            name: capability.name,
+            description: capability.description,
+            parameterSchema: "{}",
+            usageGuide: [
+                CHAT_FORWARD_USAGE_GUIDE,
+                "",
+                `动作：${CHAT_FORWARD_LIST_TOOL}`,
+                `参数：${CHAT_FORWARD_LIST_SCHEMA}`,
+                "",
+                `动作：${CHAT_FORWARD_SEND_TOOL}`,
+                `参数：${CHAT_FORWARD_SEND_SCHEMA}`,
+            ].join("\n"),
+        };
+    }
+    if (capability.id === LISTEN_TOGETHER_CAPABILITY_ID) {
+        return {
+            name: capability.name,
+            description: capability.description,
+            parameterSchema: "{}",
+            usageGuide: [
+                LISTENING_USAGE_GUIDE,
+                "",
+                `动作：${LISTENING_RANK_TOOL}`,
+                `参数：${LISTENING_RANK_SCHEMA}`,
+                "",
+                `动作：${LISTENING_PLAYLIST_TOOL}`,
+                `参数：${LISTENING_PLAYLIST_SCHEMA}`,
+            ].join("\n"),
+        };
+    }
     return null;
 }
+
+const CHAT_FORWARD_SUBTOOLS: InternalToolDefinition[] = [
+    {
+        name: CHAT_FORWARD_LIST_TOOL,
+        description: "不传 sourceSessionId 时列出你参与且可访问的真实会话；传入后读取最近20条可转发消息ID和正文摘要。beforeMessageId 可读取更早一页。",
+        parameterSchema: CHAT_FORWARD_LIST_SCHEMA,
+    },
+    {
+        name: CHAT_FORWARD_SEND_TOOL,
+        description: "默认向当前对话发送聊天记录卡片；history 可设 destination=moments 发布以你为右侧的真实聊天长图，caption 为附言。compose 按人设呈现你与NPC的片段，不能编造用户发言。",
+        parameterSchema: CHAT_FORWARD_SEND_SCHEMA,
+    },
+];
 
 /* ---------- 系统日历：角色能看见用户的真实日程，也能写下纪念日 ---------- */
 
@@ -1923,6 +1992,12 @@ export function getInternalCapabilitySubToolDefinition(
     if (capability.id === SYSTEM_CALENDAR_CAPABILITY_ID) {
         return SYSTEM_CALENDAR_SUBTOOLS.find(tool => tool.name === name) ?? null;
     }
+    if (capability.id === CHAT_FORWARD_CAPABILITY_ID) {
+        return CHAT_FORWARD_SUBTOOLS.find(tool => tool.name === name) ?? null;
+    }
+    if (capability.id === LISTEN_TOGETHER_CAPABILITY_ID) {
+        return LISTENING_SUBTOOLS.find(tool => tool.name === name) ?? null;
+    }
     return null;
 }
 
@@ -1949,6 +2024,12 @@ export function getInternalCapabilitySubToolDefinitions(
     }
     if (capability.id === SYSTEM_CALENDAR_CAPABILITY_ID) {
         return SYSTEM_CALENDAR_SUBTOOLS;
+    }
+    if (capability.id === CHAT_FORWARD_CAPABILITY_ID) {
+        return CHAT_FORWARD_SUBTOOLS;
+    }
+    if (capability.id === LISTEN_TOGETHER_CAPABILITY_ID) {
+        return LISTENING_SUBTOOLS;
     }
     return [];
 }

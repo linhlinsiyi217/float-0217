@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMusicControlsOptional } from "@/lib/music-context";
+import { ListeningPlanets, useListeningPresence } from "./listening-presence";
 
 const DRAG_START_THRESHOLD = 6;
 const SWIPE_DISMISS_EDGE_X = 4;
@@ -13,6 +14,7 @@ const SWIPE_VELOCITY_RECENT_MS = 180;
 
 export default function MusicFloat({ hidden }: { hidden?: boolean }) {
     const player = useMusicControlsOptional();
+    const presence = useListeningPresence();
     const floatRef = useRef<HTMLDivElement>(null);
     const [pos, setPos] = useState({ x: 310, y: 680 });
     const dragRef = useRef<{
@@ -165,11 +167,13 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
     if (!player || !player.currentTrack || hidden || player.floatDismissed) return null;
 
     const track = player.currentTrack;
+    const together = !!presence.room && presence.room.userJoined !== false;
 
     return (
         <div
             ref={floatRef}
             className="music-float"
+            {...(together ? { "data-together": presence.room!.status } : {})}
             {...(expanded ? { "data-expanded": "" } : {})}
             {...(dismissing ? { "data-dismissing": "" } : {})}
             style={{ left: pos.x, top: pos.y }}
@@ -179,6 +183,8 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
             onPointerCancel={handlePointerCancel}
         >
             <div className="music-float-inner">
+                {/* 一起听：封面外一圈两人头像小星球 */}
+                {together && <ListeningPlanets presence={presence} playing={player.isPlaying} />}
                 {/* Cover art */}
                 <div className="music-float-cover-wrap" {...(player.isPlaying ? { "data-playing": "" } : {})}>
                     <div className="music-float-vinyl-groove music-float-vinyl-groove-1" />
@@ -200,6 +206,7 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
                 <div className="music-float-info">
                     <div className="music-float-title">{track.title}</div>
                     <div className="music-float-artist">{track.artist}</div>
+                    {together && <div className="music-float-together">{presence.room!.status === "invited" ? `等待${presence.name}加入` : `正在和${presence.name}一起听`}</div>}
                 </div>
 
                 {/* Compact Controls */}

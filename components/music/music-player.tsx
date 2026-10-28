@@ -17,6 +17,10 @@ import {
 import MusicCommentsPage from "./music-comments";
 import MusicArtistPage from "./music-artist";
 import { loadMusicBg, playerBgStyle, MUSIC_BG_EVENT, type MusicBgConfig } from "@/lib/music-bg";
+import { Headphones } from "lucide-react";
+import { getListeningRoom } from "@/lib/listen-together";
+import { loadListeningLibrary, editListeningPlaylist, songForListeningLibrary, LISTENING_LIBRARY_EVENT } from "@/lib/listening-library";
+import { ListeningPlayerPresence, useListeningPresence } from "./listening-presence";
 
 const PLAY_MODE_ICONS: Record<PlayMode, { svg: string; label: string }> = {
     sequence: {
@@ -298,8 +302,10 @@ export default function MusicPlayer() {
         setLiked(newLiked);
         if (newLiked) {
             // For Netease tracks, open playlist picker to add to a playlist
-            if (isNeteaseTrack && isNeteaseConfigured()) {
-                setShowPlaylistPicker(true);
+            const cloud = isNeteaseTrack && isNeteaseConfigured();
+            // 一起听中：本地歌也能收藏到这个聊天的共同歌单
+            if (cloud || getListeningRoom()) setShowPlaylistPicker(true);
+            if (cloud) {
                 setLoadingPlaylists(true);
                 getUserPlaylists().then(p => { setPlaylists(p); setLoadingPlaylists(false); });
             }
@@ -325,6 +331,28 @@ export default function MusicPlayer() {
         setAddResult(result);
         setShowPlaylistPicker(false);
     }, [neteaseId]);
+
+    // 一起听：共同歌单（这个聊天的）
+    const listening = useListeningPresence();
+    const [, refreshLibrary] = useState(0);
+    useEffect(() => {
+        const update = () => refreshLibrary(n => n + 1);
+        window.addEventListener(LISTENING_LIBRARY_EVENT, update);
+        return () => window.removeEventListener(LISTENING_LIBRARY_EVENT, update);
+    }, []);
+    const sharedRoom = listening.room;
+    const sharedPlaylists = sharedRoom ? loadListeningLibrary().playlists.filter(p => p.sessionId === sharedRoom.sessionId) : [];
+    const saveSharedSong = (playlistId: string) => {
+        try {
+            const room = getListeningRoom();
+            if (!room || room.id !== sharedRoom?.id) throw new Error("一起听已变化，请重新选择");
+            const list = loadListeningLibrary().playlists.find(p => p.id === playlistId && p.sessionId === room.sessionId);
+            if (!list || !player.currentTrack) throw new Error("歌单或歌曲已不可用");
+            editListeningPlaylist(room.sessionId, list.id, "self", { add: songForListeningLibrary(player.currentTrack, "self") });
+            setShowPlaylistPicker(false);
+            setAddResult({ ok: true, message: "已收藏到「" + list.name + "」" });
+        } catch (e) { setAddResult({ ok: false, message: e instanceof Error ? e.message : "收藏失败" }); }
+    };
 
     const openShareViaChat = useCallback(() => {
         if (!player.currentTrack) return;
@@ -478,6 +506,9 @@ export default function MusicPlayer() {
                     </button>
                 </div>
             </div>
+
+            {/* 一起听：和谁在听 / 时长，点开看成员与结束 */}
+            <ListeningPlayerPresence />
 
             {/* Body — cover / vinyl / glow lyrics */}
             <div className="mp-body">
@@ -709,7 +740,22 @@ export default function MusicPlayer() {
                             </button>
                         </div>
                         <div className="music-playlist-picker-list">
-                            {loadingPlaylists ? (
+                            {sharedRoom && <>
+                                <div className="music-playlist-picker-section">和{listening.name}的共同歌单</div>
+                                {sharedPlaylists.length === 0
+                                    ? <div className="music-playlist-picker-loading">还没有共同歌单，可在音乐「一起听」页创建</div>
+                                    : sharedPlaylists.map(pl => (
+                                        <button key={pl.id} className="music-playlist-picker-item" onClick={() => saveSharedSong(pl.id)}>
+                                            <span className="music-playlist-picker-cover music-playlist-picker-cover-shared" aria-hidden="true"><Headphones size={18} strokeWidth={1.6} /></span>
+                                            <div className="music-playlist-picker-info">
+                                                <div className="music-playlist-picker-name">{pl.name}</div>
+                                                <div className="music-playlist-picker-count">{pl.songs.length}首</div>
+                                            </div>
+                                        </button>
+                                    ))}
+                                {(isNeteaseTrack && isNeteaseConfigured()) && <div className="music-playlist-picker-section">网易云歌单</div>}
+                            </>}
+                            {!(isNeteaseTrack && isNeteaseConfigured()) ? null : loadingPlaylists ? (
                                 <div className="music-playlist-picker-loading">加载歌单...</div>
                             ) : playlists.length === 0 ? (
                                 <div className="music-playlist-picker-loading">没有找到歌单</div>

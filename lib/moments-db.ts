@@ -66,7 +66,8 @@ export function dbDeleteCommentsByPost(postId: string): void {
 // ── Whole-collection replace (for the array-level save APIs) ──
 
 export function dbReplacePosts(posts: MomentPost[]): void {
-    momentsDb.transaction("rw", momentsDb.posts, async () => {
+    // 用表名字符串：传 Table 对象会让 Dexie 对递归的 forwardedChat 类型展开 KeyPaths 而报循环引用
+    momentsDb.transaction("rw", "posts", async () => {
         await momentsDb.posts.clear();
         await momentsDb.posts.bulkPut(posts);
     }).catch(err => console.warn("[MomentsDB] replace posts failed:", err));

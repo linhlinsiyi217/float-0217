@@ -74,6 +74,8 @@ export type ChatSession = {
     customCSS?: string;
     isMuted?: boolean;
     bilingualTranslationEnabled?: boolean;
+    /** 引文翻译：角色复述你的话时转成它本轮的表达语言。缺省 = 开 */
+    quoteTranslationEnabled?: boolean;
     collapseBilingualTranslation?: boolean;
     /** 丢弃角色输出的无效表情包（名称不在角色表情包与内置表情中时直接滤除该消息） */
     discardInvalidStickers?: boolean;
@@ -149,6 +151,7 @@ export type ChatMessage = {
         | "xiaohongshu_note_share"
         | "gift"
         | "contact_card"
+        | "forwarded_chat" // 合并转发的聊天记录（快照）
         | "app_card"
         | "tool_notice"
         | "tool_call"
@@ -171,6 +174,8 @@ export type ChatMessage = {
     origin?: "chat" | "reading_discuss" | "custom_app" | "custom_app_background" | "story_floating_phone" | "call";
     mediaUrl?: string;
     mediaData?: {
+        /** 合并转发的聊天记录快照（mediaType = forwarded_chat）；旧数据缺省 */
+        forwardedChat?: import("./chat-forward-types").ForwardedChat;
         amount?: number;          // 红包/转账金额
         count?: number;           // 红包个数
         label?: string;           // 红包留言/转账备注/照片描述/位置名/表情名
@@ -625,6 +630,7 @@ function resolvePendingAvatarRecommendation(message: ChatMessage): void {
 
 // ── Media Preview Map ─────────────────────────
 const MEDIA_PREVIEW_MAP: Record<string, string> = {
+    forwarded_chat: "[聊天记录]",
     image: "[图片]", audio: "[语音]", video: "[视频]",
     red_packet: "[红包]", transfer: "[转账]", location: "[位置]",
     poke: "[拍了拍你]", sticker: "[表情]", quote: "[引用]", dice: "[掷骰子]",

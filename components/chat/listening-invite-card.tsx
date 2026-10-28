@@ -13,10 +13,13 @@ export function ListeningInviteCard({ msg }: { msg: ChatMessage }) {
     const [error, setError] = useState("");
     const [slide, setSlide] = useState<number | null>(null);
     const drag = useRef<{ x: number; y: number; scale: number } | null>(null);
-    const status = room?.id === invite?.roomId && room?.sessionId === msg.sessionId ? room?.status : undefined;
+    const sameRoom = room?.id === invite?.roomId && room?.sessionId === msg.sessionId;
+    // 群聊：用户已在房间里才算「一起听中」；用户还没加入时这张卡仍是「等待回应」
+    const status = sameRoom ? (room?.isGroup && room.userJoined === false ? "invited" : room?.status) : undefined;
     const label = status === "joined" ? "已加入 · 一起听中" : status === "declined" || invite?.response === "declined" ? "已婉拒" : status === "invited" ? "等待回应" : invite?.response === "accepted" ? "已接受过这份邀请" : invite?.initiator === "character" ? "邀请已失效" : "邀请已发送";
     const cover = invite?.coverUrl && failedCover !== invite.coverUrl ? invite.coverUrl : undefined;
-    const actionable = status === "invited" && invite?.initiator === "character";
+    // 已经回应过（例如群聊里婉拒了、但其他成员还在听）就不能再在卡片上滑动；要加入走一起听面板
+    const actionable = status === "invited" && invite?.initiator === "character" && !invite?.response && msg.sessionId === room?.sessionId;
     const respond = async (accept: boolean) => {
         if (!actionable || busy || !invite) return;
         setBusy(true); setError("");

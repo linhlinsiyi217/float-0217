@@ -22,6 +22,8 @@ import { splitBilingualText } from "@/lib/bilingual-text";
 import { retryMomentGeneratedPhoto } from "@/lib/generated-image-retry";
 import { hasCharacterReferenceImage, hasUserReferenceImage } from "@/lib/image-generation-service";
 import { GeneratedImageErrorDialog } from "./generated-image-error-dialog";
+import { ChatScreenshotImage, ForwardedChatCard } from "./forwarded-chat";
+import { readForwardedChat } from "@/lib/chat-forward-types";
 import { Trash2, MoreHorizontal, MapPin, Heart, MessageCircle, Pencil } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui";
 
@@ -177,7 +179,7 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
 
     const handlePostEditSave = () => {
         const content = postContentDraft.trim();
-        if (!content) return;
+        if (!content && !post.chatScreenshot) return;
         const photoDescription = postPhotoDescDraft.trim();
         updateMomentPost(post.id, {
             content,
@@ -258,6 +260,7 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
     // Liked names list
     const likeNames = post.likes.map(l => getAuthorName(l.authorType, l.authorId, l.authorName, l.chatAccountId));
     const commentThreads = useMemo(() => buildTwoLevelMomentThreads(comments), [comments]);
+    const forwardedRecord = useMemo(() => readForwardedChat(post.forwardedChat), [post.forwardedChat]);
     const fallbackPhotoDescription = post.photoDescription && !post.photoUrl
         ? post.photoDescription
         : null;
@@ -364,7 +367,8 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
                 )}
             </div>
 
-            {/* Text content */}
+            {/* Text content（只发聊天长图、没写附言时不留空行） */}
+            {(post.content.trim() || !post.chatScreenshot) && (
             <div className="feed-post-content ts-16 leading-[1.75] text-[var(--c-text-title)] whitespace-pre-wrap break-words mb-3 w-full">
                 <BilingualTextBlock
                     text={post.content}
@@ -372,6 +376,12 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
                     defaultExpanded={defaultTranslationExpanded}
                 />
             </div>
+            )}
+
+            {/* 聊天长图帖：长图读不出来时退回聊天记录卡片 */}
+            {post.chatScreenshot && !resolvedPhotoUrl && forwardedRecord && (
+                <div className="mb-3"><ForwardedChatCard record={forwardedRecord} /></div>
+            )}
 
             {/* Location */}
             {post.location && (
@@ -384,7 +394,12 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
             {/* Photo area —— 四块内容全无时整个容器不渲染：空壳会照样吃掉自己的下边距
                 （flex 容器不会自塌陷），无配图的帖子正文和时间行之间就凭空多出一截，看着像空了一行。
                 间距用 mb-3 与卡片其余部分（头像行/正文/位置）对齐，media 原本的 mb-5 是全卡唯一的孤例。 */}
-            {(resolvedPhotoUrl || fallbackPhotoDescription) && (
+            {post.chatScreenshot && resolvedPhotoUrl && (
+                <div className="feed-post-media mb-3 w-full">
+                    <ChatScreenshotImage url={resolvedPhotoUrl} filename={`moment-${post.id}.png`} />
+                </div>
+            )}
+            {!post.chatScreenshot && (resolvedPhotoUrl || fallbackPhotoDescription) && (
             <div className="feed-post-media mb-3 w-full flex flex-col gap-2">
                 {resolvedPhotoUrl && (
                     <MediaImageWithPreview
@@ -546,7 +561,7 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
                         </div>
                         <div className="modal-footer" data-ui="modal-footer">
                             <button className="ui-btn ui-btn-ghost" onClick={() => setEditingPostOpen(false)}>取消</button>
-                            <button className="ui-btn ui-btn-action" disabled={!postContentDraft.trim()} onClick={handlePostEditSave}>保存</button>
+                            <button className="ui-btn ui-btn-action" disabled={!postContentDraft.trim() && !post.chatScreenshot} onClick={handlePostEditSave}>保存</button>
                         </div>
                     </div>
                 </div>,

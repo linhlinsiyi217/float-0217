@@ -11,6 +11,7 @@ import { readDwellingLayoutCache } from "./dwelling-storage";
 import { formatDwellingContext } from "./dwelling-engine";
 import { matchesActiveTags } from "./content-tag-utils";
 import { formatXiaohongshuShareForPrompt } from "./chat-share";
+import { formatForwardedChatForHistory } from "./chat-forward-types";
 import { stripStateAndInnerForPrompt } from "./prompt-sanitizer";
 import { formatPromptTimestamp, getPromptTimestampOptionsForTimeContext, resolvePromptTimeAware, type PromptTimestampOptions } from "./prompt-time";
 import { formatCharacterRelationsForPrompt } from "./character-world-storage";
@@ -18,6 +19,8 @@ import { buildCharacterTimeContext, buildGroupTimeContext, type CharacterTimeCon
 import { formatShoppingPaymentRequestHistory } from "./shopping-payment-request";
 import { buildGroupAdminBracketText } from "./group-admin";
 import { formatStudyRoomShareForPrompt } from "./study-room/share-card";
+import { buildChatQuotationInstruction } from "./chat-quotation";
+import { voiceExpressionInstruction } from "./voice-expression";
 
 export type LLMMessageRole = "system" | "user" | "assistant" | "tool";
 export type LLMToolCallPayload = { id: string; name: string; args: Record<string, unknown>; thoughtSignature?: string };
@@ -89,6 +92,7 @@ export interface AssemblerInput {
     groupTools?: string;                     // formatted tool definitions for {{groupTools}} macro (group chat)
     customAppRichMediaDirectives?: string;   // formatted custom app rich-media directives
     chatBilingualInstruction?: string;       // session-specific bilingual output rule for {{chatBilingualInstruction}}
+    quoteTranslationEnabled?: boolean;       // 引文翻译（会话开关，缺省 = 开）
     statusRegionSection?: string;            // {{statusRegionSection}} — 状态区章节（native 原文 / 空 / 自定义契约）
     statusRegionExampleLine?: string;        // {{statusRegionExampleLine}} — 主动消息输出示例中的状态区行
     statusRegionComposition?: string;        // {{statusRegionComposition}} — 文字聊天模式【输出构成】行
@@ -1058,6 +1062,21 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
         });
     }
 
+    // 聊天复述 / 引文翻译 + 按服务商的语音表达指南（只给绑定了支持行内表达音色的角色）
+    if (appId === "chat") {
+        blocks.push({
+            text: buildChatQuotationInstruction(input.quoteTranslationEnabled),
+            role: "system",
+            depth: 0,
+            order: Number.MAX_SAFE_INTEGER - 1,
+            marker: "chat_quotation",
+        });
+        const voiceInstruction = voiceExpressionInstruction([character.id], activeTags.includes("voice") || activeTags.includes("video"));
+        if (voiceInstruction) {
+            blocks.push({ text: voiceInstruction, role: "system", depth: 0, order: Number.MAX_SAFE_INTEGER - 1, marker: "voice_expression" });
+        }
+    }
+
     // --- Sort: depth descending, then order ascending ---
     blocks.sort((a, b) => {
         if (b.depth !== a.depth) return b.depth - a.depth;
@@ -1164,6 +1183,8 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
 export function formatRichMediaForHistory(msg: ChatMessage, userName: string, charName: string, isGroup?: boolean): string {
     const d = msg.mediaData;
     switch (msg.mediaType) {
+        case "forwarded_chat":
+            return formatForwardedChatForHistory(d?.forwardedChat);
         case "red_packet": {
             const cnt = d?.count;
             return isGroup && cnt && cnt > 1
@@ -1646,6 +1667,8 @@ export interface GroupAssemblerInput {
     groupRoster?: string;
     customAppRichMediaDirectives?: string;
     chatBilingualInstruction?: string;
+    /** 引文翻译（会话开关，缺省 = 开） */
+    quoteTranslationEnabled?: boolean;
     statusRegionSection?: string;
     statusRegionExampleLine?: string;
     statusRegionComposition?: string;
@@ -2238,6 +2261,22 @@ export function assembleGroupPromptPayload(input: GroupAssemblerInput): LLMMessa
                 imageUrl,
             });
         });
+    }
+
+    // 聊天复述 / 引文翻译 + 按服务商的语音表达指南（只给绑定了支持行内表达音色的成员）
+    blocks.push({
+        text: buildChatQuotationInstruction(input.quoteTranslationEnabled),
+        role: "system",
+        depth: 0,
+        order: Number.MAX_SAFE_INTEGER - 1,
+        marker: "chat_quotation",
+    });
+    const groupVoiceInstruction = voiceExpressionInstruction(
+        members.map(member => member.character.id),
+        activeTags.includes("voice") || activeTags.includes("video"),
+    );
+    if (groupVoiceInstruction) {
+        blocks.push({ text: groupVoiceInstruction, role: "system", depth: 0, order: Number.MAX_SAFE_INTEGER - 1, marker: "voice_expression" });
     }
 
     // Sort: depth descending, then order ascending

@@ -2,6 +2,8 @@
 
 import type { VoiceApiConfig, ContentAppId } from "./settings-types";
 import { loadVoiceConfigs, loadBindingConfig, resolveBinding } from "./settings-storage";
+import { synthesizeFishAudio } from "./fish-audio-tts";
+import { voiceTextForProvider } from "./voice-expression";
 
 export type VoiceApiConfigResolved = VoiceApiConfig;
 
@@ -25,15 +27,23 @@ export function resolveVoiceConfig(characterId: string, appId?: ContentAppId): V
  * Supported providers:
  * - Minimax: REST API → hex-encoded mp3
  * - OpenAI: REST API → binary audio blob
+ * - FishAudio: 官方 REST API（经本站 /api/voice/fish-audio 中转）→ MP3，只用选定模型，不自动换模型
+ *
+ * 文字里的 {voice:...} 表达标记在这里统一处理：Fish Audio 转成行内指令，
+ * 其他服务商直接去掉，不会被念出来。
  */
 export async function synthesizeSpeech(
     text: string,
     voiceConfig: VoiceApiConfig,
     options?: { emotion?: string },
 ): Promise<Blob | null> {
+    const provider = voiceConfig.provider;
+    text = voiceTextForProvider(text, provider, voiceConfig.model);
     if (!text.trim()) return null;
 
-    const provider = voiceConfig.provider;
+    if (provider === "FishAudio") {
+        return synthesizeFishAudio(text, voiceConfig);
+    }
 
     if (provider === "Minimax") {
         return synthesizeMinimax(text, voiceConfig, options?.emotion);

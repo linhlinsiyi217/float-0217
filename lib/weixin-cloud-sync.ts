@@ -158,6 +158,7 @@ export type WeixinCloudPromptContext = {
   musicOnlineHint: string;
   tools: string;
   chatBilingualInstruction: string;
+  quoteTranslationEnabled?: boolean;
   offlineBilingualInstruction: string;
   offlineSummaryTag: string;
   enableVision: boolean;
@@ -742,6 +743,7 @@ export function buildWeixinCloudPromptMessages(
     timeAware: context.timeAware,
     tools: context.tools,
     chatBilingualInstruction: context.chatBilingualInstruction,
+    quoteTranslationEnabled: context.quoteTranslationEnabled,
     offlineBilingualInstruction: context.offlineBilingualInstruction,
     offlineSummaryTag: context.offlineSummaryTag,
     nativeToolHistory: context.nativeToolHistory,
@@ -1123,6 +1125,7 @@ async function buildWeixinCloudPromptContext(params: {
       ? "- 你可以推荐任何歌曲，系统会在线搜索并播放。不局限于用户本地音乐库。\n"
       : "\n",
     tools: toolsPrompt,
+    quoteTranslationEnabled: params.session.quoteTranslationEnabled,
     chatBilingualInstruction: params.session.isGroup
       ? ""
       : buildChatBilingualInstruction(

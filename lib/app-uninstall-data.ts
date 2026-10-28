@@ -87,10 +87,11 @@ export const APP_DATA_SPEC: Record<string, AppDataSpec> = {
       "music-user-recent",
       "music-custom-css",
       "music-custom-bg-v1",
+      "listening-library-v1",
     ],
     kvPrefixes: ["music-search-cache:", "music-playlist-tracks-", "music-playlist-detail-"],
     databases: ["ai_phone_music_db_v1"],
-    dataLabel: "本地音乐、播放列表、网易云登录与推荐缓存",
+    dataLabel: "本地音乐、播放列表、网易云登录、推荐缓存、一起听歌单与时长榜",
     note: "音乐同步标记与聊天共用，保留",
   },
 

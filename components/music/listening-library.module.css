@@ -1,0 +1,101 @@
+/* 一起听页：沿用音乐 App 自己的文字 / 强调色变量；层级靠字号字重，分区靠间距。 */
+.page { --ll-text: var(--c-music-text, #1c1f24); --ll-muted: color-mix(in srgb, var(--ll-text) 55%, transparent); --ll-line: color-mix(in srgb, var(--ll-text) 9%, transparent); --ll-fill: color-mix(in srgb, var(--ll-text) 5%, transparent); --ll-accent: var(--c-music-accent, #4a4a4a);
+    padding: 12px 20px 160px; color: var(--ll-text); min-width: 0; }
+.page button, .detail button { font: inherit; color: inherit; cursor: pointer; border: 0; background: transparent; -webkit-tap-highlight-color: transparent; }
+.page button:disabled, .detail button:disabled { cursor: default; opacity: .45; }
+.page button:focus-visible, .page input:focus-visible, .detail button:focus-visible, .detail input:focus-visible { outline: 2px solid var(--ll-accent); outline-offset: 2px; }
+.hint { font-size: 13px; line-height: 1.6; color: var(--ll-muted); margin: 8px 0 16px; }
+.notice { position: sticky; bottom: 96px; margin: 16px 0 0; padding: 12px 14px; border-radius: 14px; font-size: 13px; background: var(--c-music-surface-solid, #fff); color: var(--ll-text); box-shadow: 0 6px 24px rgba(28, 31, 36, .1); }
+
+/* ---- 顶部：当前一起听 / 邀请 ---- */
+.hero { display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: 22px; background: var(--c-music-surface-solid, #fff); box-shadow: 0 1px 2px rgba(28, 31, 36, .04), 0 8px 24px rgba(28, 31, 36, .06); }
+.heroNow { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.heroNow :global(.listening-duet) { --duet-size: 44px; }
+.heroCopy, .heroIdle { min-width: 0; flex: 1; }
+.heroCopy strong, .heroIdle strong { display: block; font-size: 17px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.heroIdle strong { font-size: 22px; font-weight: 650; }
+.heroCopy small, .heroIdle small { display: block; margin-top: 4px; font-size: 13px; color: var(--ll-muted); font-variant-numeric: tabular-nums; }
+.heroActions { display: flex; flex-direction: column; gap: 8px; }
+.hero[data-entry-animate] .heroNow :global(.listening-duet-person) { animation: ll-approach 1.2s cubic-bezier(.22, .9, .32, 1) var(--listening-page-delay, 0ms) both; }
+.hero[data-entry-animate] .heroNow :global(.listening-duet-person + .listening-duet-person) { animation-name: ll-approach-right; }
+@keyframes ll-approach { from { transform: translateX(-8px); opacity: .6; } to { transform: none; opacity: 1; } }
+@keyframes ll-approach-right { from { transform: translateX(8px); opacity: .6; } to { transform: none; opacity: 1; } }
+
+.primary { min-height: 44px; padding: 0 18px; border-radius: 12px; font-size: 15px; font-weight: 600; white-space: nowrap; background: var(--ll-text) !important; color: var(--c-music-surface-solid, #fff) !important; transition: transform .18s cubic-bezier(.22, .9, .32, 1), opacity .18s; }
+.primary:active { transform: scale(.98); }
+.primarySm, .secondarySm { min-height: 36px; padding: 0 14px; border-radius: 10px; font-size: 14px; white-space: nowrap; }
+.primarySm { background: var(--ll-text) !important; color: var(--c-music-surface-solid, #fff) !important; font-weight: 600; }
+.secondarySm { background: var(--ll-fill) !important; }
+.danger { display: block; width: 100%; min-height: 44px; margin-top: 28px; border-radius: 12px; font-size: 15px; color: #c8372d !important; background: color-mix(in srgb, #c8372d 8%, transparent) !important; }
+
+.sheetList { display: flex; flex-direction: column; max-height: 280px; overflow: auto; margin: 0 -6px; }
+.row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 6px; border-radius: 12px; text-align: left; }
+@media (hover: hover) { .row:hover { background: var(--ll-fill) !important; } }
+.row:active { background: var(--ll-fill) !important; }
+.rowText { flex: 1; min-width: 0; }
+.rowText strong { display: block; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rowText small { display: block; margin-top: 2px; font-size: 12px; color: var(--ll-muted); }
+.avatar { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; overflow: hidden; background: var(--ll-fill); font-size: 15px; font-weight: 600; color: var(--ll-muted); }
+.avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* ---- 分区标题 + 聊天选择 ---- */
+.sectionHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 30px 0 12px; }
+.sectionHead h3 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -.01em; }
+.scope { position: relative; min-width: 0; }
+.scope > button { display: flex; align-items: center; gap: 4px; min-height: 44px; max-width: 180px; font-size: 14px; color: var(--ll-muted) !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.picker { position: absolute; z-index: 6; top: calc(100% + 2px); right: 0; width: 220px; max-height: 260px; overflow: auto; padding: 6px; border-radius: 14px; background: var(--c-music-surface-solid, #fff); box-shadow: 0 10px 30px rgba(28, 31, 36, .14); }
+.picker button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 44px; padding: 0 10px; border-radius: 10px; font-size: 14px; text-align: left; }
+@media (hover: hover) { .picker button:hover { background: var(--ll-fill) !important; } }
+
+/* ---- 封面架 ---- */
+.albumShelf { position: relative; height: 236px; margin: 0 -20px; overflow: hidden; perspective: 900px; }
+.flowStage { position: relative; height: 100%; touch-action: pan-y; }
+.albumCard { position: absolute; left: 50%; top: 8px; width: 148px; margin-left: -74px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+    transform: translateX(calc(var(--offset, 0) * 112px)) translateZ(calc(var(--distance, 0) * -90px)) rotateY(calc(var(--side, 0) * -28deg));
+    opacity: calc(1 - var(--distance, 0) * .28); z-index: calc(10 - var(--distance, 0)); transition: transform .32s cubic-bezier(.22, .9, .32, 1), opacity .32s; }
+.albumCard strong { display: block; max-width: 148px; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.albumCard small { display: block; font-size: 12px; color: var(--ll-muted); white-space: nowrap; }
+.albumOpen { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.albumArt { display: grid; place-items: center; width: 148px; height: 148px; border-radius: 14px; overflow: hidden; background: var(--ll-fill); color: var(--ll-muted); box-shadow: 0 6px 20px rgba(28, 31, 36, .12); }
+.createArt { box-shadow: none; border: 1.5px dashed var(--ll-line) !important; }
+.albumInput { width: 148px; min-height: 36px; padding: 0 10px; border-radius: 10px; border: 0; background: var(--ll-fill); color: inherit; font: inherit; font-size: 14px; text-align: center; }
+.cover { display: grid; place-items: center; width: 100%; height: 100%; color: var(--ll-muted); }
+.cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* ---- 榜单 ---- */
+.ranking { list-style: none; margin: 0; padding: 0; }
+.ranking li { display: flex; align-items: center; gap: 12px; min-height: 64px; }
+.ranking li + li { border-top: 1px solid var(--ll-line); }
+.rank { width: 22px; font-size: 15px; font-weight: 600; color: var(--ll-muted); font-variant-numeric: tabular-nums; text-align: center; }
+.time { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.time small { font-size: 12px; font-weight: 400; color: var(--ll-muted); }
+
+/* ---- 歌单详情 ---- */
+.detail { --ll-text: var(--c-music-text, #1c1f24); --ll-muted: color-mix(in srgb, var(--ll-text) 55%, transparent); --ll-line: color-mix(in srgb, var(--ll-text) 9%, transparent); --ll-fill: color-mix(in srgb, var(--ll-text) 5%, transparent); --ll-accent: var(--c-music-accent, #4a4a4a);
+    position: absolute; inset: 0; z-index: 60; display: flex; flex-direction: column; color: var(--ll-text); background: var(--c-music-surface-solid, #fff); animation: ll-detail-in .28s cubic-bezier(.22, .9, .32, 1); }
+.detail[hidden] { display: none; }
+@keyframes ll-detail-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.detailHeader { display: flex; align-items: center; justify-content: space-between; padding: var(--page-header-safe-top, 8px) 8px 0; min-height: 52px; }
+.detailTitle { font-size: 17px; font-weight: 600; }
+.iconBtn { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 12px; color: var(--ll-muted) !important; }
+.detailBody { flex: 1; min-height: 0; overflow: auto; padding: 8px 20px 120px; }
+.detailIdentity { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-bottom: 22px; text-align: center; }
+.detailIdentity .albumArt { width: 180px; height: 180px; margin-bottom: 8px; }
+.detailIdentity h3 { margin: 0; font-size: 22px; font-weight: 650; overflow-wrap: anywhere; }
+.detailIdentity small { font-size: 13px; color: var(--ll-muted); }
+.edit { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; }
+.edit input { flex: 1; min-width: 0; min-height: 36px; padding: 0 12px; border-radius: 10px; border: 0; background: var(--ll-fill); color: inherit; font: inherit; font-size: 15px; }
+.songList { display: flex; flex-direction: column; }
+.song { display: flex; align-items: center; gap: 12px; min-height: 64px; }
+.song + .song { border-top: 1px solid var(--ll-line); }
+.songArt { position: relative; width: 48px; height: 48px; flex-shrink: 0; border-radius: 8px; overflow: hidden; background: var(--ll-fill) !important; }
+.songPlay { position: absolute; right: 3px; bottom: 3px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; color: #fff; background: rgba(28, 31, 36, .55); }
+.songLabel { flex: 1; min-width: 0; min-height: 44px; text-align: left; }
+.songLabel strong { display: block; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.songLabel small { display: block; margin-top: 2px; font-size: 12px; color: var(--ll-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.songNumber { font-size: 12px; color: var(--ll-muted); font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+    .albumCard, .primary { transition: none; }
+    .detail, .hero[data-entry-animate] .heroNow :global(.listening-duet-person) { animation: none !important; }
+}

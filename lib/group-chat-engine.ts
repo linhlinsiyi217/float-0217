@@ -6,6 +6,9 @@ import { extractTextToolDirectiveText } from "./text-tool-protocol";
 import type { ApiConfig, PresetConfig, RegexConfig } from "./settings-types";
 import { loadCharacters } from "./character-storage";
 import { buildScreenEffectPromptHint } from "./chat-screen-effects";
+import { CHARACTER_LISTENING_INVITE_PROTOCOL, groupListeningRoomPrompt } from "./listen-together";
+import { listeningPlaylistContext } from "./listening-playlist-context";
+import { getInternalCapability, LISTEN_TOGETHER_CAPABILITY_ID } from "./internal-capability-storage";
 import { buildInnerVoicePromptFragment } from "./inner-voice";
 import { buildGroupTapbackPrompt } from "./chat-tapback";
 import { buildEchoPrompt, echoHistoryText } from "./chat-echo";
@@ -500,6 +503,7 @@ export async function buildGroupChatPromptMessages(
         groupRoster,
         customAppRichMediaDirectives,
         chatBilingualInstruction,
+        quoteTranslationEnabled: session.quoteTranslationEnabled,
         statusRegionSection: resolveStatusRegionSection(statusRegionCfg, "group"),
         statusRegionExampleLine: resolveStatusRegionExampleLine(statusRegionCfg),
         statusRegionComposition: resolveStatusRegionComposition(statusRegionCfg),
@@ -514,6 +518,17 @@ export async function buildGroupChatPromptMessages(
             role: "system",
             content: buildGroupTapbackPrompt(promptHistory) + "\n" + buildEchoPrompt() + "\n" + buildLovePrompt() + "\n" + buildFireworksPrompt(),
         });
+        // 群聊一起听：邀请协议 + 房间成员状态 + 共同歌单目录；每位成员只决定自己加入 / 拒绝 / 退出
+        if (!session.isSpectator) {
+            const listening = groupListeningRoomPrompt(session.id, members.map(m => m.character.id));
+            const playlists = getInternalCapability(LISTEN_TOGETHER_CAPABILITY_ID)?.enabled ? listeningPlaylistContext(session.id) : "";
+            llmMessages.push({
+                role: "system",
+                content: CHARACTER_LISTENING_INVITE_PROTOCOL
+                    + "\n群聊里由想发起的角色在自己的发言段输出邀请标记；一次只开一个房间，已有房间时想加入就输出接受标记。"
+                    + (listening ? "\n" + listening : "") + (playlists ? "\n" + playlists : ""),
+            });
+        }
     }
     if (promptProfile?.output === "plain_text") {
         llmMessages.push({

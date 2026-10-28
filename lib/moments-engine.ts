@@ -7,6 +7,7 @@
 import { loadCharacters } from "./character-storage";
 import { loadChatContacts } from "./chat-storage";
 import type { Character } from "./character-types";
+import { forwardedChatPrompt } from "./chat-forward-types";
 import {
     addMomentPost,
     addMomentComment,
@@ -383,6 +384,13 @@ async function triggerAIPost(characterId: string): Promise<void> {
 /** Called when user publishes a post — trigger AI reactions. */
 export function onUserPost(post: MomentPost): void {
     triggerAIReactionsForPost(post, "user");
+}
+
+/** 角色通过「转发聊天记录」动作发出聊天长图帖：与角色自发朋友圈走同样的事件与 NPC 互动。 */
+export function onCharacterChatScreenshotPost(post: MomentPost, character: Character): void {
+    incrementEventCounter(character.id);
+    dispatchMomentsUpdated();
+    generateNPCReactions(post, character);
 }
 
 // ── NPC Reactions (for character posts) ──
@@ -1330,6 +1338,8 @@ function buildMomentUiSnapshot(
     parts.push(options?.snapshotTitle || "<朋友圈界面快照>");
     parts.push(`发帖人：${authorName}`);
     parts.push(`正文：${post.content}`);
+    if (post.chatScreenshot) parts.push(`配图是一张聊天长图（截图视角：${authorName}；右侧为发帖人，左侧为其他说话人）。`);
+    if (post.forwardedChat) parts.push(forwardedChatPrompt(post.forwardedChat));
     if (post.location) parts.push(`地点：${post.location}`);
     if (post.photoUrl) parts.push("配图：见附图");
     else if (post.photoDescription) parts.push(`配图：${post.photoDescription}`);

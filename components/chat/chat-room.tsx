@@ -9,6 +9,9 @@ import { parseAIResponse, type ParsedMessagePart } from "@/lib/rich-message-pars
 import { isKnownStickerLabel } from "@/lib/sticker-data";
 import { translateReasoningText } from "@/lib/reasoning-translate";
 import { MessageBubble, MediaDetailModal, prewarmStickerCache, BilingualTextBlock, isStandaloneHtmlPreviewContent, normalizeTextBubbleContent } from "./message-bubble";
+import { ForwardChatSheet } from "./forwarded-chat";
+import { FORWARD_MAX_MESSAGES, isForwardableMessage } from "@/lib/chat-forward";
+import { voiceDisplayText } from "@/lib/voice-expression";
 import { GeneratedImageErrorDialog } from "./generated-image-error-dialog";
 import { PhotoInputModal, TextPhotoModal, VoiceRecordModal, RedPacketModal, LocationInputModal, SystemInstructionModal } from "./rich-input-modals";
 import { EmojiPanel, StickerPanel } from "./emoji-panel";
@@ -55,9 +58,10 @@ import { beginRetryVersion, finishRetryVersion, findRetrySeries, recoverPendingR
 import { cancelBailoutKey } from "@/lib/push-bailout-client";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import type { UserIdentity } from "@/components/settings/user-identity";
-import { AlertCircle, Blocks, Check, Copy, FileText, ListChecks, ListX, Pencil, PhoneIncoming, PhoneOff, Quote, RotateCcw, Trash2, Undo2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, Wand2, X } from "lucide-react";
+import { AlertCircle, Blocks, Check, Copy, FileText, ListChecks, ListX, Pencil, PhoneIncoming, PhoneOff, Quote, RotateCcw, Send, Trash2, Undo2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, Wand2, X } from "lucide-react";
 import { applyAssistantTapback, applyGroupAssistantTapback, getGroupTapbacks, getTapbackGlyph, IMESSAGE_TAPBACK_APPLIED_EVENT, IMESSAGE_TAPBACKS_UPDATED_EVENT, isNativeTapbackEmoji, loadIMessageTapbacks, saveIMessageTapbacks, setGroupTapback, type MessageTapback } from "@/lib/chat-tapback";
-import { applyListeningRoomReply } from "@/lib/listen-together";
+import { applyListeningRoomReply, exitListeningRoom, inviteGroupListeningRoom, inviteListeningRoom } from "@/lib/listen-together";
+import ChatMusicPanel from "@/components/music/chat-music-panel";
 import { useGroupMentions } from "./use-group-mentions";
 import { useEchoSendGesture } from "./use-echo-send-gesture";
 import { useChatEcho } from "./use-chat-echo";
@@ -598,7 +602,7 @@ type PendingMessageJump = {
 };
 
 const TRANSIENT_MESSAGE_PREFIX = "ui-transient-";
-type RichModalKind = "photo" | "text_photo" | "red_packet" | "transfer" | "location" | "transfer_target" | "voice_msg" | "gift" | "system_instruction";
+type RichModalKind = "music" | "photo" | "text_photo" | "red_packet" | "transfer" | "location" | "transfer_target" | "voice_msg" | "gift" | "system_instruction";
 type ChatTextInputHandle = {
     appendText: (text: string, options?: { focus?: boolean }) => void;
     clear: () => void;
@@ -905,6 +909,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     );
     const plusMenuItems = [
         { icon: imessageMenuIcon("offline-mode.jpg"), label: storyEntryEnabled ? "剧情入口" : "线下模式", onClick: () => { onClosePanels(); onToggleOfflineMode(); } },
+        { icon: <img src="/apple-music-app.png" alt="" aria-hidden="true" className="imessage-plus-app-icon" draggable={false} />, label: "一起听", onClick: () => onOpenRichModal("music") },
         { icon: imessageMenuIcon("photo-wall.jpg"), label: "照片墙", onClick: () => onOpenRichModal("photo") },
         { icon: imessageMenuIcon("text-image.jpg"), label: "文字图片", onClick: () => onOpenRichModal("text_photo") },
         { icon: imessageMenuIcon("system-instruction.jpg"), label: "系统指令", onClick: () => onOpenRichModal("system_instruction") },
@@ -1637,6 +1642,8 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
     const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
     const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
     const [showConfirmMultiDelete, setShowConfirmMultiDelete] = useState(false);
+    const [showForwardSheet, setShowForwardSheet] = useState(false);
+    const [selectionPurpose, setSelectionPurpose] = useState<"delete" | "forward">("delete");
     const [expandedMonologueId, setExpandedThinkingId] = useState<string | null>(null);
     // 思维链底部弹窗：存当前查看的 reasoning 文本，null = 关闭
     const [reasoningSheetText, setReasoningSheetText] = useState<string | null>(null);
@@ -2878,7 +2885,8 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
             if (!(session.participantIds || []).includes(r.characterId)) continue;
             if (isGroupMuted(session, r.characterId)) continue;
             const responseBatchId = createResponseBatchId();
-            const { parts: rawParts, stateValues, freshStateValues, statusPanel, innerMonologue } = parseAIResponse(r.responseText, getCurrentStateForCharacter(r.characterId));
+            // 群聊一起听：每位成员只决定自己（邀请 / 接受 / 拒绝 / 退出），同一轮的加入只播一次加入动效
+            const { parts: rawParts, stateValues, freshStateValues, statusPanel, innerMonologue } = parseAIResponse(applyListeningRoomReply(r.responseText, session.id, r.characterId, responseRoundId), getCurrentStateForCharacter(r.characterId));
             const parts = stripInvalidStickerParts(rawParts, r.characterId);
             let attachedState = false;
             let savedAnyPart = false;
@@ -3482,7 +3490,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                 return m.mediaData?.label ? `发了一张照片: ${m.mediaData.label}` : "发了一张照片";
             }
             if (m.mediaType === "location") return `分享了位置: ${m.mediaData?.label || ""}`.trim();
-            if (m.mediaType === "audio") return `发了一条语音: ${m.mediaData?.label || ""}`.trim();
+            if (m.mediaType === "audio") return `发了一条语音: ${voiceDisplayText(m.mediaData?.label || "")}`.trim();
             if (m.mediaType === "music_share") return `分享了音乐: ${m.mediaData?.musicTitle || ""}`.trim();
             if (m.mediaType === "listening_invite") return `邀请你一起听歌: ${m.mediaData?.listeningInvite?.title || ""}`.trim();
             if (m.mediaType === "xiaohongshu_note_share") return `分享了一条小红书帖子: ${m.mediaData?.xiaohongshuTitle || ""}`.trim();
@@ -6020,6 +6028,9 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                 )}
                 {options?.allowMultiSelect !== false && (
                     <div className="flex imessage-context-actions">
+                        {isForwardableMessage(m) && !m.id.startsWith("vc-") && (
+                            <button onClick={() => startMultiSelectFromMessage(m, "forward")} className="ctx-menu-btn"><Send className="imessage-context-icon" aria-hidden="true" /><span>转发</span></button>
+                        )}
                         <button onClick={() => startMultiSelectFromMessage(m)} className="ctx-menu-btn"><ListChecks className="imessage-context-icon" aria-hidden="true" /><span>多选</span></button>
                     </div>
                 )}
@@ -6562,7 +6573,21 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         setIsMultiSelectMode(false);
         setSelectedMessageIds(new Set());
         setShowConfirmMultiDelete(false);
+        setShowForwardSheet(false);
     }, []);
+
+    // 多选里能转发的那部分（撤回、系统、工具消息不转发）
+    const forwardSelectedIds = useMemo(() => {
+        if (selectedMessageIds.size === 0) return new Set<string>();
+        const stored = loadChatMessages(session.id);
+        return new Set(stored.filter(msg => selectedMessageIds.has(msg.id) && isForwardableMessage(msg)).map(msg => msg.id));
+    }, [selectedMessageIds, session.id]);
+
+    const openForwardSheet = useCallback(() => {
+        if (forwardSelectedIds.size === 0) { showChatToast("所选消息里没有可转发的内容"); return; }
+        if (forwardSelectedIds.size > FORWARD_MAX_MESSAGES) { showChatToast(`一次最多转发 ${FORWARD_MAX_MESSAGES} 条`); return; }
+        setShowForwardSheet(true);
+    }, [forwardSelectedIds.size]);
 
     const toggleMultiSelectedMessage = useCallback((messageId: string) => {
         setSelectedMessageIds(prev => {
@@ -6573,9 +6598,10 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
         });
     }, []);
 
-    const startMultiSelectFromMessage = useCallback((msg: RenderChatMessage) => {
+    const startMultiSelectFromMessage = useCallback((msg: RenderChatMessage, purpose: "delete" | "forward" = "delete") => {
         const storedId = getSelectableStoredMessageId(msg);
         if (!storedId) return;
+        setSelectionPurpose(purpose);
         closeContextMenu();
         setShowEmojiPanel(false);
         setShowStickerPanel(false);
@@ -7501,7 +7527,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                                     {msg.role !== "user" && <div className="w-[40px] shrink-0" />}
                                     <div className="voice-msg-text-bubble">
                                         <BilingualTextBlock
-                                            text={msg.displayProjected ? (renderMsg.mediaData?.label || "") : renderDisplayText(renderMsg.mediaData?.label || "", msg.role === "user" ? 1 : 2, false)}
+                                            text={voiceDisplayText(msg.displayProjected ? (renderMsg.mediaData?.label || "") : renderDisplayText(renderMsg.mediaData?.label || "", msg.role === "user" ? 1 : 2, false))}
                                             mode="markdown"
                                             defaultExpanded={session.collapseBilingualTranslation !== false ? false : true}
                                         />
@@ -7632,19 +7658,31 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                         type="button"
                         className="chat-multi-select-icon-btn"
                         onClick={cancelMultiSelect}
-                        aria-label="退出多选"
-                        title="退出多选"
+                        aria-label={selectionPurpose === "forward" ? "取消转发" : "退出多选"}
+                        title={selectionPurpose === "forward" ? "取消转发" : "退出多选"}
                     >
                         <X size={20} strokeWidth={1.8} />
                     </button>
                     <div className="chat-multi-select-summary">
-                        <strong>已选 {selectedMessageIds.size} 条</strong>
+                        <strong>{selectionPurpose === "forward" ? "转发记录 · " : ""}已选 {selectedMessageIds.size} 条</strong>
                         <span>
-                            {multiDeleteTargetIds.length > selectedMessageIds.size
+                            {selectionPurpose === "forward"
+                                ? (forwardSelectedIds.size < selectedMessageIds.size ? `可转发 ${forwardSelectedIds.size} 条，最多 ${FORWARD_MAX_MESSAGES} 条` : `最多 ${FORWARD_MAX_MESSAGES} 条`)
+                                : multiDeleteTargetIds.length > selectedMessageIds.size
                                 ? `实际删除 ${multiDeleteTargetIds.length} 条，含隐藏历史`
                                 : `实际删除 ${multiDeleteTargetIds.length} 条`}
                         </span>
                     </div>
+                    <button
+                        type="button"
+                        className="chat-multi-select-forward-btn"
+                        disabled={forwardSelectedIds.size === 0}
+                        onClick={openForwardSheet}
+                    >
+                        <Send size={17} strokeWidth={1.8} />
+                        转发
+                    </button>
+                    {selectionPurpose !== "forward" && (
                     <button
                         type="button"
                         className="chat-multi-select-delete-btn"
@@ -7654,6 +7692,7 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                         <Trash2 size={18} strokeWidth={1.8} />
                         删除
                     </button>
+                    )}
                 </div>
             )}
             {echo.overlay}
@@ -7710,6 +7749,15 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
                 onSendSticker={(name, url) => { setShowStickerPanel(false); sendRichMessage("sticker", { label: name, stickerUrl: url }); }}
             />
             ))}
+
+            {showForwardSheet && (
+                <ForwardChatSheet
+                    source={session}
+                    selectedIds={forwardSelectedIds}
+                    onClose={() => setShowForwardSheet(false)}
+                    onSent={(toast) => { cancelMultiSelect(); showChatToast(toast); }}
+                />
+            )}
 
             {showConfirmMultiDelete && (
                 <ConfirmDialog
@@ -7845,6 +7893,26 @@ export function ChatRoom({ session, onBack, onDeleted, onUserMessageSent }: Chat
             )}
 
             {/* Rich Media Input Modals */}
+            {richModal === "music" && <ChatMusicPanel sessionId={session.id} isGroup={!!session.isGroup}
+                name={session.isGroup ? session.groupName || "群聊" : character?.name || "对方"}
+                avatar={session.isGroup ? undefined : resolveChatCharacterAvatar(character) || undefined}
+                busy={isGenerating}
+                onClose={() => setRichModal(null)}
+                onInvite={() => {
+                    if (isGeneratingRef.current) throw new Error("对方正在回复，请稍后邀请");
+                    if (session.isSpectator) throw new Error("围观群不能发起一起听");
+                    const invitation = session.isGroup ? inviteGroupListeningRoom(session.id) : inviteListeningRoom(session.id, session.contactId);
+                    const track = getMusicControlBridge()?.getState().currentTrack ?? null;
+                    pushChatMessage({ sessionId: session.id, role: "user", content: "邀请你一起听歌。", mediaType: "listening_invite", mediaData: { listeningInvite: { roomId: invitation.id, initiator: "user", title: track?.title, artist: track?.artist, coverUrl: track?.coverUrl?.startsWith("blob:") ? undefined : track?.coverUrl } } });
+                    setMessages(loadChatMessages(session.id));
+                    // 邀请后直接请 TA 回应（接受 / 拒绝由角色按人设决定）
+                    void triggerAIResponse();
+                }}
+                onRetry={() => { if (!isGeneratingRef.current) void triggerAIResponse(); }}
+                onLeave={() => {
+                    exitListeningRoom(session.id);
+                    setMessages(loadChatMessages(session.id));
+                }} />}
             {richModal === "voice_msg" && (
                 <VoiceRecordModal
                     characterId={session.contactId}

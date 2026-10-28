@@ -1,12 +1,14 @@
 import type { ChatMessage } from "./chat-storage";
 import { splitBilingualText } from "./bilingual-text";
 import { currencySymbol, normalizeCurrency } from "./exchange-rates";
+import { voiceDisplayText } from "./voice-expression";
 
 /** Keep only the language actually quoted, never the raw `original | translation` protocol. */
 export function normalizeQuotePreviewText(value: string): string {
-    const text = value.trim();
+    // 语音表达标记 {voice:...} 不进引用预览；Lars|Lars 这类原样译文只取原文
+    const text = voiceDisplayText(value.trim());
     if (!text) return "";
-    return splitBilingualText(text)?.original || text;
+    return splitBilingualText(text, { allowUnchangedTranslation: true })?.original || text;
 }
 
 function formatQuoteAmount(value: unknown): string {
@@ -29,7 +31,7 @@ export function getQuotePreview(message: ChatMessage): string {
     const text = normalizeQuotePreviewText(d?.label || message.content || "");
     const labeled = (kind: string, value = text) => value ? `${kind}：${value}` : `${kind}消息`;
     switch (message.mediaType) {
-        case "audio": return labeled("语音", (message.content || d?.label || d?.synthesizedFromText || "").trim());
+        case "audio": return labeled("语音", voiceDisplayText((message.content || d?.label || d?.synthesizedFromText || "").trim()));
         case "transfer": {
             const currency = normalizeCurrency(d?.currency);
             const amountText = formatQuoteAmount(d?.amount);

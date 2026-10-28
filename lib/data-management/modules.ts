@@ -264,6 +264,7 @@ const PRIMARY_DATA_MODULES: DataModuleDefinition[] = [
           "ai_phone_netease_cookie_v1",
           "ai_phone_music_queue_v1",
           "ai_phone_track_playlist_map_v1",
+          "listening-library-v1",
           "music_api_config_v1",
           "netease_cookie_v1",
           "music_queue_v1",

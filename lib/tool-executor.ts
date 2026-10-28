@@ -23,7 +23,9 @@ import {
 } from "./tool-storage";
 import { executeCustomAppToolCall } from "./custom-app-tool-runtime";
 import { characterWorkspace, agentComputerRequest, isAgentComputerConfigured } from "./agent-computer";
-import { AGENT_COMPUTER_CAPABILITY_ID, CHECK_IN_REQUEST_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, DEVICE_ACTION_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, PERCEPTION_READ_CAPABILITY_ID, PHONE_WIDGET_CAPABILITY_ID, REALITY_BRIDGE_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, SYSTEM_CALENDAR_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
+import { CHAT_FORWARD_SEND_TOOL, CHAT_FORWARD_TOOL_NAMES } from "./chat-forward-protocol";
+import { LISTENING_PLAYLIST_TOOL, LISTENING_TOOL_NAMES } from "./listening-tool-definitions";
+import { AGENT_COMPUTER_CAPABILITY_ID, CHAT_FORWARD_CAPABILITY_ID, LISTEN_TOGETHER_CAPABILITY_ID, CHECK_IN_REQUEST_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, DEVICE_ACTION_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, PERCEPTION_READ_CAPABILITY_ID, PHONE_WIDGET_CAPABILITY_ID, REALITY_BRIDGE_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, SYSTEM_CALENDAR_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
 import {
     checkQueryCooldown,
     describeStatusByFocus,
@@ -851,6 +853,10 @@ async function executeCompositeTool(
 }
 
 function normalizeInternalToolResult(result: ToolResult): ToolResult {
+    // 聊天记录转发：结果只给模型看（会话列表 / 消息 ID），不写进聊天历史
+    if (CHAT_FORWARD_TOOL_NAMES.has(result.name)) return { ...result, continueConversation: true, persistToHistory: false };
+    // 一起听：歌单 ID / 排名只给模型核对，不写进聊天历史
+    if (LISTENING_TOOL_NAMES.has(result.name)) return { ...result, continueConversation: true, persistToHistory: false };
     return {
         ...result,
         continueConversation: true,
@@ -858,7 +864,48 @@ function normalizeInternalToolResult(result: ToolResult): ToolResult {
     };
 }
 
+async function executeChatForwardTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {
+    const capability = getInternalCapability(CHAT_FORWARD_CAPABILITY_ID);
+    if (!capability || !capability.enabled || capability.mode === "off") {
+        return { name: call.name, success: false, error: "「聊天记录转发」能力未启用（工具箱 → 内置能力）", userNotice: "聊天记录转发能力未启用" };
+    }
+    try {
+        const { executeChatForwardAction } = await import("./chat-forward-actions");
+        const data = await executeChatForwardAction(call.name, call.args, context || {});
+        return {
+            name: call.name,
+            success: true,
+            data: JSON.stringify(data),
+            ...(call.name === CHAT_FORWARD_SEND_TOOL ? { userNotice: data.destination === "moments" ? "发了一条聊天长图朋友圈" : "转发了聊天记录" } : {}),
+        };
+    } catch (error) {
+        if (isAbortError(error)) throw error;
+        return { name: call.name, success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+}
+
+async function executeListeningTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {
+    const capability = getInternalCapability(LISTEN_TOGETHER_CAPABILITY_ID);
+    if (!capability || !capability.enabled || capability.mode === "off") {
+        return { name: call.name, success: false, error: "「一起听」能力未启用（工具箱 → 内置能力）", userNotice: "一起听能力未启用" };
+    }
+    try {
+        const { executeListeningAction } = await import("./listening-tool-actions");
+        const data = await executeListeningAction(call.name, call.args, context || {});
+        const action = String(call.args.action || "");
+        const notice = call.name === LISTENING_PLAYLIST_TOOL && action !== "list"
+            ? { create: "新建了共同歌单", rename: "给共同歌单改了名", add_song: "往共同歌单里加了歌", add_current: "收藏了正在听的歌", remove: "从共同歌单移除了歌" }[action]
+            : undefined;
+        return { name: call.name, success: true, data: JSON.stringify(data), ...(notice ? { userNotice: notice } : {}) };
+    } catch (error) {
+        if (isAbortError(error)) throw error;
+        return { name: call.name, success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+}
+
 async function executeInternalTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult | null> {
+    if (CHAT_FORWARD_TOOL_NAMES.has(call.name)) return executeChatForwardTool(call, context);
+    if (LISTENING_TOOL_NAMES.has(call.name)) return executeListeningTool(call, context);
     if (isNoteWallToolName(call.name)) return executeNoteWallTool(call, context);
     if (isMusicControlToolName(call.name)) return executeMusicControlTool(call, context);
     if (isCalendarToolName(call.name)) return executeCalendarTool(call, context);

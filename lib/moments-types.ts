@@ -10,6 +10,10 @@ export type MomentPost = {
     /** 用户通过聊天小号发布时记录小号作用域；缺省表示主号。 */
     chatAccountId?: string;
     content: string;
+    /** 聊天长图帖：photoUrl 是长图，perspective 记录谁在右侧；旧帖缺省 = 普通配图 */
+    chatScreenshot?: { version: 1; perspective: import("./chat-screenshot-view").ScreenshotPerspective; width: number; height: number };
+    /** 长图对应的聊天记录快照（给角色读懂长图内容、在没有长图时显示记录卡片） */
+    forwardedChat?: import("./chat-forward-types").ForwardedChat;
     photoUrl?: string;              // user-uploaded base64 image
     photoDescription?: string;      // AI-generated photo description (for placeholder rendering)
     photoUseReferenceImage?: boolean; // AI-generated photo should use character reference image

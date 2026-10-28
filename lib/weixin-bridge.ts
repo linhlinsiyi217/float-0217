@@ -10,6 +10,7 @@ import { loadMediaBlob, isMediaStoreRef } from "./media-cache-storage";
 import { parseAIResponse, type ParsedMessagePart } from "./rich-message-parser";
 import { getStatusRegionConfig, isCustomStatusRegionActive } from "./chat-status-region";
 import { splitBilingualText } from "./bilingual-text";
+import { voiceDisplayText } from "./voice-expression";
 import { resolveVoiceConfig, synthesizeSpeech } from "./tts-service";
 import { formatShoppingPaymentRequestHistory } from "./shopping-payment-request";
 
@@ -80,7 +81,7 @@ function partToWeixinText(part: ParsedMessagePart, charName: string): string | n
     if (!part.mediaType) return content || null;
 
     if (part.mediaType === "audio") {
-        const label = getMediaLabel(part);
+        const label = voiceDisplayText(getMediaLabel(part));
         return label ? `语音：${label}` : "发来一条语音";
     }
     if (part.mediaType === "quote") {
@@ -767,11 +768,13 @@ async function partToWeixinOutgoing(part: ParsedMessagePart, charName: string, c
     const directImage = cleanText(part.mediaData?.stickerUrl);
     if (directImage.startsWith("data:image/")) return { kind: "image", imageDataUrl: directImage };
     if (part.mediaType === "audio") {
-        const transcript = getVoiceTranscript(part);
-        const speechText = getVoiceSpeechText(transcript);
+        // 原文保留 {voice:...} 标记交给合成；发给微信的文字去掉标记
+        const rawTranscript = getVoiceTranscript(part);
+        const transcript = voiceDisplayText(rawTranscript) || "语音消息";
+        const speechText = getVoiceSpeechText(rawTranscript);
         const fallbackDuration = typeof part.mediaData?.voiceDuration === "number"
             ? Math.max(1, Math.ceil(part.mediaData.voiceDuration))
-            : estimateVoiceDuration(speechText || transcript);
+            : estimateVoiceDuration(voiceDisplayText(speechText) || transcript);
         const fallbackImageDataUrl = renderVoiceMessageCard(transcript, fallbackDuration);
         const voiceConfig = resolveVoiceConfig(characterId, "chat");
         if (voiceConfig?.enableTTS) {

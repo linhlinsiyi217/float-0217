@@ -18,6 +18,7 @@ import { useHoldToTalk } from "./use-hold-to-talk";
 import { suspendKeepAliveForCall, resumeKeepAliveAfterCall } from "@/lib/use-weixin-bridge";
 import { BilingualTextBlock } from "./message-bubble";
 import { splitBilingualText } from "@/lib/bilingual-text";
+import { voiceDisplayText } from "@/lib/voice-expression";
 import type { Character } from "@/lib/character-types";
 import { useCallKeyboardOffsetStyle } from "./use-call-keyboard-offset";
 import { CallSttWarningDialog, hideCallSttWarningPermanently, isCallSttWarningHidden } from "./call-stt-warning-dialog";
@@ -428,7 +429,7 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
                 pushChatMessage({
                     sessionId: session.id,
                     role: "assistant",
-                    content: part.content,
+                    content: voiceDisplayText(part.content),
                     mediaType: part.mediaType,
                     mediaData: part.mediaData,
                     // 标记来源为通话：折叠只收这类消息
@@ -517,8 +518,10 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
 
             // 4. Process response
             const { cleanParts, messageIds, speechMessageIds } = processAIResponse(aiResponseText);
-            const displayText = cleanParts.join("\n");
-            const speechText = stripBilingualForSpeech(displayText);
+            const rawSpokenText = cleanParts.join("\n");
+            // {voice:...} 表达标记只交给合成（tts-service 按服务商处理），字幕和记录里不显示
+            const displayText = voiceDisplayText(rawSpokenText);
+            const speechText = stripBilingualForSpeech(rawSpokenText);
 
             if (!displayText) {
                 // 这轮角色没说出内容：下次等更久，避免空转连发

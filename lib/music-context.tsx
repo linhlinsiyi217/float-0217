@@ -7,6 +7,7 @@ import { getAudioBlob, markTrackPlayed } from "./music-storage";
 import { findPlayableMatch, getNeteaseLyrics, getNeteasePlayUrl, getNeteasePlayInfo, getNeteaseSongDetail } from "./music-service";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { registerMusicControlBridge } from "./music-control-bridge";
+import { getListeningRoom } from "./listen-together";
 
 // ── Types ──
 
@@ -164,6 +165,9 @@ export function MusicProvider({ children }: { children: ReactNode }) {
                     const nextIdx = idx + 1;
                     if (nextIdx < q.length) {
                         nextTrack = q[nextIdx];
+                    } else if (getListeningRoom()?.status === "joined") {
+                        // 一起听时歌单放完从头继续，不让共同聆听因为列表到底而冷场
+                        nextTrack = q[0];
                     }
                 }
 
@@ -423,8 +427,9 @@ export function MusicProvider({ children }: { children: ReactNode }) {
         registerMusicControlBridge({
             getState: () => ({
                 currentTrack,
-                isPlaying,
-                currentTime,
+                // 直接读 <audio>：一起听计时每 5 秒采样，不能等 React 状态刷新
+                isPlaying: audioRef.current ? !audioRef.current.paused : isPlaying,
+                currentTime: audioRef.current?.currentTime ?? currentTime,
                 duration,
                 playMode,
                 queue,

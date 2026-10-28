@@ -18,6 +18,7 @@ export const DEFAULT_CHAT_BILINGUAL_PROMPT = [
   "- 如果内容本来就是中文，则不要添加 |译文",
   "- 不要改动原有富媒体指令格式，只在其中的文本内容内部追加 |中文译文",
   "- [引用:...] 中引用锚点(引用原文）保持原格式，不需要翻译；只翻译其后的回复内容",
+  "- 整条只有无需翻译的真实专名或emoji时，译文直接保留原文，如 Lars|Lars；不输出缺译、暂无译文等占位说明。",
 ].join("\n");
 
 export const DEFAULT_GROUP_CHAT_BILINGUAL_PROMPT = [

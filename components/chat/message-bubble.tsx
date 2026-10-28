@@ -11,7 +11,8 @@ import { CHAT_OPEN_SESSION_EVENT, dispatchOpenAddContact } from "@/lib/chat-noti
 import { ContactCardGenerateFlow } from "@/components/chat/contact-card-generate-flow";
 import { MediaPreviewOverlay } from "@/components/chat/media-preview-overlay";
 import { findStickerByName } from "@/lib/sticker-data";
-import { splitBilingualText } from "@/lib/bilingual-text";
+import { containsChinese, splitBilingualText } from "@/lib/bilingual-text";
+import { voiceDisplayText } from "@/lib/voice-expression";
 import { isInvisibleOrWhitespaceOnly } from "@/lib/rich-message-parser";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
@@ -38,6 +39,8 @@ import { VoiceReferenceGraphic } from "./voice-reference-graphic";
 import { currencySymbol, normalizeCurrency } from "@/lib/exchange-rates";
 import { normalizeQuotePreviewText } from "@/lib/chat-quote-preview";
 import { ListeningInviteCard } from "./listening-invite-card";
+import { ForwardedChatCard } from "./forwarded-chat";
+import { readForwardedChat } from "@/lib/chat-forward-types";
 
 interface MessageBubbleProps {
     msg: ChatMessage;
@@ -102,6 +105,10 @@ export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charNa
             return <RedPacketBubble msg={msg} charName={charName} userName={userName} groupSize={groupSize} onShowDetail={onShowDetail} />;
         case "transfer":
             return <TransferBubble msg={msg} charName={charName} userName={userName} onShowDetail={onShowDetail} />;
+        case "forwarded_chat": {
+            const record = readForwardedChat(msg.mediaData?.forwardedChat);
+            return record ? <ForwardedChatCard record={record} /> : <span className="chat-forward-unavailable">聊天记录不可用</span>;
+        }
         case "gift":
             return <GiftBubble msg={msg} />;
         case "contact_card":
@@ -670,8 +677,12 @@ export const BilingualTextBlock = memo(function BilingualTextBlock({
     defaultExpanded?: boolean;
     htmlFrameVariant?: ChatHtmlFrameVariant;
 }) {
-    const bilingual = splitBilingualText(text);
+    // 允许「原样保留」的译文（如 Lars|Lars）：只显示一次原文，不露出竖线
+    const bilingual = splitBilingualText(text, { allowUnchangedTranslation: true });
     const [expanded, setExpanded] = useState(defaultExpanded);
+    // 点原文切换译文：区分轻点和长按 / 滑动，长按仍交给消息菜单
+    const pressRef = useRef<{ x: number; y: number; startedAt: number; moved: boolean } | null>(null);
+    const suppressClickRef = useRef(false);
     useEffect(() => {
         setExpanded(defaultExpanded);
     }, [text, defaultExpanded]);
@@ -688,8 +699,55 @@ export const BilingualTextBlock = memo(function BilingualTextBlock({
         return renderContent(text, className);
     }
 
+    // 译文和原文相同（专名 / emoji）：没有可切换的内容，只显示一次原文
+    if (!containsChinese(bilingual.translated)) {
+        return renderContent(bilingual.original, className);
+    }
+
+    const isInteractiveTarget = (target: EventTarget | null, container: HTMLElement) => {
+        const interactive = (target as HTMLElement | null)?.closest?.("a,button,input,textarea,select,[role='button'],iframe");
+        return Boolean(interactive && interactive !== container && container.contains(interactive));
+    };
+    const hasTextSelection = () => {
+        const selection = typeof window !== "undefined" ? window.getSelection() : null;
+        return Boolean(selection && !selection.isCollapsed && selection.toString().trim());
+    };
+
     return (
-        <div className={`chat-bilingual-block ${className ?? ""}`.trim()}>
+        <div
+            className={`chat-bilingual-block ${className ?? ""}`.trim()}
+            onPointerDownCapture={event => {
+                suppressClickRef.current = false;
+                pressRef.current = { x: event.clientX, y: event.clientY, startedAt: event.timeStamp, moved: false };
+            }}
+            onPointerMoveCapture={event => {
+                const press = pressRef.current;
+                if (press && Math.hypot(event.clientX - press.x, event.clientY - press.y) >= 8) press.moved = true;
+            }}
+            onPointerUpCapture={event => {
+                const press = pressRef.current;
+                pressRef.current = null;
+                suppressClickRef.current = Boolean(press && (press.moved || event.timeStamp - press.startedAt >= 500));
+                // 聊天气泡的 pointerdown 会 preventDefault，iOS 上随后的 click 可能不触发，触摸在这里直接切换
+                if (event.pointerType === "touch" && !suppressClickRef.current && !isInteractiveTarget(event.target, event.currentTarget)) {
+                    setExpanded(v => !v);
+                    suppressClickRef.current = true;
+                }
+            }}
+            onPointerCancelCapture={() => {
+                pressRef.current = null;
+                suppressClickRef.current = true;
+            }}
+            onClick={event => {
+                if (suppressClickRef.current) {
+                    suppressClickRef.current = false;
+                    return;
+                }
+                if (isInteractiveTarget(event.target, event.currentTarget) || hasTextSelection()) return;
+                event.stopPropagation();
+                setExpanded(v => !v);
+            }}
+        >
             <div className="chat-bilingual-section">
                 {renderContent(bilingual.original, "chat-bilingual-content")}
             </div>
@@ -718,6 +776,35 @@ export const BilingualTextBlock = memo(function BilingualTextBlock({
 
 function TextBubble({ content, onActionSelect, defaultTranslationExpanded = false }: { content: string; onActionSelect?: (text: string) => void; defaultTranslationExpanded?: boolean }) {
     return <BilingualTextBlock text={content} onActionSelect={onActionSelect} mode="markdown" defaultExpanded={defaultTranslationExpanded} />;
+}
+
+/**
+ * 转发详情里的只读消息：用原气泡组件重绘（语音波形、表情、转账卡片都和聊天室一致），
+ * 但不能领取、不能合成、不能回写。语音只播快照里存下的音频。
+ */
+export function SnapshotMessageBubble({ msg, charName, userName, stickerCharacterId, onImage }: {
+    msg: ChatMessage;
+    charName?: string;
+    userName?: string;
+    stickerCharacterId?: string;
+    onImage?: (url: string) => void;
+}) {
+    if (msg.mediaType === "audio") return <VoiceMessageBubble msg={msg} playbackOnly />;
+    if (msg.mediaType === "sticker") return <StickerBubble msg={msg} characterId={stickerCharacterId} />;
+    if (msg.mediaType?.startsWith("plugin:")) return <BilingualTextBlock text={msg.content} mode="plain" />;
+    // 嵌套的合并转发保持可点开
+    if (msg.mediaType === "forwarded_chat") return <MessageBubble msg={msg} charName={charName} userName={userName} />;
+    const content = <div inert><MessageBubble msg={msg} charName={charName} userName={userName} /></div>;
+    if (msg.mediaUrl && (msg.mediaType === "image" || msg.mediaType === "media_file")) {
+        const open = () => onImage?.(msg.mediaUrl!);
+        return (
+            <div role="button" tabIndex={0} aria-label="查看图片" onClick={open}
+                onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); } }}>
+                {content}
+            </div>
+        );
+    }
+    return content;
 }
 
 // ── Red Packet ─────────────────────────────
@@ -2438,19 +2525,22 @@ function synthesizeVoiceForMessage(msgId: string, characterId: string, speechTex
     return task;
 }
 
-function VoiceMessageBubble({ msg, characterId, onUpdate, defaultTranslationExpanded = false }: { msg: ChatMessage; characterId?: string; onUpdate?: (m: ChatMessage) => void; defaultTranslationExpanded?: boolean }) {
+/** playbackOnly：转发快照里只播已保存的音频，不现场合成、不回写消息。 */
+export function VoiceMessageBubble({ msg, characterId, onUpdate, defaultTranslationExpanded = false, playbackOnly = false }: { msg: ChatMessage; characterId?: string; onUpdate?: (m: ChatMessage) => void; defaultTranslationExpanded?: boolean; playbackOnly?: boolean }) {
     const [playing, setPlaying] = useState(false);
     const [synthesizing, setSynthesizing] = useState(false);
     const [synthFailed, setSynthFailed] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const mountedRef = useRef(true);
     useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+    // label 里可能带 {voice:...} 表达标记：原样交给合成（tts-service 按服务商转换或去掉），
+    // 时长估算按去掉标记后的台词算
     const text = msg.mediaData?.label || "语音消息";
-    const bilingual = splitBilingualText(text);
+    const bilingual = splitBilingualText(text, { allowUnchangedTranslation: true });
     const speechText = bilingual?.original || text;
     const synthesizedFromText = msg.mediaData?.synthesizedFromText;
     const needsResynthesis = msg.role !== "user" && synthesizedFromText !== speechText;
-    const duration = msg.mediaData?.voiceDuration || Math.max(2, Math.ceil(speechText.length / 4));
+    const duration = msg.mediaData?.voiceDuration || Math.max(2, Math.ceil(voiceDisplayText(speechText).length / 4));
 
     const playSrc = (src: string) => {
         // 必须用 <audio> 元素:iOS 静音拨键会掐掉 Web Audio 的输出(表现为全线
@@ -2472,7 +2562,7 @@ function VoiceMessageBubble({ msg, characterId, onUpdate, defaultTranslationExpa
     // 点击才合成（不再挂载即合成）：已有音频直接播；没有就现场合成一次，
     // 合成结果已在任务内落库，之后任何时候点都是直接播放，不再消耗额度。
     const handlePlay = () => {
-        if (synthesizing) return;
+        if (synthesizing || (playbackOnly && !msg.mediaUrl)) return;
         if (playing && audioRef.current) {
             const active = audioRef.current;
             audioRef.current = null;
@@ -2480,7 +2570,7 @@ function VoiceMessageBubble({ msg, characterId, onUpdate, defaultTranslationExpa
             setPlaying(false);
             return;
         }
-        if (msg.mediaUrl && !needsResynthesis) {
+        if (msg.mediaUrl && (playbackOnly || !needsResynthesis)) {
             playSrc(msg.mediaUrl);
             return;
         }
@@ -2509,7 +2599,8 @@ function VoiceMessageBubble({ msg, characterId, onUpdate, defaultTranslationExpa
     // iMessage 语音气泡（来自 Y2K）：按参考稿绘制的播放键 + 波形 + 时长，合成与播放逻辑不变
     return (
         <div className="voice-msg-bubble" onClick={handlePlay} role="button" tabIndex={0}
-            aria-label={synthesizing ? "正在生成语音" : synthFailed ? "播放失败，点击重试" : playing ? "暂停语音" : "播放语音"}
+            aria-disabled={(playbackOnly && !msg.mediaUrl) || undefined}
+            aria-label={playbackOnly && !msg.mediaUrl ? "未保存音频" : synthesizing ? "正在生成语音" : synthFailed ? "播放失败，点击重试" : playing ? "暂停语音" : "播放语音"}
             onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handlePlay(); } }}>
             <VoiceReferenceGraphic playing={playing} synthesizing={synthesizing} failed={synthFailed} duration={duration} />
         </div>

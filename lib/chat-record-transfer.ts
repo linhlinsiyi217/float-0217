@@ -27,7 +27,8 @@ type ChatRecordFile = {
   media: Record<string, EmbeddedMedia>;
 };
 
-function blobToDataUrl(blob: Blob): Promise<string> {
+/** 也被聊天记录合并转发（lib/chat-forward.ts）复用，把媒体固化进快照。 */
+export function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(reader.error || new Error("媒体读取失败"));

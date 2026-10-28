@@ -16,6 +16,7 @@ import { useHoldToTalk } from "./use-hold-to-talk";
 import { suspendKeepAliveForCall, resumeKeepAliveAfterCall } from "@/lib/use-weixin-bridge";
 import { BilingualTextBlock } from "./message-bubble";
 import { splitBilingualText } from "@/lib/bilingual-text";
+import { voiceDisplayText } from "@/lib/voice-expression";
 import type { Character } from "@/lib/character-types";
 import { useCallKeyboardOffsetStyle } from "./use-call-keyboard-offset";
 import { isAndroidBrowser, isIOSDevice } from "./voice-input-platform";
@@ -273,8 +274,10 @@ export function GroupCallScreen({ type, session, characters, onEnd, initiator = 
                     getLatestCharacterStateValues(r.characterId),
                 );
                 const textParts = parts.filter(p => !p.mediaType && p.content.trim());
-                const displayText = textParts.map(p => p.content).join("\n");
-                const speechText = stripBilingualForSpeech(displayText);
+                const rawSpokenText = textParts.map(p => p.content).join("\n");
+                // {voice:...} 表达标记只交给合成，字幕和记录里不显示
+                const displayText = voiceDisplayText(rawSpokenText);
+                const speechText = stripBilingualForSpeech(rawSpokenText);
 
                 if (!displayText && !(statusPanel || innerMonologue)) continue;
 

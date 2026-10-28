@@ -26,18 +26,24 @@ import {
 } from "@/lib/music-service";
 import { clearMusicCloudSyncData } from "@/lib/chat-engine";
 import MusicCommentsPage from "./music-comments";
+import ListeningLibrary from "./listening-library";
+import { Headphones } from "lucide-react";
 import {
     loadMusicBg, saveMusicBg, clearMusicBg, fileToCompressedDataUrl, appBgStyle,
     MUSIC_BG_EVENT, type MusicBgConfig, type MusicPlayerBgMode,
 } from "@/lib/music-bg";
 
-type Props = { onClose: () => void };
-type TabId = "recommend" | "mine" | "search" | "local";
+/**
+ * initialTogether / listeningSessionId / headerAccessory：从聊天「一起听」入口打开时，
+ * 直接落在「一起听」页并固定到该聊天；仍是同一个音乐 App、同一个全局播放器。
+ */
+type Props = { onClose: () => void; initialTogether?: boolean; listeningSessionId?: string; headerAccessory?: ReactNode };
+type TabId = "recommend" | "mine" | "search" | "local" | "together";
 
-export default function MusicApp({ onClose }: Props) {
+export default function MusicApp({ onClose, initialTogether = false, listeningSessionId, headerAccessory }: Props) {
     const [tracks, setTracks] = useState<MusicTrack[]>([]);
     const [loading, setLoading] = useState(true);
-    const [tab, setTab] = useState<TabId>("local");
+    const [tab, setTab] = useState<TabId>(initialTogether ? "together" : "local");
     const [hasNetease, setHasNetease] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
     const [showCssEditor, setShowCssEditor] = useState(false);
@@ -75,7 +81,7 @@ export default function MusicApp({ onClose }: Props) {
         loadAllTracks().then(t => { setTracks(t); setLoading(false); });
         const neteaseOk = isNeteaseConfigured();
         setHasNetease(neteaseOk);
-        if (neteaseOk) setTab("recommend");
+        if (neteaseOk && !initialTogether) setTab("recommend");
         setCustomCss(kvGet("music-custom-css") || "");
         // Load cached playlists immediately, then refresh from API
         if (neteaseOk) {
@@ -307,7 +313,7 @@ export default function MusicApp({ onClose }: Props) {
                     </button>
                 </div>
                 <div className="music-header-title">
-                    {dailyView ? "每日推荐" : activePlaylist && tab === "recommend" ? "歌单详情" : tab === "recommend" ? "" : tab === "search" ? "搜索" : tab === "mine" ? "我的" : "本地音乐"}
+                    {dailyView ? "每日推荐" : activePlaylist && tab === "recommend" ? "歌单详情" : tab === "recommend" ? "" : tab === "search" ? "搜索" : tab === "mine" ? "我的" : tab === "together" ? "一起听" : "本地音乐"}
                 </div>
                 <div className="music-header-right">
                     <button className="music-header-action" onClick={() => setShowSettings(true)} title="设置">
@@ -319,6 +325,7 @@ export default function MusicApp({ onClose }: Props) {
             </div>
 
             {/* Tab content */}
+            {tab === "together" && <div className="music-together-content"><ListeningLibrary heroSessionId={listeningSessionId} heroActions={headerAccessory} /></div>}
             {tab === "recommend" && hasNetease && (dailyView ? (
                 <DailySongsPage
                     songs={dailyView}
@@ -477,6 +484,10 @@ export default function MusicApp({ onClose }: Props) {
                         <span>我的</span>
                     </button>
                 )}
+                <button className="music-tabbar-item" {...(tab === "together" ? { "data-active": "" } : {})} aria-current={tab === "together" ? "page" : undefined} onClick={() => { setTab("together"); setActivePlaylist(null); setDailyView(null); }}>
+                    <Headphones size={21} strokeWidth={1.7} aria-hidden="true" />
+                    <span>一起听</span>
+                </button>
                 <button className="music-tabbar-item" {...(tab === "local" ? { "data-active": "" } : {})} onClick={() => { setTab("local"); setActivePlaylist(null); }}>
                     <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>
                     <span>本地</span>

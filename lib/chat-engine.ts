@@ -45,7 +45,8 @@ import { buildIMessageTapbackPromptInstruction } from "./chat-tapback";
 import { buildEchoPrompt } from "./chat-echo";
 import { buildLovePrompt } from "./chat-love";
 import { buildFireworksPrompt } from "./chat-fireworks";
-import { CHARACTER_LISTENING_INVITE_PROTOCOL } from "./listen-together";
+import { CHARACTER_LISTENING_INVITE_PROTOCOL, listeningRoomPrompt } from "./listen-together";
+import { listeningPlaylistContext } from "./listening-playlist-context";
 import { MacroEngine, postProcessTrim } from "./macro-engine";
 import { getStatusRegionConfig, resolveStatusRegionSection, resolveStatusRegionExampleLine, resolveStatusRegionComposition, resolveStatusRegionFullExample } from "./chat-status-region";
 import {
@@ -89,7 +90,7 @@ import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { pushApiLog } from "./api-log-store";
 export { getApiLogs, clearApiLogs, type DebugInfo } from "./api-log-store";
 import { stripStateAndInnerForPrompt } from "./prompt-sanitizer";
-import { getInternalCapability, getInternalCapabilitySubToolDefinitions } from "./internal-capability-storage";
+import { getInternalCapability, getInternalCapabilitySubToolDefinitions, LISTEN_TOGETHER_CAPABILITY_ID } from "./internal-capability-storage";
 import { isMediaStoreRef, loadMediaBlob } from "./media-cache-storage";
 import {
     DEFAULT_CHAT_BILINGUAL_PROMPT,
@@ -2002,6 +2003,7 @@ export async function buildChatPromptMessages(
         tools: toolsPrompt,
         customAppRichMediaDirectives,
         chatBilingualInstruction,
+        quoteTranslationEnabled: session.quoteTranslationEnabled,
         statusRegionSection: resolveStatusRegionSection(statusRegionCfg),
         statusRegionExampleLine: resolveStatusRegionExampleLine(statusRegionCfg),
         statusRegionComposition: resolveStatusRegionComposition(statusRegionCfg),
@@ -2066,6 +2068,12 @@ export async function buildChatPromptMessages(
             role: "system",
             content: buildIMessageTapbackPromptInstruction() + "\n" + buildEchoPrompt() + "\n" + buildLovePrompt() + "\n" + buildFireworksPrompt() + "\n" + CHARACTER_LISTENING_INVITE_PROTOCOL,
         });
+        // 一起听：房间状态（邀请中 / 一起听中）+ 只给本角色看的榜单小事实 + 共同歌单真实目录
+        const together = [
+            listeningRoomPrompt(character.id, session.id),
+            getInternalCapability(LISTEN_TOGETHER_CAPABILITY_ID)?.enabled ? listeningPlaylistContext(session.id) : "",
+        ].filter(Boolean).join("\n");
+        if (together) llmMessages.push({ role: "system", content: together });
     }
     if (promptProfile?.output === "plain_text") {
         llmMessages.push({

@@ -23,6 +23,7 @@ import { loadNoteWallProjectionEntries } from "./notewall-memory";
 import { loadXiaohongshuProjectionEntries } from "./xiaohongshu-memory";
 import { loadStudyRoomForumProjectionEntries } from "./study-room/forum-memory";
 import { formatXiaohongshuShareForPrompt } from "./chat-share";
+import { formatForwardedChatForHistory } from "./chat-forward-types";
 import { formatStudyRoomShareForPrompt } from "./study-room/share-card";
 import { loadBlackMarketTheaterProjectionEntries } from "./black-market-storage";
 import { loadInterviewMagazineProjectionEntries } from "./interview-magazine-memory";
@@ -272,7 +273,9 @@ export function loadNativeTimeline(
             }
             // Represent rich media as text when content is empty
             else if (!content && msg.mediaType) {
-                if (msg.mediaType === "sticker") content = `[表情包:${msg.mediaData?.label || "贴纸"}]`;
+                if (msg.mediaType === "forwarded_chat") content = formatForwardedChatForHistory(msg.mediaData?.forwardedChat);
+
+                else if (msg.mediaType === "sticker") content = `[表情包:${msg.mediaData?.label || "贴纸"}]`;
                 else if (msg.mediaType === "audio") content = `[语音条:${msg.mediaData?.label || "语音消息"}]`;
                 else if (msg.mediaType === "image") content = formatPhotoDirectiveForPrompt(msg);
                 else if (msg.mediaType === "red_packet") {
@@ -389,7 +392,9 @@ export function loadNativeTimeline(
             else if (msg.mediaType === "poke") content = `[我拍了拍${msg.mediaData?.pokeTarget || ""}]`;
             // Represent rich media as text when content is empty
             else if (!content && msg.mediaType) {
-                if (msg.mediaType === "sticker") content = `[表情包:${msg.mediaData?.label || "贴纸"}]`;
+                if (msg.mediaType === "forwarded_chat") content = formatForwardedChatForHistory(msg.mediaData?.forwardedChat);
+
+                else if (msg.mediaType === "sticker") content = `[表情包:${msg.mediaData?.label || "贴纸"}]`;
                 else if (msg.mediaType === "audio") content = `[语音条:${msg.mediaData?.label || "语音消息"}]`;
                 else if (msg.mediaType === "image") content = formatPhotoDirectiveForPrompt(msg);
                 else if (msg.mediaType === "red_packet") content = `[红包:${msg.mediaData?.amount ?? 0}:${msg.mediaData?.label || "恭喜发财"}]`;

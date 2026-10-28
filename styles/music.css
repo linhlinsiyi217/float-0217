@@ -5041,3 +5041,89 @@
 .listening-invite-gesture-hint { color:var(--c-text-muted,#a47f91);font-size:10px;line-height:1.5;text-align:center;padding:4px 0 0;max-width:214px; }
 .listening-record-stage[role="button"]:focus-visible { outline:2px solid #df8baa;outline-offset:4px;border-radius:8px; }
 .listening-invite-record[data-status="accepted"] .listening-record-slide { transform:translateX(70px); }
+
+/* ═══════════════════════════════════════════════════════
+   一起听（2026-10-28，来自 Y2K 1.2.0，按本项目冷白 / 灰调收敛）
+   悬浮球封面外的头像小星球、两人头像、播放器顶部胶囊、成员面板、加入时一次性柔光
+   ═══════════════════════════════════════════════════════ */
+.music-together-content { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.music-together-content::-webkit-scrollbar { display: none; }
+
+.music-float[data-together] .music-float-inner { position: relative; }
+.music-float-together { margin-top: 3px; font-size: 11px; color: var(--c-music-accent); opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.listening-planets { position: absolute; left: 3px; top: 50%; width: 64px; height: 64px; margin-top: -32px; pointer-events: none; z-index: 3; --listening-cover-color: rgb(122, 140, 168); }
+.music-float[data-expanded] .listening-planets { left: 8px; }
+.listening-ring { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.listening-ring-base { stroke: rgba(91, 100, 114, .32); stroke-width: .7; }
+.listening-spectrum-bar { stroke: var(--listening-cover-color); stroke-width: 1.2; stroke-linecap: round; transform-box: fill-box; transform-origin: bottom; animation: listening-spectrum var(--spectrum-duration, 1.2s) ease-in-out var(--spectrum-delay, 0s) infinite alternate; }
+.listening-wave-window { opacity: 0; animation: listening-ring-meeting 24s linear infinite; }
+.listening-orbit { position: absolute; inset: 0; animation: listening-orbit-one 24s linear infinite; }
+.listening-orbit-char { animation-name: listening-orbit-two; }
+.listening-orbit-third { animation-name: listening-orbit-three; }
+.listening-planet { position: absolute; right: -2px; top: 24px; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; overflow: hidden; background: #e4e8ee; color: #5b6472; font-size: 9px; font-weight: 600; border: 1px solid #fff; box-shadow: 0 1px 3px rgba(28, 31, 36, .18); animation: listening-upright-one 24s linear infinite; }
+.listening-orbit-char .listening-planet { animation-name: listening-upright-two; }
+.listening-orbit-third .listening-planet { animation-name: listening-upright-three; }
+.listening-planet img, .listening-member-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.listening-planet-more { position: absolute; right: -4px; bottom: -2px; padding: 0 4px; border-radius: 8px; font-size: 9px; line-height: 14px; color: #fff; background: rgba(28, 31, 36, .6); }
+.listening-planets[data-orbiting="false"] * { animation-play-state: paused; }
+.listening-planets[data-orbiting="false"] .listening-wave-window { visibility: hidden; }
+@keyframes listening-orbit-one { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes listening-orbit-two { from { transform: rotate(180deg); } to { transform: rotate(900deg); } }
+@keyframes listening-orbit-three { from { transform: rotate(90deg); } to { transform: rotate(630deg); } }
+@keyframes listening-upright-one { from { transform: rotate(0deg); } to { transform: rotate(-360deg); } }
+@keyframes listening-upright-two { from { transform: rotate(-180deg); } to { transform: rotate(-900deg); } }
+@keyframes listening-upright-three { from { transform: rotate(-90deg); } to { transform: rotate(-630deg); } }
+@keyframes listening-ring-meeting { 0%, 46%, 70%, 100% { opacity: 0; } 50%, 64% { opacity: .9; } }
+@keyframes listening-spectrum { from { transform: scaleY(.45); } to { transform: scaleY(1); } }
+
+/* 两人头像：并排略叠；加入后靠拢一点 */
+.listening-duet { --duet-size: 34px; display: inline-flex; align-items: center; flex-shrink: 0; }
+.listening-duet-person { position: relative; width: var(--duet-size); height: var(--duet-size); flex-shrink: 0; border-radius: 50%; transition: transform .32s cubic-bezier(.22, .9, .32, 1); }
+.listening-duet-person + .listening-duet-person { margin-left: calc(var(--duet-size) * -.22); }
+.listening-duet[data-joined="false"] .listening-duet-person + .listening-duet-person { transform: translateX(4px); }
+.listening-duet-photo { box-sizing: border-box; display: grid; place-items: center; width: 100%; height: 100%; overflow: hidden; border-radius: 50%; border: 2px solid var(--c-music-surface-solid, #fff); background: #e4e8ee; color: #5b6472; font-size: calc(var(--duet-size) * .38); font-weight: 600; }
+.listening-duet-photo img { width: 100%; height: 100%; display: block; object-fit: cover; }
+
+/* 全屏播放器顶部：和谁在听 */
+.listening-player-presence { position: relative; z-index: 2; align-self: center; display: flex; align-items: center; gap: 8px; min-height: 44px; max-width: calc(100% - 48px); margin: 4px auto 0; padding: 4px 14px 4px 6px; border: 0; border-radius: 22px; color: inherit; font: inherit; cursor: pointer; background: rgba(255, 255, 255, .14); }
+.listening-player-presence .listening-duet { --duet-size: 28px; }
+.listening-player-presence:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.listening-presence-copy { min-width: 0; text-align: left; }
+.listening-presence-copy strong { display: block; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.listening-presence-copy small { display: block; margin-top: 1px; font-size: 11px; opacity: .7; font-variant-numeric: tabular-nums; }
+
+/* 成员底部面板 */
+.listening-members-overlay { position: absolute; inset: 0; z-index: 80; display: flex; align-items: flex-end; padding: 12px; background: rgba(28, 31, 36, .28); }
+.listening-members { box-sizing: border-box; width: 100%; max-height: 70%; overflow: auto; padding: 8px 20px 20px; border-radius: 24px; color: #1c1f24; background: #fff; box-shadow: 0 12px 40px rgba(28, 31, 36, .18); animation: listening-sheet-in .3s cubic-bezier(.22, .9, .32, 1); }
+.listening-members header { display: flex; align-items: center; justify-content: space-between; min-height: 52px; font-size: 17px; }
+.listening-members button { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.listening-members header button { display: grid; place-items: center; width: 44px; height: 44px; margin-right: -10px; color: #8a93a1; }
+.listening-member { display: flex; align-items: center; gap: 12px; min-height: 60px; font-size: 15px; }
+.listening-member + .listening-member { border-top: 1px solid #e4e8ee; }
+.listening-member-avatar { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; overflow: hidden; background: #e4e8ee; color: #5b6472; font-weight: 600; }
+.listening-member small { display: block; margin-top: 2px; font-size: 12px; color: #8a93a1; }
+.listening-members .listening-end { width: 100%; min-height: 44px; margin-top: 14px; border-radius: 12px; font-size: 15px; color: #c8372d; background: rgba(200, 55, 45, .08); }
+.listening-members .listening-end[data-tone="join"] { color: #fff; background: #1c1f24; font-weight: 600; }
+@keyframes listening-sheet-in { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* 加入一起听：一次性柔光（封面色、低透明，约 2.4 秒），中间短暂出现两人头像 */
+.listening-global-glow { position: absolute; inset: 0; z-index: 9990; pointer-events: none; border-radius: inherit; overflow: hidden; }
+.listening-global-glow::before { content: ""; position: absolute; inset: 0; opacity: 0; box-shadow: inset 0 0 90px 18px color-mix(in srgb, var(--listening-cover-color) 42%, transparent); animation: listening-glow-veil var(--listening-glow-ms, 2400ms) cubic-bezier(.22, .9, .32, 1) forwards; }
+.listening-glow-badge { position: absolute; left: 50%; top: 42%; display: flex; align-items: center; gap: 10px; padding: 8px 16px 8px 8px; border-radius: 28px; font-size: 15px; font-weight: 600; color: #1c1f24; white-space: nowrap; background: rgba(255, 255, 255, .94); box-shadow: 0 10px 30px rgba(28, 31, 36, .14); opacity: 0; transform: translate(-50%, 8px) scale(.96); animation: listening-glow-badge var(--listening-glow-ms, 2400ms) cubic-bezier(.22, .9, .32, 1) forwards; }
+.listening-glow-badge .listening-duet { --duet-size: 36px; }
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) { .listening-glow-badge { background: rgba(255, 255, 255, .72); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); } }
+@keyframes listening-glow-veil { 0% { opacity: 0; } 25%, 65% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes listening-glow-badge { 0% { opacity: 0; transform: translate(-50%, 8px) scale(.96); } 20%, 72% { opacity: 1; transform: translate(-50%, 0) scale(1); } 100% { opacity: 0; transform: translate(-50%, -4px) scale(1); } }
+
+/* 播放器收藏面板：共同歌单分区 */
+.music-playlist-picker-section { padding: 12px 4px 6px; font-size: 12px; font-weight: 600; color: var(--c-music-accent); opacity: .75; }
+.music-playlist-picker-cover-shared { display: grid; place-items: center; background: var(--c-music-accent-dim); color: var(--c-music-accent); }
+
+@media (prefers-reduced-motion: reduce) {
+    .listening-planets *, .listening-members { animation: none !important; }
+    .listening-orbit-char { transform: rotate(180deg); }
+    .listening-orbit-char .listening-planet { transform: rotate(-180deg); }
+    .listening-wave-window { display: none; }
+    .listening-duet-person { transition: none; }
+    .listening-global-glow { display: none; }
+}
