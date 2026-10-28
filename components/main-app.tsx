@@ -1,6 +1,7 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { ArrowRight } from "lucide-react";
 
 import { AccountGate } from "@/components/auth/account-gate";
 import { CloudBackupScheduler } from "@/components/cloud-backup-scheduler";
@@ -11,7 +12,7 @@ import { MediaMaintenanceScheduler } from "@/components/media-maintenance-schedu
 import { ShellPushRegistrar } from "@/components/shell-push-registrar";
 import { DesktopShell } from "./desktop-shell";
 import { UpdateNotice } from "./update-log/update-notice";
-import { SplashFirstFrame, SplashSequence } from "./splash-sequence";
+import { SplashAnimation } from "./splash-animation";
 import { MusicProvider } from "@/lib/music-context";
 import { hydrateKvDb, isKvHydrated } from "@/lib/kv-db";
 import { getThemeAssetMap, readThemeProfile } from "@/lib/theme-storage";
@@ -19,17 +20,16 @@ import { resolveActiveIconSkins, type ThemeProfile } from "@/lib/theme-types";
 import { hasPendingMcpOAuthCallback } from "@/lib/tool-executor";
 import { shouldRequestPwaFullscreen } from "@/lib/pwa-display-mode";
 
-// 开机编排（真进度）：
-//   字体预热（大项）→ 55%，主题/壁纸准备 → 92%，开屏字体就绪 → 98%，全部到齐 → 100。
-//   每一步都包超时兜底，另有总闸：无论卡在哪，10 秒到点一律放行 —— 绝不能卡在开屏。
-//   进度走完时主屏已经在背后渲染成最终的样子，开屏淡出只是揭开它，不会跳。
-//
-// 开屏结束后直接进主屏（锁屏与密码流程已移除）。
+const TEXT = {
+  loading: "\u52A0\u8F7D\u4E2D...",
+};
 
 const BUILTIN_FONT_URLS = [
   "/fonts/huiwen.woff2",
   "/fonts/huiwen.woff2",
   "/fonts/special-elite.woff2",
+  "/fonts/splash/instrument-serif-regular-400.woff2",
+  "/fonts/splash/instrument-serif-italic-400.woff2",
   "/fonts/splash/inter-300.woff2",
   "/fonts/splash/inter-400.woff2",
   "/fonts/splash/inter-500.woff2",
@@ -63,6 +63,8 @@ const BUILTIN_FONT_URLS = [
 ] as const;
 
 const BUILTIN_FONT_LOAD_SPECS = [
+  '400 1em "Instrument Serif"',
+  'italic 400 1em "Instrument Serif"',
   '300 1em "Inter"',
   '400 1em "Inter"',
   '500 1em "Inter"',
@@ -100,11 +102,30 @@ const BUILTIN_FONT_LOAD_SPECS = [
 const FONT_CACHE_BATCH_SIZE = 3;
 const FONT_CACHE_BATCH_DELAY_MS = 80;
 
-// 真进度各步的超时兜底与总闸。少包一处，那一处卡住就是永远停在开屏
-const BOOT_FONT_TIMEOUT = 8000;
-const BOOT_THEME_TIMEOUT = 3000;
-const BOOT_SPLASH_FONT_TIMEOUT = 1500;
-const BOOT_MAX_MS = 10000;
+type IdleDeadlineLike = {
+  didTimeout: boolean;
+  timeRemaining: () => number;
+};
+
+type WindowWithIdleCallback = Window & {
+  requestIdleCallback?: (callback: (deadline: IdleDeadlineLike) => void, options?: { timeout?: number }) => number;
+  cancelIdleCallback?: (handle: number) => void;
+};
+
+function scheduleIdleTask(callback: () => void): () => void {
+  if (typeof window === "undefined") {
+    return () => { };
+  }
+
+  const idleWindow = window as WindowWithIdleCallback;
+  if (typeof idleWindow.requestIdleCallback === "function") {
+    const handle = idleWindow.requestIdleCallback(() => callback(), { timeout: 2400 });
+    return () => idleWindow.cancelIdleCallback?.(handle);
+  }
+
+  const handle = window.setTimeout(callback, 600);
+  return () => window.clearTimeout(handle);
+}
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -129,6 +150,34 @@ async function warmBuiltinFonts(shouldStop: () => boolean): Promise<void> {
 
   if (shouldStop() || !document.fonts) return;
   await Promise.all(BUILTIN_FONT_LOAD_SPECS.map((spec) => document.fonts.load(spec).catch(() => [])));
+}
+
+function SplashScreen({ ready = false, onEnter }: { ready?: boolean; onEnter?: () => void }) {
+  return (
+    <main className="app-root splash-root">
+      <section
+        className="phone-shell-wrap splash-shell-wrap"
+        aria-label={TEXT.loading}
+      >
+        <div className="phone-case">
+          <div className="phone-frame">
+            <div className="phone-shell splash-phone-screen">
+              <SplashAnimation />
+              <button
+                type="button"
+                className={ready ? "splash-enter-button splash-enter-button-show" : "splash-enter-button"}
+                onClick={onEnter}
+                disabled={!ready}
+                aria-label="Enter"
+              >
+                <ArrowRight size={18} strokeWidth={1.8} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
 }
 
 type PreparedDesktopTheme = {
@@ -180,32 +229,12 @@ async function prepareDesktopThemeForFirstPaint(): Promise<PreparedDesktopTheme>
   return { profile, assets };
 }
 
-// 给一步加超时兜底：先到的算数，另一个作废
-function bootStep<T>(run: (done: (value: T) => void) => void, timeout: number): Promise<T> {
-  return new Promise((resolve) => {
-    let settled = false;
-    const settle = (value: T) => {
-      if (settled) return;
-      settled = true;
-      resolve(value);
-    };
-    window.setTimeout(() => settle(undefined as T), timeout);
-    run(settle);
-  });
-}
-
 export function MainApp() {
   const [preparedDesktopTheme, setPreparedDesktopTheme] = useState<PreparedDesktopTheme | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [splashDismissed, setSplashDismissed] = useState(false);
   const [kvHydrateFailed, setKvHydrateFailed] = useState(false);
   const [initAttempt, setInitAttempt] = useState(0);
-  // 开机覆盖层：splash = 开屏动画进行中；none = 已进主屏
-  const [overlay, setOverlay] = useState<"splash" | "none">("none");
-  const [bootPct, setBootPct] = useState(0);
-  const [splashGone, setSplashGone] = useState(false);
-
-  const overlayRef = useRef<"splash" | "none">("none");
-  overlayRef.current = overlay;
 
   useEffect(() => {
     let cancelled = false;
@@ -225,77 +254,26 @@ export function MainApp() {
       }
       setKvHydrateFailed(false);
 
-      setOverlay("splash");
-
-      const pushPct = (pct: number) => {
-        if (!cancelled) setBootPct(pct);
-      };
-
-      // 总闸：无论卡在哪一步，到点一律放行进主屏
-      const bootDeadline = window.setTimeout(() => {
-        if (cancelled) return;
-        setPreparedDesktopTheme(null);
-        setHydrated(true);
-        setBootPct(100);
-      }, BOOT_MAX_MS);
-
-      // ① 字体预热（分批缓存，最大的一步）
-      await bootStep<void>(
-        (done) => {
-          void warmBuiltinFonts(() => cancelled).finally(() => done());
-        },
-        BOOT_FONT_TIMEOUT
-      );
-      pushPct(55);
-
-      // ② 主题、壁纸与图标皮肤的读回与解码
       let nextPreparedTheme: PreparedDesktopTheme | null = null;
       try {
-        nextPreparedTheme = await bootStep<PreparedDesktopTheme | null>(
-          (done) => {
-            void prepareDesktopThemeForFirstPaint().then(done, () => done(null));
-          },
-          BOOT_THEME_TIMEOUT
-        );
+        nextPreparedTheme = await prepareDesktopThemeForFirstPaint();
       } catch (error) {
         console.warn("[MainApp] desktop theme preload failed:", error);
       }
-      pushPct(92);
-
-      // ③ 开屏标题那款字体就绪
-      await bootStep<void>(
-        (done) => {
-          if (document.fonts?.ready) {
-            document.fonts.ready.then(() => done(), () => done());
-          } else {
-            done();
-          }
-        },
-        BOOT_SPLASH_FONT_TIMEOUT
-      );
-      pushPct(98);
 
       if (cancelled) return;
-      window.clearTimeout(bootDeadline);
       setPreparedDesktopTheme(nextPreparedTheme);
       setHydrated(true);
-      pushPct(100);
-
       if (hasPendingMcpOAuthCallback()) {
-        // OAuth 回调等着跳：开屏都不要挡
-        setOverlay("none");
-        setSplashGone(true);
+        setSplashDismissed(true);
       }
-      // 正常开屏的淡出与后续由 SplashSequence 的回调驱动
     })();
 
     // 安卓全屏兜底。是否请求全屏在每次点击时读取，设置切换后无需重载。
     const isMobile = window.matchMedia("(max-width: 500px) and (hover: none) and (pointer: coarse)").matches;
-    if (!isMobile) {
-      return () => {
-        cancelled = true;
-      };
-    }
+    if (!isMobile) return () => {
+      cancelled = true;
+    };
 
     function tryFullscreen() {
       if (!shouldRequestPwaFullscreen()) return;
@@ -331,46 +309,30 @@ export function MainApp() {
     );
   }
 
-  // 水合前的静态第一帧：与开屏「标题静止」同一副面孔；跳过开屏时被锁屏
-  // 首帧（layout 内联脚本注入）整个盖住，什么都看不见
-  if (!hydrated) {
-    return (
-      <main className="app-root" style={{ minHeight: "100dvh" }}>
-        <SplashFirstFrame />
-      </main>
-    );
-  }
-
   return (
     <AccountGate>
-      <main className="app-root">
-        <MusicProvider>
-          <DesktopShell
-            initialThemeProfile={preparedDesktopTheme?.profile}
-            initialThemeAssets={preparedDesktopTheme?.assets}
-          />
-          <UpdateNotice />
-          <CloudBackupScheduler />
-          <RealityBridgeScheduler />
-          <WidgetScheduler />
-          {/* 查岗轮询 + 主动截屏接收端。必须挂在桌面壳这种「一直在跑」的地方：
-              角色查岗时用户多半正在别的 App 里，设置页根本没开着。 */}
-          <CheckInScheduler />
-          <MediaMaintenanceScheduler />
-          {/* 壳推送订阅的兜底注册：壳原生那次失败是静默的，这里可验证地补一次 */}
-          <ShellPushRegistrar />
-        </MusicProvider>
-      </main>
-      {overlay === "splash" && !splashGone ? (
-        <SplashSequence
-          progress={bootPct}
-          onReveal={() => {
-            // 淡出开始：开屏揭开的就是主屏（锁屏与密码流程已移除）
-            setOverlay("none");
-          }}
-          onGone={() => setSplashGone(true)}
-        />
-      ) : null}
+      {!splashDismissed ? (
+        <SplashScreen ready={hydrated} onEnter={() => setSplashDismissed(true)} />
+      ) : (
+        <main className="app-root">
+          <MusicProvider>
+            <DesktopShell
+              initialThemeProfile={preparedDesktopTheme?.profile}
+              initialThemeAssets={preparedDesktopTheme?.assets}
+            />
+            <UpdateNotice />
+            <CloudBackupScheduler />
+            <RealityBridgeScheduler />
+            <WidgetScheduler />
+            {/* 查岗轮询 + 主动截屏接收端。必须挂在桌面壳这种「一直在跑」的地方：
+                角色查岗时用户多半正在别的 App 里，设置页根本没开着。 */}
+            <CheckInScheduler />
+            <MediaMaintenanceScheduler />
+            {/* 壳推送订阅的兜底注册：壳原生那次失败是静默的，这里可验证地补一次 */}
+            <ShellPushRegistrar />
+          </MusicProvider>
+        </main>
+      )}
     </AccountGate>
   );
 }
