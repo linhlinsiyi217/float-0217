@@ -12,22 +12,19 @@ import { ShellPushRegistrar } from "@/components/shell-push-registrar";
 import { DesktopShell } from "./desktop-shell";
 import { UpdateNotice } from "./update-log/update-notice";
 import { SplashFirstFrame, SplashSequence } from "./splash-sequence";
-import { LockScreenOverlay } from "./lock-screen-overlay";
 import { MusicProvider } from "@/lib/music-context";
 import { hydrateKvDb, isKvHydrated } from "@/lib/kv-db";
 import { getThemeAssetMap, readThemeProfile } from "@/lib/theme-storage";
 import { resolveActiveIconSkins, type ThemeProfile } from "@/lib/theme-types";
 import { hasPendingMcpOAuthCallback } from "@/lib/tool-executor";
 import { shouldRequestPwaFullscreen } from "@/lib/pwa-display-mode";
-import { readLockConfig, readLockMirror, syncLockMirrorFromKv } from "@/lib/lock-screen";
 
 // 开机编排（真进度）：
 //   字体预热（大项）→ 55%，主题/壁纸准备 → 92%，开屏字体就绪 → 98%，全部到齐 → 100。
 //   每一步都包超时兜底，另有总闸：无论卡在哪，10 秒到点一律放行 —— 绝不能卡在开屏。
 //   进度走完时主屏已经在背后渲染成最终的样子，开屏淡出只是揭开它，不会跳。
 //
-// 「跳过开屏动画」开着且锁屏也开着时，锁屏页就是第一帧（layout 的内联脚本靠
-// localStorage 镜像在主 bundle 之前就把它画出来）；这里水合完成后以 kv 真值接管。
+// 开屏结束后直接进主屏（锁屏与密码流程已移除）。
 
 const BUILTIN_FONT_URLS = [
   "/fonts/huiwen.woff2",
@@ -202,14 +199,13 @@ export function MainApp() {
   const [hydrated, setHydrated] = useState(false);
   const [kvHydrateFailed, setKvHydrateFailed] = useState(false);
   const [initAttempt, setInitAttempt] = useState(0);
-  // 开机覆盖层：splash = 开屏动画进行中；lock = 锁屏挡着；none = 已进主屏
-  const [overlay, setOverlay] = useState<"splash" | "lock" | "none">("none");
+  // 开机覆盖层：splash = 开屏动画进行中；none = 已进主屏
+  const [overlay, setOverlay] = useState<"splash" | "none">("none");
   const [bootPct, setBootPct] = useState(0);
   const [splashGone, setSplashGone] = useState(false);
 
-  const overlayRef = useRef<"splash" | "lock" | "none">("none");
+  const overlayRef = useRef<"splash" | "none">("none");
   overlayRef.current = overlay;
-  const hiddenAtRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -217,14 +213,6 @@ export function MainApp() {
     // 申请持久化存储：批准后 iOS/安卓不会再因存储压力擅自回收 IndexedDB
     // （摊主钥匙、聊天记录等都存在里面）。静默尽力而为，被拒也无碍。
     void navigator.storage?.persist?.().catch(() => {});
-
-    // 首帧同步判定（localStorage 镜像）：锁屏开着 + 跳过开屏动画 → 锁屏就是第一帧。
-    // 只影响这一次开机要不要放开屏动画；kv 真值水合完成后立刻接管
-    const quietBoot =
-      typeof window !== "undefined" && (() => {
-        const mirror = readLockMirror();
-        return mirror.on && mirror.skipBoot;
-      })();
 
     void (async () => {
       await hydrateKvDb();
@@ -237,13 +225,7 @@ export function MainApp() {
       }
       setKvHydrateFailed(false);
 
-      // kv 是真值：镜像可能是旧的（云备份从别的设备恢复过来），纠回去
-      syncLockMirrorFromKv();
-      const lockCfg = readLockConfig();
-
-      if (!quietBoot) {
-        setOverlay("splash");
-      }
+      setOverlay("splash");
 
       const pushPct = (pct: number) => {
         if (!cancelled) setBootPct(pct);
@@ -255,7 +237,6 @@ export function MainApp() {
         setPreparedDesktopTheme(null);
         setHydrated(true);
         setBootPct(100);
-        if (quietBoot) setOverlay("lock");
       }, BOOT_MAX_MS);
 
       // ① 字体预热（分批缓存，最大的一步）
@@ -300,9 +281,7 @@ export function MainApp() {
       setHydrated(true);
       pushPct(100);
 
-      if (quietBoot) {
-        setOverlay("lock");
-      } else if (hasPendingMcpOAuthCallback()) {
+      if (hasPendingMcpOAuthCallback()) {
         // OAuth 回调等着跳：开屏都不要挡
         setOverlay("none");
         setSplashGone(true);
@@ -310,31 +289,13 @@ export function MainApp() {
       // 正常开屏的淡出与后续由 SplashSequence 的回调驱动
     })();
 
-    // 回前台重锁。判据是时间戳不是计时器：切后台后计时器几乎不跑，靠它算
-    // 「离开了多久」在手机上根本不准
-    const onVisibility = () => {
-      if (document.visibilityState === "hidden") {
-        if (overlayRef.current !== "lock") hiddenAtRef.current = Date.now();
-        return;
-      }
-      if (!isKvHydrated()) return;
-      const cfg = readLockConfig();
-      if (!cfg.on) return;
-      if (overlayRef.current === "lock") return;
-      const gap = Date.now() - hiddenAtRef.current;
-      hiddenAtRef.current = 0;
-      // idle < 0 是「从不」：只有开机才锁，回前台一律放行
-      if (cfg.idle < 0 || gap < cfg.idle * 60000) return;
-      setOverlay("lock");
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-
     // 安卓全屏兜底。是否请求全屏在每次点击时读取，设置切换后无需重载。
     const isMobile = window.matchMedia("(max-width: 500px) and (hover: none) and (pointer: coarse)").matches;
-    if (!isMobile) return () => {
-      cancelled = true;
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
+    if (!isMobile) {
+      return () => {
+        cancelled = true;
+      };
+    }
 
     function tryFullscreen() {
       if (!shouldRequestPwaFullscreen()) return;
@@ -345,7 +306,6 @@ export function MainApp() {
     document.addEventListener("click", tryFullscreen);
     return () => {
       cancelled = true;
-      document.removeEventListener("visibilitychange", onVisibility);
       document.removeEventListener("click", tryFullscreen);
     };
   }, [initAttempt]);
@@ -399,19 +359,14 @@ export function MainApp() {
           <MediaMaintenanceScheduler />
           {/* 壳推送订阅的兜底注册：壳原生那次失败是静默的，这里可验证地补一次 */}
           <ShellPushRegistrar />
-          {/* 锁屏层（z 200）在开屏层（z 210）底下：开屏淡出直接揭示锁屏或主屏。
-              挂在 MusicProvider 内：锁屏音乐卡片要读统一播放器状态。 */}
-          {overlay === "lock" ? (
-            <LockScreenOverlay onUnlocked={() => setOverlay("none")} />
-          ) : null}
         </MusicProvider>
       </main>
       {overlay === "splash" && !splashGone ? (
         <SplashSequence
           progress={bootPct}
           onReveal={() => {
-            // 淡出开始：锁屏开着就把锁屏层放到底下，淡出直接揭示它
-            setOverlay(readLockConfig().on ? "lock" : "none");
+            // 淡出开始：开屏揭开的就是主屏（锁屏与密码流程已移除）
+            setOverlay("none");
           }}
           onGone={() => setSplashGone(true)}
         />

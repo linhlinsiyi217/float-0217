@@ -6,10 +6,8 @@ import { ChatReasoningVisibilityController } from "@/components/chat-reasoning-v
 import { CSSImportEnhancer } from "@/components/css-import-enhancer";
 import { PWAManifestInjector } from "@/components/pwa-manifest-injector";
 import { PWARegistrar } from "@/components/pwa-registrar";
-import { LOCK_FIRST_FRAME_SCRIPT } from "@/lib/lock-first-frame";
 import "../styles/fonts.css";
 import "./globals.css";
-import "../styles/lock-screen.css";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -45,8 +43,6 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="FLOT" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="mobile-web-app-capable" content="yes" />
-        {/* 首帧锁屏决策：跳过开屏动画时锁屏就是第一帧，主 bundle 还没加载就得定 */}
-        <script dangerouslySetInnerHTML={{ __html: LOCK_FIRST_FRAME_SCRIPT }} />
       </head>
       <body>
         <PWAManifestInjector />

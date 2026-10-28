@@ -146,7 +146,6 @@ import { canSendShellNotification, sendShellNotification } from "@/lib/shell-not
 import type { ChatSharePayload } from "@/lib/chat-share";
 import { completePendingMcpOAuthCallback } from "@/lib/tool-executor";
 import { LayoutGrid, LoaderCircle, RefreshCw } from "lucide-react";
-import { PhoneLockScreen } from "@/components/phone-lock-screen";
 import dynamic from "next/dynamic";
 
 // ── 懒加载（G9 性能优化）─────────────────────────────────────────
@@ -1329,7 +1328,6 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   const [desktopReady, setDesktopReady] = useState(false);
   const [glassPaintPass, setGlassPaintPass] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
-  const [isLocked, setIsLocked] = useState(false);
   const [activeApp, setActiveApp] = useState<DesktopIconId | null>(null);
   const [customApps, setCustomApps] = useState<InstalledCustomApp[]>([]);
   // 自定义 APP 桌面图标样式偏好（global = 忽略上传图标走全局效果）
@@ -1391,10 +1389,10 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   // 全局聊天提示音（新消息/发送消息）：监听消息落库事件，按各会话配置播放（角色专属优先于全局）
   useEffect(() => installChatSoundListener(), []);
   // 全局返回键：浏览器返回、安卓系统返回统一按「弹窗 → 应用内上一级 → 主屏」处理（lib/back-navigation.ts）
-  const backStateRef = useRef({ activeApp: null as string | null, locked: false });
-  backStateRef.current = { activeApp, locked: isLocked };
+  const backStateRef = useRef({ activeApp: null as string | null });
+  backStateRef.current = { activeApp };
   useEffect(() => installBackNavigation({
-    getRoot: () => (backStateRef.current.locked ? null : shellRef.current),
+    getRoot: () => shellRef.current,
     getActiveApp: () => backStateRef.current.activeApp,
     closeApp: () => setActiveApp(null),
     notify: (text) => setNotice(text),
@@ -4878,8 +4876,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
               <header
                 className="phone-status-bar"
-                onDoubleClick={() => setIsLocked(true)}
-                title="双击顶部状态栏锁定"
               >
                 <StatusClock />
                 <div className="status-island">
@@ -5823,8 +5819,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                   )}
                 </BottomSheet>
               )}
-
-              {isLocked && <PhoneLockScreen onUnlock={() => setIsLocked(false)} />}
             </div>
           </div>
         </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, createContext, type CSSProperties, type ReactNode } from "react";
-import { Activity, Bell, Bot, CalendarDays, Camera, Check, ChevronRight, Clock, Database, FileText, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Laptop, Layers, LayoutTemplate, Link2, Loader2, Lock, LogOut, MessageSquare, Mic, PanelTop, PhoneCall, SlidersHorizontal, UserCircle, Wrench, X, CloudUpload, Zap } from "lucide-react";
+import { Activity, Bell, Bot, CalendarDays, Camera, Check, ChevronRight, Clock, Database, FileText, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Laptop, Layers, LayoutTemplate, Link2, Loader2, LogOut, MessageSquare, Mic, PanelTop, PhoneCall, SlidersHorizontal, UserCircle, Wrench, X, CloudUpload, Zap } from "lucide-react";
 import { ConfirmDialog } from "./ui/modal";
 import { useAccount } from "@/lib/account-context";
 import { isSelfHostedModeEnabled } from "@/lib/self-hosting";
@@ -27,7 +27,6 @@ import { DeviceActionSettings } from "./device-action/device-action-settings";
 import { SystemCalendarSettings } from "./system-calendar/system-calendar-settings";
 import { ScreenshotSettings } from "./screenshot/screenshot-settings";
 import { WidgetSettings } from "./widget/widget-settings";
-import { LockScreenSettings } from "./settings/lockscreen-settings";
 import { NotificationSettings } from "./settings/notification-settings";
 import { StatusbarSettings } from "./settings/statusbar-settings";
 import { WorkshopSettings } from "./settings/workshop-settings";
@@ -82,7 +81,6 @@ type SubPage =
     | "systemCalendar"
     | "screenshot"
     | "widget"
-    | "lockscreen"
     | "about";
 
 const SETTINGS_MENU = [
@@ -103,7 +101,6 @@ const SETTINGS_MENU = [
     { id: "systemCalendar", icon: CalendarDays, label: "系统日历", desc: "让角色知道你的日程、记下纪念日", iconColor: BINDING_ACCENTS.memory , glass: "" },
     { id: "screenshot", icon: Camera, label: "截屏", desc: "让角色看一眼你现在的屏幕", iconColor: BINDING_ACCENTS.voice , glass: "" },
     { id: "widget", icon: LayoutTemplate, label: "桌面小组件", desc: "角色留在桌面上的话", iconColor: BINDING_ACCENTS.memory , glass: "" },
-    { id: "lockscreen", icon: Lock, label: "锁屏与开屏", desc: "模拟锁屏、密码与开屏动画", iconColor: BINDING_ACCENTS.identity , glass: "" },
     { id: "agentComputer", icon: Laptop, label: "角色电脑", desc: "云端小电脑（自部署）", iconColor: BINDING_ACCENTS.memory , glass: "agent-computer" },
     { id: "identity", icon: UserCircle, label: "用户身份", desc: "个人信息", iconColor: BINDING_ACCENTS.identity , glass: "identity" },
     { id: "notifications", icon: Bell, label: "系统通知", desc: "推送、站内横幅与提示音", iconColor: BINDING_ACCENTS.voice , glass: "" },
@@ -378,8 +375,6 @@ export function PhoneSettingsApp({ onClose, onNotice, initialPage }: SettingsPag
                 return <ScreenshotSettings onNotice={onNotice} />;
             case "widget":
                 return <WidgetSettings onNotice={onNotice} />;
-            case "lockscreen":
-                return <LockScreenSettings onNotice={onNotice} />;
             case "agentComputer":
                 return <AgentComputerSettings onNotice={onNotice} />;
             case "moderation":
@@ -560,14 +555,6 @@ export function PhoneSettingsApp({ onClose, onNotice, initialPage }: SettingsPag
                             </div>
                             <div className="mt-[10px]">
                                 <FeaturedCard item={agentComputerFeaturedItem} />
-                            </div>
-                        </div>
-                        <div className="settings-realtime-section">
-                            <h3 className="settings-menu-section-title">System</h3>
-                            <div className="mt-[10px]">
-                                <CardGrid
-                                    items={SETTINGS_MENU.filter(item => ["lockscreen"].includes(item.id)).map(makeCardItem)}
-                                />
                             </div>
                         </div>
                         <div className="settings-realtime-section">

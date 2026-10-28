@@ -19,7 +19,7 @@ const FADE_MS_REDUCED = 200;
 type SplashSequenceProps = {
   /** 0-100，MainApp 推真进度；低于当前值的回退忽略 */
   progress: number;
-  /** 淡出开始时叫一声：MainApp 此刻把锁屏层（若开）放到我底下 */
+  /** 淡出开始时叫一声：MainApp 此刻揭开的已经是主屏 */
   onReveal: () => void;
   /** 淡出动画结束，可以卸载了 */
   onGone: () => void;
