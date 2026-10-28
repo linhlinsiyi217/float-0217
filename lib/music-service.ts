@@ -390,41 +390,15 @@ export async function getUserPlaylists(): Promise<NeteasePlaylist[]> {
     } catch { return []; }
 }
 
-/** 歌单歌曲拉取失败的原因分类（G8 修复：区分「要登录」与「API 不可用」） */
-export type NeteaseTrackListError = {
-    /** auth=需要登录网易云账号；unavailable=API 请求失败/服务不可用 */
-    kind: "auth" | "unavailable";
-    message: string;
-};
-
-/** 带原因的歌单歌曲拉取：tracks 为空列表 + error 说明原因（error 为 null 表示正常拿到、只是列表本身为空） */
-export async function getPlaylistTracksDetailed(
-    playlistId: number,
-): Promise<{ tracks: NeteaseSearchResult[]; error: NeteaseTrackListError | null }> {
+/** Fetch tracks in a playlist */
+export async function getPlaylistTracks(playlistId: number): Promise<NeteaseSearchResult[]> {
     const base = neteaseBase();
-    if (!base) return { tracks: [], error: null };
+    if (!base) return [];
     try {
         const resp = await fetch(withNeteaseParams(`${base}/playlist/track/all?id=${playlistId}&timestamp=${Date.now()}`));
-        if (!resp.ok) {
-            return { tracks: [], error: { kind: "unavailable", message: `歌单服务响应异常（HTTP ${resp.status}）` } };
-        }
         const data = await resp.json();
-        const code = typeof data?.code === "number" ? data.code : 200;
-        // 网易云对需要登录的接口常回 301；401/403 也是权限问题
-        if (code === 301 || code === 401 || code === 403) {
-            return { tracks: [], error: { kind: "auth", message: "需要登录网易云账号才能打开这个歌单" } };
-        }
-        const songs = Array.isArray(data?.songs) ? data.songs : [];
-        return { tracks: songs.map(mapSongToSearchResult), error: null };
-    } catch (e) {
-        console.warn("[MusicService] Get playlist tracks failed:", e);
-        return { tracks: [], error: { kind: "unavailable", message: "歌单服务暂时不可用（API 请求失败或离线）" } };
-    }
-}
-
-export async function getPlaylistTracks(playlistId: number): Promise<NeteaseSearchResult[]> {
-    const { tracks } = await getPlaylistTracksDetailed(playlistId);
-    return tracks;
+        return (data?.songs || []).map(mapSongToSearchResult);
+    } catch { return []; }
 }
 
 export async function getDailyRecommendSongs(): Promise<NeteaseSearchResult[]> {
