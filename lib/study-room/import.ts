@@ -45,7 +45,9 @@ export async function importBookFromBlob(
   if (ext === "txt") {
     onProgress?.("正在解析 TXT…");
     const config = loadReadingInteractionConfig();
-    const { text } = decodeTxtArrayBuffer(await blob.arrayBuffer(), config.txtEncoding);
+    const { text, encoding } = decodeTxtArrayBuffer(await blob.arrayBuffer(), config.txtEncoding);
+    // 把识别出的编码亮出来：GBK/Big5 乱码书导入时用户能立刻看出是编码猜错了
+    onProgress?.(`正在解析 TXT（编码 ${encoding.toUpperCase()}）…`);
     parsed = parseTxtContent(text, fileName, config.paragraphMode);
     format = "txt";
   } else if (ext === "docx") {

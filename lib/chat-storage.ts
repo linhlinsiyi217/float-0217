@@ -139,6 +139,8 @@ export type ChatMessage = {
     toolExecutionId?: string; // Links visible tool attachments to their persisted tool result
     editableResponseText?: string; // Processed text shown in the reply editor
     isRetracted?: boolean;
+    /** 悄悄话（G10）：发送时蒙上一层雾，轻触气泡才显示内容；角色侧上下文不受影响 */
+    whisper?: boolean;
     mediaType?: "image" | "audio" | "video"
         | "red_packet" | "transfer" | "location"
         | "poke" | "sticker" | "quote" | "dice"

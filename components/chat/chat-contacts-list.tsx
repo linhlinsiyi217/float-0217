@@ -26,6 +26,14 @@ import { pinyin } from "pinyin-pro";
 import { kvSet } from "@/lib/kv-db";
 import { scrollElementWithinContainer } from "@/lib/dom-scroll";
 import { ChatFallbackAvatar } from "./chat-fallback-avatar";
+import { EncounterPage } from "./encounter-page";
+import { CouplePage } from "./couple-page";
+import {
+    COUPLE_BINDING_UPDATED_EVENT,
+    coupleDaysSince,
+    loadCoupleBinding,
+    type CoupleBinding,
+} from "@/lib/couple-storage";
 import { addChatAltAccountFriend, findChatAltAccount } from "@/lib/chat-alt-account-storage";
 import {
     DEFAULT_MASCOT_AVATAR,
@@ -61,6 +69,10 @@ export function ChatContactsList({ onCloseApp, onSelectSession, onSelectMascot, 
     const [greetingText, setGreetingText] = useState("");
     // 添加页是否由名片打开：返回时应回到原聊天室而非联系人列表
     const addFromCardRef = useRef(false);
+    // G6：邂逅 / 情侣入口与情侣绑定状态（入口副文案随绑定联动）
+    const [isEncounterOpen, setIsEncounterOpen] = useState(false);
+    const [isCoupleOpen, setIsCoupleOpen] = useState(false);
+    const [coupleBinding, setCoupleBinding] = useState<CoupleBinding | null>(() => loadCoupleBinding());
     const mascotSettings = useSyncExternalStore(subscribeMascotSettings, getMascotSettingsSnapshot, getMascotSettingsSnapshot);
     const [mascotAvatarUrl, setMascotAvatarUrl] = useState(mascotSettings.avatarImage || DEFAULT_MASCOT_AVATAR);
 
@@ -71,10 +83,18 @@ export function ChatContactsList({ onCloseApp, onSelectSession, onSelectMascot, 
     const bodyRef = useRef<HTMLDivElement>(null);
     const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
+    // G6：情侣绑定变化时刷新入口副文案（情侣空间页绑定/解绑后联动）
+    useEffect(() => {
+        const onUpdate = () => setCoupleBinding(loadCoupleBinding());
+        window.addEventListener(COUPLE_BINDING_UPDATED_EVENT, onUpdate);
+        return () => window.removeEventListener(COUPLE_BINDING_UPDATED_EVENT, onUpdate);
+    }, []);
+
     useEffect(() => {
         let cancelled = false;
         resolveMascotImageRef(mascotSettings.avatarImage).then((url) => {
             if (!cancelled) setMascotAvatarUrl(url);
+
         });
         return () => { cancelled = true; };
     }, [mascotSettings.avatarImage]);
@@ -268,6 +288,40 @@ export function ChatContactsList({ onCloseApp, onSelectSession, onSelectMascot, 
                         {pendingRequests.length > 0 && (
                             <div className="minimal-unread-count ml-auto shrink-0">{pendingRequests.length}</div>
                         )}
+                    </div>
+                </div>
+
+                {/* G6 邂逅入口：随机遇见一位还没有会话的新朋友 */}
+                <div className="mb-3 mt-1">
+                    <div className="minimal-list-item" onClick={() => setIsEncounterOpen(true)}>
+                        <div className="w-[48px] h-[48px] rounded-full bg-[var(--c-icon-violet,#8a6bb8)] flex items-center justify-center shrink-0">
+                            <svg width={22} height={22} viewBox="0 0 24 24" fill="#fff">
+                                <path d="M12,2L9.8,8.8L3,11L9.8,13.2L12,20L14.2,13.2L21,11L14.2,8.8L12,2Z" />
+                            </svg>
+                        </div>
+                        <div className="flex-1 overflow-hidden h-[48px] flex flex-col justify-center gap-1">
+                            <div className="ts-16 font-medium text-[var(--c-text-title)]">邂逅</div>
+                            <div className="ts-13 text-[var(--c-text)] opacity-80 truncate font-normal">随机遇见一位新朋友</div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* G6 情侣入口：绑定恋人，入口副文案随绑定联动 */}
+                <div className="mb-3">
+                    <div className="minimal-list-item" onClick={() => setIsCoupleOpen(true)}>
+                        <div className="w-[48px] h-[48px] rounded-full bg-[#e8557a] flex items-center justify-center shrink-0">
+                            <svg width={22} height={22} viewBox="0 0 24 24" fill="#fff">
+                                <path d="M12,21.35L10.55,20.03C5.4,15.36 2,12.27 2,8.5 2,5.41 4.42,3 7.5,3c1.74,0 3.41,0.81 4.5,2.08C13.09,3.81 14.76,3 16.5,3 19.58,3 22,5.41 22,8.5c0,3.77 -3.4,6.86 -8.55,11.53L12,21.35Z" />
+                            </svg>
+                        </div>
+                        <div className="flex-1 overflow-hidden h-[48px] flex flex-col justify-center gap-1">
+                            <div className="ts-16 font-medium text-[var(--c-text-title)]">情侣空间</div>
+                            <div className="ts-13 text-[var(--c-text)] opacity-80 truncate font-normal">
+                                {coupleBinding
+                                    ? `和${chars.find(c => c.id === coupleBinding.characterId)?.name || "TA"}在一起第 ${coupleDaysSince(coupleBinding.since)} 天`
+                                    : "绑定你的恋人"}
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -595,6 +649,36 @@ export function ChatContactsList({ onCloseApp, onSelectSession, onSelectMascot, 
                         </div>
                     )}
                 </PageShell>
+                </div>
+                </div>
+            )}
+
+            {/* G6 邂逅页：随机遇见一位还没有会话的新朋友 */}
+            {isEncounterOpen && (
+                <div style={{ position: 'absolute', inset: 0, zIndex: 9999, background: '#ffffff' }}>
+                <div style={{ position: 'absolute', inset: 0, background: 'var(--c-page-body-bg)' }}>
+                <EncounterPage
+                    onBack={() => setIsEncounterOpen(false)}
+                    onSelectSession={sess => {
+                        setIsEncounterOpen(false);
+                        onSelectSession(sess);
+                    }}
+                />
+                </div>
+                </div>
+            )}
+
+            {/* G6 情侣空间页：绑定恋人 / 纪念日 / 快捷互动 */}
+            {isCoupleOpen && (
+                <div style={{ position: 'absolute', inset: 0, zIndex: 9999, background: '#ffffff' }}>
+                <div style={{ position: 'absolute', inset: 0, background: 'var(--c-page-body-bg)' }}>
+                <CouplePage
+                    onBack={() => setIsCoupleOpen(false)}
+                    onSelectSession={sess => {
+                        setIsCoupleOpen(false);
+                        onSelectSession(sess);
+                    }}
+                />
                 </div>
                 </div>
             )}
