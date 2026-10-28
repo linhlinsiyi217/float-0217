@@ -45,6 +45,7 @@ import {
   mdiDoorOpen,
   mdiThoughtBubbleOutline,
   mdiPaw,
+  mdiBookOpenPageVariantOutline,
 } from "@mdi/js";
 
 type IconGlyphProps = {
@@ -87,6 +88,7 @@ const MDI_PATHS: Record<IconId, string> = {
   kuaichuan: mdiDoorOpen,
   deeptalk: mdiThoughtBubbleOutline,
   desktoppet: mdiPaw,
+  storyplus: mdiBookOpenPageVariantOutline,
 };
 
 export function IconGlyph({ id, className }: IconGlyphProps) {

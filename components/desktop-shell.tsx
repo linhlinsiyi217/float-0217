@@ -14,6 +14,7 @@ import { PhoneChatApp } from "@/components/chat/phone-chat-app";
 import { PhonePlaceholderApp } from "@/components/phone-placeholder-app";
 import MusicApp from "@/components/music/music-app";
 import { DeepTalkApp } from "@/components/deep-talk/deep-talk-app";
+import { StoryPlusApp } from "@/components/storyplus/storyplus-app";
 import MusicPlayer from "@/components/music/music-player";
 import MusicFloat from "@/components/music/music-float";
 import { ListeningGlow } from "@/components/music/listening-glow";
@@ -4631,6 +4632,17 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
         <DeepTalkApp
           onClose={() => setActiveApp(null)}
           onNotice={setNotice}
+          onOpenChatSession={openChatSessionFromNotice}
+        />
+      );
+    }
+
+    if (activeApp === "storyplus") {
+      return (
+        <StoryPlusApp
+          onClose={() => setActiveApp(null)}
+          onNotice={setNotice}
+          onOpenStoryApp={() => setActiveApp("story")}
           onOpenChatSession={openChatSessionFromNotice}
         />
       );

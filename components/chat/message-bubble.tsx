@@ -9,6 +9,7 @@ import { resolveContactCard } from "@/lib/contact-card";
 import { loadCharacters } from "@/lib/character-storage";
 import { CHAT_OPEN_SESSION_EVENT, dispatchOpenAddContact } from "@/lib/chat-notification-events";
 import { ContactCardGenerateFlow } from "@/components/chat/contact-card-generate-flow";
+import { HtmlInteractiveBubble } from "@/components/chat/html-interactive-bubble";
 import { MediaPreviewOverlay } from "@/components/chat/media-preview-overlay";
 import { findStickerByName } from "@/lib/sticker-data";
 import { containsChinese, splitBilingualText } from "@/lib/bilingual-text";
@@ -133,6 +134,8 @@ export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charNa
             return <MusicShareBubble msg={msg} onPlay={onMusicPlay} />;
         case "media_file":
             return <MediaFileBubble msg={msg} onUpdate={onUpdate} characterId={characterId} />;
+        case "html_interactive":
+            return <HtmlInteractiveBubble msg={msg} />;
         case "xiaohongshu_note_share":
             return <XiaohongshuShareBubble msg={msg} />;
         case "audio":
