@@ -1,129 +1,129 @@
-// lib/update-log/update-service.ts — 远程版本清单的拉取、比较与确认。
+// lib/update-log/update-service.ts — 网页端实时检查更新。
 //
-// 职责（对应 UPDATE_SYSTEM.md 规范）：
-// 1. 用 cache: no-store + Cache-Control: no-cache + 时间戳查询参数拉 /app-version.json，
-//    绝不吃 Service Worker 或 HTTP 缓存的旧清单；
-// 2. 按 releaseId → commitSha → webVersion → versionCode 的顺序比较新旧版本，
-//    即使 versionName/versionCode 没变，只要 releaseId（含 commitSha）变了就算新版本；
-// 3. 已确认的 releaseId 存 localStorage（key 见下），确认过不再弹；
-// 4. 手动「检查更新」与更新公告弹窗共用这里的拉取与比较逻辑，状态互相独立。
+// 拉 /api/release（服务端直接读当前部署的发布记录，和公告、日志是同一份数据），
+// 每次请求都带时间戳并禁用缓存，不会读到旧的版本信息。
+// 线上当前发布的 releaseId 与本机打包的不同 → 有新版本；内容取线上那一份，
+// 公告和日志同时换成同一个新版本（见 useLatestRelease）。
+// 检查时机：启动、从后台回到前台、用户手动刷新、进入更新中心（由调用方触发）。
+// 失败只给用户一句「暂时无法获取最新更新信息」，不显示错误码、地址或异常内容。
 
-export type RemoteManifest = {
-  releaseId: string;
-  commitSha: string;
-  releasedAt: string;
-  versionName: string;
-  versionCode: number;
-  webVersion: string;
-  summary: string;
-  /** 与 app-version.json 的 changes 同构：{ type, title, detail } */
-  entries: Array<{ type: string; title: string; detail: string }>;
-};
+import { useSyncExternalStore } from "react";
 
-export type UpdateCheckState = "available" | "latest" | "offline" | "timeout" | "error";
+import { latestSystemRelease, SYSTEM_RELEASE_LIST } from "./system";
+import type { Release } from "./types";
+
+export type UpdateCheckState = "available" | "latest" | "failed";
 
 export type UpdateCheckResult =
-  | { state: "available"; manifest: RemoteManifest }
-  | { state: "latest"; manifest: RemoteManifest }
-  | { state: "offline" | "timeout" | "error"; manifest: null; message: string };
+  | { state: "available"; release: Release }
+  | { state: "latest"; release: Release }
+  | { state: "failed"; release: null };
 
-const ACK_KEY = "ai_phone_remote_release_ack_v1";
+export const UPDATE_CHECK_FAILED_TEXT = "暂时无法获取最新更新信息";
+
 const FETCH_TIMEOUT_MS = 8_000;
+/** 回到前台时的最短检查间隔，避免来回切换时反复请求 */
+const FOREGROUND_MIN_INTERVAL_MS = 60_000;
 
-function isValidManifest(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+function isRelease(value: unknown): value is Release {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Record<string, unknown>;
+  return (
+    typeof item.version === "string" &&
+    typeof item.releaseId === "string" &&
+    typeof item.date === "string" &&
+    typeof item.summary === "string" &&
+    Array.isArray(item.entries)
+  );
 }
 
-function toManifest(raw: Record<string, unknown>): RemoteManifest | null {
-  const releaseId = typeof raw.releaseId === "string" ? raw.releaseId.trim() : "";
-  const webVersion = typeof raw.webVersion === "string" ? raw.webVersion.trim() : "";
-  const commitSha = typeof raw.commitSha === "string" ? raw.commitSha.trim() : "";
-  // releaseId 是唯一必需键；老清单（没有 releaseId）按损坏数据处理，
-  // 否则无法判断「是不是新版本」，弹窗会失去依据。
-  if (!releaseId) return null;
-  const changes = Array.isArray(raw.changes) ? raw.changes : [];
-  const entries = changes
-    .filter(isValidManifest)
-    .map((item) => ({
-      type: typeof item.type === "string" ? item.type : "app",
-      title: typeof item.title === "string" ? item.title : "",
-      detail: typeof item.detail === "string" ? item.detail : "",
-    }))
-    .filter((item) => item.title);
-  return {
-    releaseId,
-    commitSha,
-    releasedAt: typeof raw.releasedAt === "string" ? raw.releasedAt : "",
-    versionName: typeof raw.versionName === "string" ? raw.versionName : "",
-    versionCode: typeof raw.versionCode === "number" ? raw.versionCode : 0,
-    webVersion,
-    summary: typeof raw.summary === "string" ? raw.summary : "",
-    entries,
+// ── 线上最新发布（公告与日志共用）──────────────────────────
+let remoteLatest: Release | null = null;
+let lastCheckAt = 0;
+let inFlight: Promise<UpdateCheckResult> | null = null;
+const listeners = new Set<() => void>();
+
+function emit() {
+  for (const listener of [...listeners]) listener();
+}
+
+/** 发布列表：线上有比本机更新的一版时排在最前面，其余是本机打包的历史 */
+function currentList(): Release[] {
+  if (!remoteLatest || remoteLatest.releaseId === SYSTEM_RELEASE_LIST[0]?.releaseId) return SYSTEM_RELEASE_LIST;
+  return [remoteLatest, ...SYSTEM_RELEASE_LIST.filter((item) => item.releaseId !== remoteLatest?.releaseId)];
+}
+
+let listSnapshot: Release[] = SYSTEM_RELEASE_LIST;
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
   };
 }
 
-/** 带缓存绕过的清单拉取：no-store + no-cache 头 + ?check= 时间戳三重保险 */
-export async function fetchRemoteManifest(): Promise<RemoteManifest | null> {
+/** 公告和日志都用这个：线上新版本拉到后两边同时刷新 */
+export function useReleaseList(): Release[] {
+  return useSyncExternalStore(subscribe, () => listSnapshot, () => SYSTEM_RELEASE_LIST);
+}
+
+export function subscribeReleaseList(listener: () => void): () => void {
+  return subscribe(listener);
+}
+
+export function getLatestRelease(): Release {
+  return listSnapshot[0] ?? latestSystemRelease();
+}
+
+async function fetchRemoteLatest(): Promise<Release> {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(`/app-version.json?check=${Date.now()}`, {
+    const response = await fetch(`/api/release?t=${Date.now()}`, {
       cache: "no-store",
       headers: { "Cache-Control": "no-cache" },
       signal: controller.signal,
     });
-    if (!response.ok) return null;
-    const raw: unknown = await response.json();
-    if (!isValidManifest(raw)) return null;
-    return toManifest(raw);
+    if (!response.ok) throw new Error("bad status");
+    const data = (await response.json()) as { latest?: unknown };
+    if (!isRelease(data.latest)) throw new Error("bad data");
+    return data.latest;
   } finally {
     window.clearTimeout(timer);
   }
 }
 
-/** 按 releaseId → commitSha → webVersion → versionCode 顺序比较；有差异即新版本 */
-function isNewerManifest(remote: RemoteManifest, acknowledged: string | null): boolean {
-  if (!acknowledged) return true;
-  if (remote.releaseId && remote.releaseId !== acknowledged) return true;
-  return false;
-}
-
-export function getAcknowledgedRemoteReleaseId(): string | null {
-  try {
-    return window.localStorage.getItem(ACK_KEY);
-  } catch {
-    return null;
-  }
-}
-
-/** 用户确认后写入：这个 releaseId 以后不再弹公告（手动检查也以它为基准） */
-export function acknowledgeRemoteRelease(releaseId: string): void {
-  try {
-    window.localStorage.setItem(ACK_KEY, releaseId);
-  } catch {
-    // localStorage 不可用（隐私模式等）：静默降级，每次都可能弹，但不影响功能
-  }
-}
-
-/** 手动/自动检查共用的入口。绝不 throw：离线、超时、损坏清单都折算成对应状态。 */
-export async function checkForUpdate(): Promise<UpdateCheckResult> {
-  if (typeof navigator !== "undefined" && navigator.onLine === false) {
-    return { state: "offline", manifest: null, message: "当前离线，恢复网络后再试" };
-  }
-  let manifest: RemoteManifest | null;
-  try {
-    manifest = await fetchRemoteManifest();
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      return { state: "timeout", manifest: null, message: "检查超时，请重试" };
+/** 检查一次；同时只跑一个请求。绝不 throw。 */
+export function checkForUpdate(): Promise<UpdateCheckResult> {
+  if (inFlight) return inFlight;
+  inFlight = (async (): Promise<UpdateCheckResult> => {
+    try {
+      if (typeof navigator !== "undefined" && navigator.onLine === false) throw new Error("offline");
+      const release = await fetchRemoteLatest();
+      lastCheckAt = Date.now();
+      const changed = remoteLatest?.releaseId !== release.releaseId;
+      remoteLatest = release;
+      if (changed) {
+        listSnapshot = currentList();
+        emit();
+      }
+      const bundled = SYSTEM_RELEASE_LIST[0]?.releaseId;
+      return release.releaseId !== bundled ? { state: "available", release } : { state: "latest", release };
+    } catch {
+      return { state: "failed", release: null };
+    } finally {
+      inFlight = null;
     }
-    return { state: "offline", manifest: null, message: "网络不可达，请检查连接后重试" };
-  }
-  if (!manifest) {
-    return { state: "error", manifest: null, message: "版本清单不可用或格式异常，请稍后重试" };
-  }
-  const acknowledged = getAcknowledgedRemoteReleaseId();
-  return isNewerManifest(manifest, acknowledged)
-    ? { state: "available", manifest }
-    : { state: "latest", manifest };
+  })();
+  return inFlight;
+}
+
+/** 回到前台：距上次检查超过一分钟才再查 */
+export function shouldCheckOnForeground(): boolean {
+  return Date.now() - lastCheckAt > FOREGROUND_MIN_INTERVAL_MS;
+}
+
+/** 有没有拉到比本机打包更新的版本（需要刷新页面才能用上新功能） */
+export function hasNewerDeployment(): boolean {
+  return !!remoteLatest && remoteLatest.releaseId !== SYSTEM_RELEASE_LIST[0]?.releaseId;
 }

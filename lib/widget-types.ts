@@ -118,7 +118,7 @@ export const WIDGET_CATALOG: WidgetCatalogEntry[] = [
   // 🎨 Freestyle & Analog Designs (Custom physics rendering)
   { type: "receiptTask", name: "自由 · 购物小票", desc: "纯粹的带锯齿边缘脱轨小票", size: "3x2", track: "freestyle" },
   { type: "ticketStub", name: "自由 · 电影票根", desc: "不规则异形打孔纯享票根", size: "2x4", track: "freestyle" },
-  { type: "postCard", name: "自由 · Y2K卡片", desc: "完全自由脱轨艺术展示框", size: "2x4", track: "freestyle" },
+  { type: "postCard", name: "自由 · 复古卡片", desc: "完全自由脱轨艺术展示框", size: "2x4", track: "freestyle" },
   { type: "cameraFrame", name: "自由 · 相机取景框", desc: "带UI框的透明拍照视窗", size: "4x3", track: "freestyle" },
   { type: "colorPickerFrame", name: "自由 · 取色器画框", desc: "极简白盘取色器透明相框", size: "2x2", track: "freestyle" },
   { type: "freestyleFrame18", name: "自由 · 灰色气泡", desc: "横向聊天气泡贴纸", size: "2x4", track: "freestyle" },

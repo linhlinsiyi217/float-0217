@@ -388,3 +388,164 @@
   .qa-app-shell .qa-header-sub { max-width: 24vw; }
   .qa-app-shell .qa-msg-assistant { font-size: 15.5px; }
 }
+
+/* ── 2026-10-27 收尾：侧栏、差异预览、检查与任务状态 ── */
+
+/* 侧栏：新对话放在顶部，底部工具收成一行，不再把一列按钮撑满到底 */
+.qa-app-shell .qa-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px 8px 18px;
+}
+.qa-app-shell .qa-drawer-create {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--qa-ref-accent, #d8795b);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.16s ease, filter 0.16s ease;
+}
+.qa-app-shell .qa-drawer-create:active { transform: scale(0.96); }
+.qa-app-shell .qa-drawer-section {
+  padding: 4px 22px 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #8f877c;
+}
+.qa-app-shell .qa-drawer-foot.qa-drawer-tools {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 8px 10px calc(env(safe-area-inset-bottom, 0px) + 12px);
+  border-top: 1px solid rgba(45, 42, 37, 0.08);
+}
+.qa-app-shell .qa-drawer-tool {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #5f5a52;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.qa-app-shell .qa-drawer-tool:active { background: rgba(255, 254, 251, 0.7); }
+
+/* 修改提案：文件可展开看逐行差异 */
+.qa-diff-list { max-height: none; padding: 4px; }
+.qa-diff-file + .qa-diff-file { border-top: 1px solid rgba(45, 42, 37, 0.06); }
+.qa-diff-file-head {
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.qa-diff-chevron { flex: 0 0 auto; transform: rotate(-90deg); transition: transform 0.16s ease; }
+.qa-diff-chevron.is-open { transform: none; }
+.qa-diff-path { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qa-diff-stat { flex: 0 0 auto; display: inline-flex; gap: 6px; font-variant-numeric: tabular-nums; }
+.qa-diff-stat em { font-style: normal; color: #8f877c; }
+.qa-diff-stat .is-add { color: #1a7f37; font-weight: 600; }
+.qa-diff-stat .is-del { color: #cf222e; font-weight: 600; }
+.qa-diff-body { padding: 0 4px 6px; }
+.qa-diff-hunk {
+  margin: 4px 0 0;
+  max-height: 260px;
+  overflow: auto;
+  border-radius: 6px;
+  background: #fbfaf7;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.qa-diff-line { display: block; padding: 0 8px; white-space: pre; }
+.qa-diff-line i { display: inline-block; width: 14px; font-style: normal; color: #8f877c; }
+.qa-diff-line.is-add { background: rgba(26, 127, 55, 0.10); }
+.qa-diff-line.is-del { background: rgba(207, 34, 46, 0.10); }
+.qa-diff-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 2px;
+  font-family: inherit;
+  font-size: 12px;
+  color: #8f877c;
+}
+.qa-diff-note.is-error { color: #cf222e; }
+.qa-diff-retry {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(45, 42, 37, 0.07);
+  color: #3d3934;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* 检查与构建结果 */
+.qa-checks { margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: rgba(45, 42, 37, 0.04); }
+.qa-checks-head { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; color: #5f5a52; }
+.qa-checks-refresh {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #5f5a52;
+  cursor: pointer;
+}
+.qa-checks-overall { margin: 2px 0 4px; font-size: 12.5px; }
+.qa-checks-overall.is-success { color: #1a7f37; }
+.qa-checks-overall.is-failure { color: #cf222e; }
+.qa-checks-overall.is-pending { color: #9a6700; }
+.qa-checks-overall.is-none { color: #8f877c; }
+.qa-check-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.qa-check-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: #3d3934; }
+.qa-check-list li small { flex-basis: 100%; padding-left: 20px; color: #8f877c; }
+.qa-check-list a { display: inline-grid; place-items: center; width: 28px; height: 28px; color: #5f5a52; }
+.qa-check-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qa-check-icon.is-ok { color: #1a7f37; }
+.qa-check-icon.is-fail { color: #cf222e; }
+.qa-check-icon.is-pending { color: #9a6700; animation: qa-check-spin 1.6s linear infinite; }
+@keyframes qa-check-spin { to { transform: rotate(360deg); } }
+
+/* 任务状态面板 */
+.qa-task-sheet { max-height: min(78vh, 640px); overflow-y: auto; }
+.qa-task-body { display: flex; flex-direction: column; gap: 4px; padding: 0 2px 8px; }
+.qa-task-repo { margin: 0; font-size: 13px; font-weight: 600; color: #3d3934; }
+.qa-task-empty { display: flex; flex-direction: column; gap: 12px; padding: 4px 2px 10px; font-size: 13px; line-height: 1.6; color: #5f5a52; }
+.qa-task-empty p { margin: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .qa-check-icon.is-pending { animation: none; }
+  .qa-diff-chevron { transition: none; }
+}

@@ -7,9 +7,10 @@ import remarkGfm from "remark-gfm";
 // （** 后跟标点时要求前面是空格/标点，中文里前面通常是汉字），中文消息大量中招。
 import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkBreaks from "remark-breaks";
-import { AppWindow, ArrowUp, BrushCleaning, Check, ChevronLeft, ChevronDown, ChevronRight, Copy, Drama, FileCode2, FileText, Gamepad2, Github, Image as ImageIcon, Loader2, Menu, MoreVertical, Paperclip, Pencil, Pin, PinOff, Play, Plus, Square, Trash2, Wrench, X, List, ArrowDown, Sparkles } from "lucide-react";
+import { AppWindow, ArrowUp, BrushCleaning, Check, ChevronLeft, ChevronDown, ChevronRight, Copy, Drama, FileCode2, FileText, Gamepad2, ListChecks, Github, Image as ImageIcon, Loader2, Menu, MoreVertical, Paperclip, Pencil, Pin, PinOff, Play, Plus, Square, Trash2, Wrench, X, List, ArrowDown, Sparkles } from "lucide-react";
 import { getQaApiLogs, clearQaApiLogs, type DebugInfo } from "@/lib/api-log-store";
 import { QaFileCard } from "@/components/qa-file-card";
+import { QaCommitChecks, QaCommitDiffList, QaTaskStatusSheet } from "@/components/qa/qa-commit-review";
 import { parseQaFileMarker } from "@/lib/qa-computer-tools";
 import { CustomAppRunner } from "@/components/app-market/custom-app-runner";
 import { CustomAppForegroundBoundary } from "@/components/app-market/custom-app-failure";
@@ -215,14 +216,8 @@ function QaCommitCard({ msg }: { msg: QaMsg }) {
         <span className="qa-commit-branch">{proposal.branch || "默认分支"} · {files.length + (proposal.deletes?.length ?? 0)} 个文件</span>
       </div>
       <div className="qa-commit-msg">{proposal.message}</div>
-      <ul className="qa-commit-files">
-        {files.map((f) => (
-          <li key={f.path}>{f.path}</li>
-        ))}
-        {(proposal.deletes ?? []).map((path) => (
-          <li key={`del-${path}`} className="qa-commit-file-delete">− {path}（删除）</li>
-        ))}
-      </ul>
+      {/* 每个文件可展开查看与仓库当前版本的逐行差异 */}
+      <QaCommitDiffList files={files} deletes={proposal.deletes} branch={proposal.branch} />
       {error && <div className="qa-commit-error">{error}</div>}
       {status === "pending" && (
         <div className="qa-commit-actions">
@@ -251,6 +246,8 @@ function QaCommitCard({ msg }: { msg: QaMsg }) {
           </button>
         </div>
       )}
+      {/* 提交后：读取仓库 CI 对这次提交真实跑出的类型检查 / 构建结果 */}
+      {status === "applied" && result && <QaCommitChecks refName={result.sha} />}
     </div>
   );
 }
@@ -555,7 +552,12 @@ function QaSessionDrawer({
     <aside className="qa-drawer">
       <div className="qa-drawer-head">
         <span className="qa-drawer-title">Claude 空间</span>
+        <button type="button" className="qa-drawer-create" onClick={onCreate}>
+          <Plus size={15} strokeWidth={2} />
+          <span>新对话</span>
+        </button>
       </div>
+      <span className="qa-drawer-section">最近对话</span>
       <div
         className="qa-drawer-list hide-scrollbar"
         onClick={() => { if (menuOpenId) setMenuOpenId(null); }}
@@ -650,22 +652,18 @@ function QaSessionDrawer({
           </div>
         );})}
       </div>
-      <div className="qa-drawer-foot">
-        <button type="button" className="qa-drawer-new qa-drawer-settings" onClick={onOpenSettings}>
-          <Wrench size={15} strokeWidth={2} />
-          <span>Claude 配置</span>
+      <div className="qa-drawer-foot qa-drawer-tools">
+        <button type="button" className="qa-drawer-tool" onClick={onOpenSettings}>
+          <Wrench size={15} strokeWidth={1.9} />
+          <span>配置</span>
         </button>
-        <button type="button" className="qa-drawer-new" onClick={onOpenApiLog}>
-          <FileCode2 size={15} strokeWidth={2} />
+        <button type="button" className="qa-drawer-tool" onClick={onOpenApiLog}>
+          <FileCode2 size={15} strokeWidth={1.9} />
           <span>调用记录</span>
         </button>
-        <button type="button" className="qa-drawer-new" onClick={onClearTools}>
-          <BrushCleaning size={15} strokeWidth={2} />
-          <span>清理执行记录</span>
-        </button>
-        <button type="button" className="qa-drawer-new" onClick={onCreate}>
-          <Plus size={16} strokeWidth={2} />
-          <span>新对话</span>
+        <button type="button" className="qa-drawer-tool" onClick={onClearTools}>
+          <BrushCleaning size={15} strokeWidth={1.9} />
+          <span>清理记录</span>
         </button>
       </div>
     </aside>
@@ -955,6 +953,7 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
   const [input, setInput] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [repoSheetOpen, setRepoSheetOpen] = useState(false);
+  const [taskSheetOpen, setTaskSheetOpen] = useState(false);
   const [repoConnected, setRepoConnected] = useState(false);
   const [clearToolsOpen, setClearToolsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1065,6 +1064,7 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
       if (viewerImage) { setViewerImage(null); return; }
       if (editingMsg) { setEditingMsg(null); return; }
       if (previewOpen) { setPreviewOpen(false); setPreviewItem(null); return; }
+      if (taskSheetOpen) { setTaskSheetOpen(false); return; }
       if (repoSheetOpen) { setRepoSheetOpen(false); return; }
       if (settingsOpen) { setSettingsOpen(false); return; }
       if (apiLogOpen) { setApiLogOpen(false); return; }
@@ -1079,7 +1079,7 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [viewerImage, editingMsg, previewOpen, repoSheetOpen, settingsOpen, apiLogOpen, clearToolsOpen, outlineOpen, attachMenuOpen, attachMenuView, drawerOpen]);
+  }, [viewerImage, editingMsg, previewOpen, taskSheetOpen, repoSheetOpen, settingsOpen, apiLogOpen, clearToolsOpen, outlineOpen, attachMenuOpen, attachMenuView, drawerOpen]);
 
   useEffect(() => {
     const el = bodyRef.current;
@@ -1426,12 +1426,8 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
           <span className="qa-header-sub">{modelName || "AI 工作台"}</span>
         </div>
         <div className="qa-header-right qa-header-control-group">
-          <button type="button" className="qa-icon-btn" onClick={() => setDrawerOpen(true)} aria-label="文件与会话">
-            <FileText size={18} strokeWidth={1.75} />
-          </button>
-          <span className="qa-header-divider" aria-hidden />
-          <button type="button" className="qa-icon-btn" onClick={() => { createQaSession(); setDrawerOpen(false); }} aria-label="新对话">
-            <Pencil size={18} strokeWidth={1.8} />
+          <button type="button" className="qa-icon-btn" onClick={() => setTaskSheetOpen(true)} aria-label="任务状态" title="任务状态：检查、构建与 PR">
+            <ListChecks size={18} strokeWidth={1.75} />
           </button>
         </div>
       </header>
@@ -1988,6 +1984,12 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
 
       {repoSheetOpen && (
         <QaRepoSheet onClose={() => setRepoSheetOpen(false)} onSaved={refreshComposerMeta} />
+      )}
+      {taskSheetOpen && (
+        <QaTaskStatusSheet
+          onClose={() => setTaskSheetOpen(false)}
+          onConnectRepo={() => { setTaskSheetOpen(false); setRepoSheetOpen(true); }}
+        />
       )}
 
       {previewOpen && !previewItem && (

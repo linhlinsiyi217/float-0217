@@ -239,8 +239,8 @@
 
 /* v0.6.15 compact release notice: dense, readable, color-coded */
 .updn-mask {
-  align-items: flex-end;
-  padding: 0 12px calc(env(safe-area-inset-bottom, 0px) + 14px);
+  align-items: center;
+  padding: 20px 14px;
   background: rgba(8, 12, 20, .34);
   backdrop-filter: blur(8px);
 }
@@ -268,11 +268,34 @@
 .updn-row-top { gap: 5px; align-items: flex-start; flex-wrap: wrap; }
 .updn-dot { width: 7px; height: 7px; margin-top: 6px; }
 .updn-tag { height: 19px; padding: 0 6px; border-radius: 6px; font-size: 10px; line-height: 19px; }
+.updn-tag-solid { color: #fff; }
 .updn-row-title { flex: 1 1 150px; min-width: 0; font-size: 12px; line-height: 1.35; }
+.updn-row-app {
+  display: block;
+  margin-top: 2px;
+  padding-left: 12px;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.updn-detail-app {
+  display: block;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: #6b7280;
+}
 .updn-more { font-size: 11px; min-height: 22px; }
 .updn-foot { padding-top: 1px; }
 .updn-link { font-size: 12px; }
 .updn-confirm { height: 36px; min-width: 94px; border-radius: 10px; font-size: 13px; }
+@media (prefers-color-scheme: dark) {
+  .updn-row { background: rgba(44, 44, 46, .6); border-color: rgba(255, 255, 255, .08); }
+  .updn-row-app, .updn-detail-app { color: #98989e; }
+  .updn-tag-solid { color: #fff; }
+}
 @media (min-width: 600px) {
   .updn-mask { align-items: center; padding: 20px; }
   .updn-card { max-height: 65vh; }
@@ -284,3 +307,17 @@
 .upd-group-label { padding:4px 8px; border-radius:8px; }
 .upd-entry-tags { display:flex; flex-wrap:wrap; gap:5px; margin-top:5px; }
 .upd-entry-tag { padding:3px 7px; border-radius:6px; font-size:10px; font-weight:700; line-height:1; }
+
+/* 2026-10-27 公告与日志分开：公告只列标题，日志按八类分组 */
+.updn-headline { margin: 2px 0 0; font-size: 13px; line-height: 1.55; color: #1c1f24; }
+.updn-section-label { margin: 4px 0 0; font-size: 11px; font-weight: 600; color: #8a93a1; letter-spacing: 0.02em; }
+.updn-more-note { margin: 0; font-size: 11px; color: #8a93a1; }
+.updn-impact { margin: 0; padding-top: 8px; border-top: 1px dashed #e4e8ee; font-size: 11.5px; line-height: 1.5; color: #5b6472; }
+.updn-dev,
+.upd-dev { margin: 0; font-size: 10.5px; line-height: 1.5; color: #8a93a1; font-family: ui-monospace, monospace; }
+.upd-dev { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; background: #f7f9fb; }
+.upd-group-label { background: #f7f9fb; }
+@media (prefers-color-scheme: dark) {
+  .updn-headline { color: #f2f2f7; }
+  .updn-impact { color: #98989e; border-top-color: rgba(255, 255, 255, 0.12); }
+}

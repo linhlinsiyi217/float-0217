@@ -605,7 +605,7 @@ export function XApp({ onClose, onNotice }: XAppProps) {
               <button
                 className="x-topbar-avatar"
                 type="button"
-                aria-label="退出 X"
+                aria-label="返回桌面（退出 X）"
                 onClick={onClose}
               >
                 <XAvatar name={profile.name} avatarUrl={profile.avatarUrl} />
@@ -912,7 +912,7 @@ export function XApp({ onClose, onNotice }: XAppProps) {
       {page === "compose" && profile && (
         <div className="x-compose-page" {...swipeBackToFeed}>
           <div className="x-compose-header">
-            <button className="x-compose-cancel" type="button" onClick={() => { setComposeText(""); setPage("feed"); }}>取消</button>
+            <button className="x-compose-cancel" type="button" data-back aria-label="返回" onClick={() => { setComposeText(""); setPage("feed"); }}>取消</button>
             <button
               className="x-compose-publish"
               type="button"

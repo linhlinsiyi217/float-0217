@@ -9,6 +9,7 @@ import { NextResponse } from "next/server";
 import { composeGlobalReleases } from "@/lib/update-log/global";
 import { STUDYROOM_RELEASES } from "@/lib/update-log/studyroom-data";
 import { SYSTEM_RELEASES } from "@/lib/update-log/system-data";
+import { publicRelease } from "@/lib/update-log/user-view";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,9 @@ export function GET() {
         apps: Array.from(new Set(system.entries.map((entry) => entry.app.split(" · ")[0]))),
       },
       studyroom: { version: studyroom.version, releaseId: studyroom.releaseId },
+      // 客户端实时检查更新用：当前发布的用户可见内容（不含待确认事项等内部字段），
+      // 公告与日志都从这一份派生
+      latest: publicRelease(system),
     },
     { headers: { "Cache-Control": "no-store" } },
   );

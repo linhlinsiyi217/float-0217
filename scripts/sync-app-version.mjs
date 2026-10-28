@@ -64,7 +64,26 @@ json.releaseId = `${webVersion}-${commitSha || releasedAt.replaceAll(/[:.]/g, ""
 json.commitSha = commitSha;
 json.releasedAt = releasedAt;
 json.changelogFile = "/CHANGELOG.md";
-// 规范要求的 entries 字段：与人工维护的 changes 同构，直接镜像一份
+// summary / changes 从总日志最新一版生成（和网页公告、设置日志同一份数据），
+// 不再人工维护第二份文案。只取用户可见字段：标题与第一条说明。
+// 读不了 .ts（Node 版本不支持类型剥离）时保留原有内容，不影响构建。
+try {
+  const { SYSTEM_RELEASES } = await import("../lib/update-log/system-data.ts");
+  const latest = SYSTEM_RELEASES[0];
+  if (latest) {
+    json.summary = latest.summary;
+    json.changes = latest.entries.map((entry) => ({
+      type: entry.scope === "prompt" ? "ai" : entry.scope || "content",
+      category: entry.category,
+      app: entry.app,
+      title: entry.title,
+      detail: entry.items[0] || "",
+    }));
+  }
+} catch {
+  console.warn("[sync-app-version] 读取 system-data.ts 失败，沿用 app-version.json 现有的 summary / changes");
+}
+// 规范要求的 entries 字段：与 changes 同构，直接镜像一份
 json.entries = Array.isArray(json.changes) ? json.changes : [];
 
 writeFileSync(jsonPath, JSON.stringify(json, null, 2) + "\n");

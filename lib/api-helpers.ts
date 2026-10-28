@@ -62,7 +62,7 @@ export function buildRequestHeaders(config: ApiConfig, baseUrl: string): Record<
     // OpenRouter requires referer headers
     if (baseUrl.includes("openrouter.ai")) {
         headers["HTTP-Referer"] = "https://aivirtualphone.local";
-        headers["X-Title"] = "AI Virtual Phone";
+        headers["X-Title"] = "FLOT";
     }
 
     return headers;
