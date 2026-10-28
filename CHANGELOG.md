@@ -5,7 +5,7 @@ Float-0217 的唯一正式发布日志（人类可读）。机器读取版本见
 新发布倒序追加在最上面；`<commit-sha>` 占位符在构建时由 `scripts/sync-app-version.mjs` 回填。
 
 ## [1.2.5] - 2026-10-28
-Release ID: `2026-10-28-1-4dfc6df7f3fc086e3b0d3eb678457720fe9430d3`
+Release ID: `2026-10-28-1-<commit-sha>`
 
 ### app
 - title: 音乐系统与 Y2K 最新版完全同步
